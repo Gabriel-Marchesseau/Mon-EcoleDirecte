@@ -33,8 +33,8 @@
 **1. Clone or download the repository**
 
 ```bash
-git clone https://github.com/your-username/mon-ecoledirecte.git
-cd mon-ecoledirecte
+git clone https://github.com/Gabriel-Marchesseau/Mon-EcoleDirecte.git
+cd Mon-EcoleDirecte
 ```
 
 **2. Run the installer**
@@ -169,3 +169,9 @@ EcoleDirecte's API does not allow direct browser requests from external origins 
 ## License
 
 MIT — free to use, modify and distribute.
+
+---
+
+## Repository
+
+[https://github.com/Gabriel-Marchesseau/Mon-EcoleDirecte](https://github.com/Gabriel-Marchesseau/Mon-EcoleDirecte)
