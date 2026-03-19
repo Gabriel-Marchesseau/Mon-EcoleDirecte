@@ -1,0 +1,16 @@
+{
+  "name": "mon-ecoledirecte",
+  "version": "1.0.0",
+  "description": "Client local EcoleDirecte",
+  "main": "proxy.js",
+  "scripts": {
+    "start": "nodemon --watch proxy.js --watch app.js --watch style.css --watch ecoledirecte.html proxy.js",
+    "dev": "nodemon proxy.js"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  },
+  "dependencies": {
+    "node-forge": "^1.3.1"
+  }
+}

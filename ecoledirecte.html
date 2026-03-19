@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<title>Mon EcoleDirecte</title>
+<link rel="stylesheet" href="/style.css?v=__VERSION__">
+  <script>
+    if (localStorage.getItem('ed_dark') === '1') document.documentElement.classList.add('dark-pending');
+  </script>
+</head>
+<body>
+<div class="app">
+  <div id="login-wrapper">
+  <div class="card" id="login-card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <p class="section-title" style="margin:0">Connexion EcoleDirecte</p>
+      <div style="display:flex;gap:4px">
+        <button id="dark-toggle-login" onclick="toggleDark()" title="Mode sombre" style="background:none;border:none;cursor:pointer;font-size:16px;color:#aaa;padding:2px 4px;user-select:none">🌙</button>
+        <button onclick="toggleSecurityPanel()" title="Réponses automatiques à la question de sécurité" style="background:none;border:0.5px solid #ddd;border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:14px;color:#888" id="security-toggle-btn">🔧</button>
+      </div>
+    </div>
+
+    <!-- Panneau paramètres sécurité -->
+    <div id="security-panel" class="security-panel" style="display:none;border-radius:8px;padding:12px;margin-bottom:12px">
+      <p style="font-size:12px;font-weight:500;color:#555;margin-bottom:4px">Réponses automatiques à la question de sécurité</p>
+      <p style="font-size:11px;color:#aaa;margin-bottom:10px">Chaque valeur sera testée contre les propositions du QCM.</p>
+      <div style="font-size:11px;color:#888;display:grid;grid-template-columns:1fr 1fr 24px;gap:4px;margin-bottom:4px;padding:0 2px">
+        <span>Mot-clé dans la question</span><span>Valeur à sélectionner</span><span></span>
+      </div>
+      <div id="sec-entries"></div>
+      <button onclick="addSecEntry()" style="margin-top:8px;background:none;border:0.5px dashed #ccc;border-radius:8px;width:100%;height:32px;font-size:13px;color:#888;cursor:pointer">+ Ajouter une règle</button>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button onclick="saveSecuritySettings()" class="btn btn-primary" style="height:32px;font-size:13px;padding:0 14px">Enregistrer</button>
+        <button onclick="resetSecuritySettings()" class="btn" style="height:32px;font-size:13px;padding:0 14px">Réinitialiser</button>
+      </div>
+      <p id="sec-save-msg" style="font-size:12px;color:#15803d;margin-top:6px;display:none">✓ Sauvegardé</p>
+    </div>
+    <div class="form-row">
+      <label>Identifiant</label>
+      <input type="text" id="username" placeholder="Nom d'utilisateur" autocomplete="username" />
+    </div>
+    <div class="form-row">
+      <label>Mot de passe</label>
+      <div style="display:flex;flex:1;gap:6px;align-items:center">
+        <input type="password" id="password" placeholder="Mot de passe" autocomplete="current-password" style="flex:1" onkeydown="if(event.key==='Enter')doLogin()" />
+        <button onclick="togglePwd()" id="pwd-eye" class="pwd-eye-btn" style="background:none;border-radius:8px;width:36px;height:36px;cursor:pointer;font-size:15px;flex-shrink:0" title="Afficher/masquer">👁</button>
+      </div>
+    </div>
+
+
+    <div id="qcm-area">
+      <hr class="divider" />
+      <p style="font-size:13px;color:#666;margin-bottom:8px;">Question de sécurité :</p>
+      <p id="qcm-question" style="font-size:14px;font-weight:500;margin-bottom:8px;"></p>
+      <div id="qcm-choices"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="login-btn" onclick="doLogin()">Se connecter</button>
+      <span id="login-spinner" style="display:none"><span class="spinner"></span></span>
+    </div>
+    <div id="login-status"></div>
+  </div>
+  </div>
+
+  <div class="card" id="api-card">
+    <div class="profile-bar">
+      <div class="avatar" id="user-avatar">?</div>
+      <div style="flex:1">
+        <p style="font-size:15px;font-weight:500;" id="user-name">—</p>
+        <p style="font-size:12px;color:#888;" id="user-type">—</p>
+      </div>
+      <div style="display:flex;align-items:center;gap:4px">
+        <span style="font-size:14px;font-weight:500;color:#aaa">Mon EcoleDirecte</span>
+        <button id="dark-toggle" onclick="toggleDark()" title="Mode sombre" style="background:none;border:none;cursor:pointer;font-size:16px;color:#ccc;padding:2px 6px">🌙</button>
+        <button onclick="logout()" title="Se déconnecter" style="background:none;border:none;cursor:pointer;font-size:16px;color:#ccc;padding:2px 6px">⏏</button>
+        <button onclick="shutdownApp()" title="Fermer l'application" style="background:none;border:none;cursor:pointer;font-size:16px;color:#ccc;padding:2px 6px">⏻</button>
+      </div>
+    </div>
+    <div id="offline-banner" class="offline-banner">⚠ Mode hors-ligne — données en cache</div>
+    <div style="display:flex;align-items:center;border-bottom:1px solid var(--border);margin-bottom:14px">
+      <div class="tab-bar" id="tab-bar" style="border-bottom:none;margin-bottom:0;flex:1"></div>
+      <div class="tab-freshness-row">
+        <span class="freshness-label" id="freshness-label"></span>
+        <button class="refresh-btn" id="tab-refresh-btn" title="Actualiser">↻</button>
+      </div>
+    </div>
+
+    <!-- Panel Notes -->
+    <div class="tab-panel" id="panel-notes">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:0">
+        <div style="display:flex;gap:4px;flex:1;flex-wrap:wrap">
+          <button class="btn notes-period-btn" data-period="A001" onclick="selectNotesPeriod('A001')">1er trimestre</button>
+          <button class="btn notes-period-btn" data-period="A002" onclick="selectNotesPeriod('A002')">2ème trimestre</button>
+          <button class="btn notes-period-btn" data-period="A003" onclick="selectNotesPeriod('A003')">3ème trimestre</button>
+        </div>
+        <button id="notes-view-toggle" onclick="toggleNotesView()" title="Changer de vue" style="border:0.5px solid #ddd;border-radius:8px;width:34px;height:34px;background:#fff;cursor:pointer;font-size:16px;flex-shrink:0;user-select:none">📊</button>
+        <span id="spin-notes" style="display:none"><span class="spinner"></span></span>
+      </div>
+      <div id="notes-result" style="margin-top:12px"></div>
+    </div>
+
+    <!-- Panel Emploi du temps -->
+    <div class="tab-panel" id="panel-edt">
+      <div class="edt-week-nav">
+        <button class="btn" onclick="edtNav(-1)">&#8592;</button>
+        <span class="edt-week-label" id="edt-week-label">—</span>
+        <button class="btn" onclick="edtNav(1)">&#8594;</button>
+      </div>
+      <span id="spin-edt" style="display:none"><span class="spinner"></span></span>
+      <div id="edt-result" style="flex:1;overflow-y:auto;min-height:0"></div>
+    </div>
+
+    <!-- Panel Devoirs -->
+    <div class="tab-panel" id="panel-devoirs">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;color:var(--text2)">
+          <button id="devoirs-hide-done" onclick="toggleDevoirsHide(this)" style="display:flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;padding:0;color:var(--text3)" aria-pressed="false">
+            <span style="font-size:20px">👁</span>
+            <span id="devoirs-hide-label" style="font-size:14px">Voir les devoirs faits</span>
+          </button>
+        </label>
+        <span id="spin-devoirs" style="display:none;margin-left:auto"><span class="spinner"></span></span>
+      </div>
+      <div style="display:flex;gap:12px;flex:1;min-height:0">
+        <div id="devoirs-result" style="flex:1;overflow-y:auto;min-height:0"></div>
+        <div id="devoir-detail-panel" style="width:50%;border-left:1px solid var(--border);padding-left:12px;overflow-y:auto;min-height:0;display:flex;align-items:center;justify-content:center">
+          <span style="color:var(--text4);font-size:13px;text-align:center">Sélectionne un devoir<br>pour voir le détail ici</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel Contenus de séances -->
+    <div class="tab-panel" id="panel-seances">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <input type="date" id="seances-date" style="font-size:14px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);cursor:pointer" onchange="loadSeances()">
+        <span id="spin-seances" style="display:none"><span class="spinner"></span></span>
+      </div>
+      <div id="seances-result" style="flex:1;overflow-y:auto;min-height:0">
+        <span style="color:var(--text4);font-size:14px">Sélectionne une date pour voir les contenus de séances.</span>
+      </div>
+    </div>
+
+    <!-- Panel Messages -->
+    <div class="tab-panel" id="panel-messages">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <label style="font-size:13px;color:var(--text3)">Année</label>
+        <select id="msg-annee" onchange="loadMessages()">
+          <option value="2025-2026" selected>2025-2026</option>
+          <option value="2024-2025">2024-2025</option>
+          <option value="2023-2024">2023-2024</option>
+        </select>
+        <div class="msg-tabs" style="margin-bottom:0;border-bottom:none;flex:1">
+          <button class="msg-tab active" data-tab="received" onclick="switchMsgTab('received')">Reçus</button>
+          <button class="msg-tab" data-tab="sent" onclick="switchMsgTab('sent')">Envoyés</button>
+        </div>
+        <span id="spin-messages" style="display:none"><span class="spinner"></span></span>
+      </div>
+      <div style="display:flex;gap:12px;flex:1;min-height:0">
+        <div id="messages-result" style="flex:1;overflow-y:auto;min-height:0"></div>
+        <div id="message-detail-panel" style="width:50%;border-left:1px solid var(--border);padding-left:12px;overflow-y:auto;min-height:0;display:flex;align-items:center;justify-content:center">
+          <span style="color:var(--text4);font-size:13px;text-align:center">Sélectionne un message<br>pour voir le contenu ici</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel Absences -->
+    <div class="tab-panel" id="panel-absences">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+        <span id="spin-absences" style="display:none"><span class="spinner"></span></span>
+      </div>
+      <div id="absences-result" style="flex:1;overflow-y:auto;min-height:0"></div>
+    </div>
+
+    <!-- Panel Perso -->
+    <div class="tab-panel" id="panel-perso">
+      <div class="form-row" style="margin-bottom:8px">
+        <label style="font-size:13px;color:#666;min-width:80px">Chemin</label>
+        <input type="text" id="custom-path" placeholder="/v3/eleves/{id}/..." style="flex:1;" />
+      </div>
+      <textarea id="custom-body" rows="2" placeholder="data={}"></textarea>
+      <div class="btn-row"><button class="btn btn-primary" onclick="runTab('perso')">Envoyer</button><span id="spin-perso" style="display:none"><span class="spinner"></span></span></div>
+    </div>
+
+    <div id="api-status"></div>
+    <div id="result-area" style="display:none;margin-top:12px;flex:1;overflow-y:auto;min-height:0;">
+      <div class="result-box" id="result-box"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+function applyDark(dark) {
+  document.body.classList.toggle('dark', dark);
+  const icon = dark ? '☀️' : '🌙';
+  ['dark-toggle', 'dark-toggle-login'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.textContent = icon;
+  });
+}
+
+function toggleDark() {
+  const isDark = !document.body.classList.contains('dark');
+  localStorage.setItem('ed_dark', isDark ? '1' : '0');
+  applyDark(isDark);
+}
+</script>
+<script>
+// ── EcoleDirecte Cache — IndexedDB stale-while-revalidate ─────────────────
+// Durée de fraîcheur : 30 minutes
+// Clés : 'edt:{YYYY-MM-DD}', 'notes', 'messages:received:YYYY-YYYY',
+//        'messages:sent:YYYY-YYYY', 'absences', 'devoirs', 'devoirs:{date}'
+
+const ED_CACHE_DB    = 'ed-cache';
+const ED_CACHE_STORE = 'entries';
+const STALE_MS       = 30 * 60 * 1000; // 30 minutes
+
+let _db = null;
+
+function openDB() {
+  if (_db) return Promise.resolve(_db);
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(ED_CACHE_DB, 1);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(ED_CACHE_STORE)) {
+        db.createObjectStore(ED_CACHE_STORE, { keyPath: 'key' });
+      }
+    };
+    req.onsuccess = e => { _db = e.target.result; resolve(_db); };
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
+const edCache = {
+  // Lire une entrée — retourne { data, ts } ou null
+  async get(key) {
+    try {
+      const db = await openDB();
+      return new Promise((resolve) => {
+        const tx  = db.transaction(ED_CACHE_STORE, 'readonly');
+        const req = tx.objectStore(ED_CACHE_STORE).get(key);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror   = () => resolve(null);
+      });
+    } catch { return null; }
+  },
+
+  // Écrire une entrée avec timestamp
+  async set(key, data) {
+    try {
+      const db = await openDB();
+      return new Promise((resolve) => {
+        const tx  = db.transaction(ED_CACHE_STORE, 'readwrite');
+        tx.objectStore(ED_CACHE_STORE).put({ key, data, ts: Date.now() });
+        tx.oncomplete = () => resolve(true);
+        tx.onerror    = () => resolve(false);
+      });
+    } catch { return false; }
+  },
+
+  // Supprimer une entrée
+  async delete(key) {
+    try {
+      const db = await openDB();
+      return new Promise((resolve) => {
+        const tx  = db.transaction(ED_CACHE_STORE, 'readwrite');
+        tx.objectStore(ED_CACHE_STORE).delete(key);
+        tx.oncomplete = () => resolve(true);
+        tx.onerror    = () => resolve(false);
+      });
+    } catch { return false; }
+  },
+
+  // Vider tout le cache
+  async clear() {
+    try {
+      const db = await openDB();
+      return new Promise((resolve) => {
+        const tx  = db.transaction(ED_CACHE_STORE, 'readwrite');
+        tx.objectStore(ED_CACHE_STORE).clear();
+        tx.oncomplete = () => resolve(true);
+        tx.onerror    = () => resolve(false);
+      });
+    } catch { return false; }
+  },
+
+  // Vérifier si une entrée est périmée (> 30 min)
+  isStale(entry) {
+    if (!entry) return true;
+    return (Date.now() - entry.ts) > STALE_MS;
+  },
+
+  // Pattern stale-while-revalidate :
+  //   1. Si cache frais → retourner cache sans fetch
+  //   2. Si cache périmé → retourner cache immédiatement + fetch en arrière-plan → callback si diff
+  //   3. Si pas de cache → fetch, afficher spinner pendant ce temps
+  async load(key, fetchFn, { onCached, onFresh, onSpinner, diffFn } = {}) {
+    const entry = await this.get(key);
+
+    if (entry && !this.isStale(entry)) {
+      // Cache frais — pas besoin de re-fetcher
+      onCached?.(entry.data, entry.ts);
+      return;
+    }
+
+    if (entry) {
+      // Cache périmé — afficher immédiatement, revalider en arrière-plan
+      onCached?.(entry.data, entry.ts);
+    } else {
+      // Pas de cache — spinner
+      onSpinner?.();
+    }
+
+    try {
+      const fresh = await fetchFn();
+      const oldData = entry?.data ?? null;
+      await this.set(key, fresh);
+      const changed = diffFn ? diffFn(oldData, fresh) : true;
+      if (changed || !entry) {
+        onFresh?.(fresh, entry?.ts ?? null, oldData);
+      }
+    } catch(e) {
+      // Si le fetch échoue mais qu'on avait du cache, on reste sur le cache
+      // Mode offline : afficher bannière
+      if (!entry) throw e;
+      console.warn('Fetch échoué, cache utilisé (mode hors-ligne) :', e.message);
+      window.dispatchEvent(new CustomEvent('ed-offline', { detail: { key } }));
+    }
+  },
+
+  // Diff simple : comparer la sérialisation JSON
+  defaultDiff(a, b) {
+    return JSON.stringify(a) !== JSON.stringify(b);
+  }
+};
+
+</script>
+<script src="/app.js?v=__VERSION__"></script>
+</body>
+</html>

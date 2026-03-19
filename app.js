@@ -1,0 +1,2176 @@
+// ── Dark mode ────────────────────────────────────────────────────
+// Appliquer la préférence sauvegardée au chargement
+
+// Injecter les styles dark mode pour les éléments dynamiques
+const darkStyle = document.createElement('style');
+darkStyle.textContent = `
+  body.dark .card { background: var(--bg2); border-color: var(--border); }
+  body.dark input, body.dark textarea, body.dark select { background: var(--input-bg); color: var(--text); border-color: var(--border); }
+  body.dark .btn { background: var(--bg3); color: var(--text); border-color: var(--border); }
+  body.dark .btn:hover { background: var(--bg4); }
+  body.dark .btn-primary { background: var(--text); color: var(--bg); border-color: var(--text); }
+  body.dark .btn-primary:hover { background: var(--text2); }
+  body.dark .tab { color: var(--text3); }
+  body.dark .tab.active { color: var(--text); border-bottom-color: var(--text); }
+  body.dark .tab-bar { border-bottom-color: var(--border); }
+  body.dark .edt-grid { border-color: var(--border); }
+  body.dark .edt-header { background: var(--bg3); border-bottom-color: var(--border); color: var(--text); }
+  body.dark .edt-header.today { background: #e0e0e0; color: #1a1a1a; }
+  body.dark .edt-header.past { color: var(--text4); }
+  body.dark .edt-day-col { border-right-color: var(--border); }
+  body.dark .edt-day-col.past { background: #1e1e1e; }
+  body.dark .edt-day-col.today { background: #1e2a1e; }
+  body.dark .edt-time-col { border-right-color: var(--border); }
+  body.dark .edt-slot { border-bottom-color: var(--border2); }
+  body.dark .result-box { background: var(--bg3); color: var(--text); }
+  body.dark .divider { border-top-color: var(--border); }
+  body.dark .status.info { background: #1e3a5f; color: #93c5fd; }
+  body.dark .status.success { background: #1a3a2a; color: #6ee7b7; }
+  body.dark .status.error { background: #3a1a1a; color: #fca5a5; }
+  body.dark .notes-period-btn.active { background: var(--text); color: var(--bg); }
+  body.dark #security-panel { background: var(--bg3); border-color: var(--border); }
+`;
+document.head.appendChild(darkStyle);
+(function() {
+  const saved = localStorage.getItem('ed_dark');
+  // Si dark-pending est là (mis par le script inline du head), appliquer
+  if (saved === '1' || document.documentElement.classList.contains('dark-pending')) {
+    applyDark(true);
+    document.documentElement.classList.remove('dark-pending');
+  }
+})();
+
+let token = '';
+let accountData = null;
+let lastResult = '';
+
+function getProxy() { return window.location.origin; }
+function getEleveId() {
+  if (!accountData) return '';
+  const acc = accountData.accounts ? accountData.accounts[0] : accountData;
+  return acc.id || '';
+}
+function resolvePath(p) { return p.replace('{id}', getEleveId()); }
+function showStatus(el, msg, type) { el.innerHTML = `<div class="status ${type}">${msg}</div>`; }
+
+async function checkProxy() {
+  const badge = document.getElementById('proxy-badge');
+  badge.className = 'badge pending'; badge.textContent = 'Vérification…';
+  try {
+    // Utilise un OPTIONS pour vérifier que le proxy répond sans déclencher initSession
+    const r = await fetch(`${getProxy()}/v3/login.awp?v=4.75.0`, { method: 'OPTIONS' });
+    badge.className = 'badge ok'; badge.textContent = 'Connecté ✓';
+  } catch(e) {
+    badge.className = 'badge ko'; badge.textContent = 'Injoignable';
+  }
+}
+
+async function getGtk() {
+  try {
+    const r = await fetch(`${getProxy()}/v3/login.awp?gtk=1&v=4.75.0`);
+    const gtk = r.headers.get('X-Gtk-Value') || '';
+    return gtk;
+  } catch { return ''; }
+}
+
+let twoFaToken = '';
+
+async function doLogin() {
+  const u = document.getElementById('username').value.trim();
+  const p = document.getElementById('password').value.trim();
+  if (!u || !p) { showStatus(document.getElementById('login-status'), 'Renseigne tes identifiants.', 'error'); return; }
+  document.getElementById('login-btn').disabled = true;
+  document.getElementById('login-spinner').style.display = 'inline';
+  const statusEl = document.getElementById('login-status');
+  showStatus(statusEl, 'Connexion…', 'info');
+  try {
+    const gtk = await getGtk();
+    const payload = { identifiant: u, motdepasse: p, isReLogin: false, uuid: '', fa: [] };
+    const body = `data=${encodeURIComponent(JSON.stringify(payload))}`;
+    const resp = await fetch(`${getProxy()}/v3/login.awp?v=4.75.0`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-ApisVer': '4.75.0', 'X-Gtk': gtk },
+      body
+    });
+    const data = await resp.json();
+    if (data.code === 200) {
+      token = data.token; accountData = data.data; onLoggedIn(data.data);
+    } else if (data.code === 250) {
+      // Double auth requise — récupérer le QCM
+      twoFaToken = data.token;
+      await loadDoubleAuth(data.token);
+      document.getElementById('login-btn').disabled = false;
+    } else {
+      showStatus(statusEl, `Erreur ${data.code} : ${data.message || 'Identifiants invalides.'}`, 'error');
+      document.getElementById('login-btn').disabled = false;
+    }
+  } catch(e) {
+    showStatus(statusEl, `Erreur réseau : ${e.message}`, 'error');
+    document.getElementById('login-btn').disabled = false;
+  }
+  document.getElementById('login-spinner').style.display = 'none';
+}
+
+async function loadDoubleAuth(twoFaTokenValue) {
+  const statusEl = document.getElementById('login-status');
+  showStatus(statusEl, 'Chargement de la question de sécurité…', 'info');
+  try {
+    const resp = await fetch(`${getProxy()}/v3/connexion/doubleauth.awp?verbe=get&v=4.75.0`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        '2fa-token': twoFaTokenValue,
+        'X-Token': twoFaTokenValue,
+      },
+      body: 'data={}'
+    });
+    const data = await resp.json();
+    if (data.code === 200 && data.data) {
+      showQcm(data.data, twoFaTokenValue);
+    } else {
+      showStatus(statusEl, `Erreur double auth (${data.code}) : ${data.message}`, 'error');
+    }
+  } catch(e) {
+    showStatus(statusEl, `Erreur double auth : ${e.message}`, 'error');
+  }
+}
+
+function showQcm(data, twoFaTokenValue) {
+  const b64 = s => {
+    try {
+      // Décoder base64 puis gérer l'encodage UTF-8 correctement
+      const binary = atob(s);
+      try {
+        return decodeURIComponent(binary.split('').map(c =>
+          '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
+        ).join(''));
+      } catch { return binary; }
+    } catch { return s; }
+  };
+  const question = b64(data.question || data.libelle || '');
+  const propositions = data.propositions || data.choices || data.reponses || [];
+
+  // Réponses automatiques — uniquement depuis les règles personnalisées (localStorage)
+  const secRules = loadSecuritySettings();
+  const qLow = question.toLowerCase();
+
+  const matchingValues = secRules
+    .filter(r => r.keyword && qLow.includes(r.keyword.toLowerCase()))
+    .map(r => r.value);
+
+  // Générer des variantes de casse et d'encodage pour chaque valeur
+  const candidates = [];
+  matchingValues.forEach(v => {
+    candidates.push(v, v.toLowerCase(), v.toUpperCase(),
+      v.charAt(0).toUpperCase() + v.slice(1),
+      'fÃ©vrier', 'FÃ©vrier');
+  });
+
+  if (candidates.length > 0) {
+    const match = propositions.find(pr => {
+      const label = b64(pr.label || pr.libelle || pr.valeur || pr).trim();
+      return candidates.some(k => label === k || label.toLowerCase() === k.toLowerCase());
+    });
+    if (match) {
+      const raw = match.id || match.valeur || match;
+      document.getElementById('login-status').innerHTML = '<div class="status info">Question de sécurité répondue automatiquement…</div>';
+      setTimeout(() => submitDoubleAuth(raw, twoFaTokenValue), 300);
+      return;
+    }
+  }
+
+  // Pas de réponse auto trouvée — afficher manuellement
+  document.getElementById('qcm-area').style.display = 'block';
+  document.getElementById('qcm-question').textContent = question;
+  const el = document.getElementById('qcm-choices');
+  el.innerHTML = '';
+  if (propositions.length === 0) {
+    el.innerHTML = '<p style="font-size:14px;color:var(--text3);">Aucune proposition trouvée.</p>';
+  }
+  const grid = document.createElement('div');
+  grid.className = 'qcm-grid';
+  propositions.forEach(pr => {
+    const raw = pr.id || pr.valeur || pr;
+    const label = b64(pr.label || pr.libelle || pr.valeur || pr);
+    const btn = document.createElement('button');
+    btn.className = 'qcm-btn';
+    btn.textContent = label;
+    btn.onclick = () => submitDoubleAuth(raw, twoFaTokenValue);
+    grid.appendChild(btn);
+  });
+  el.appendChild(grid);
+  document.getElementById('login-status').innerHTML = '<div class="status info">Réponds à la question de sécurité.</div>';
+}
+
+async function submitDoubleAuth(choice, twoFaTokenValue) {
+  const statusEl = document.getElementById('login-status');
+  showStatus(statusEl, 'Vérification…', 'info');
+  try {
+    const body = `data=${encodeURIComponent(JSON.stringify({ choix: choice }))}`;
+    const resp = await fetch(`${getProxy()}/v3/connexion/doubleauth.awp?verbe=post&v=4.75.0`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        '2fa-token': twoFaTokenValue,
+        'X-Token': twoFaTokenValue,
+      },
+      body
+    });
+    const data = await resp.json();
+    if (data.code === 200 && data.data && data.data.cn) {
+      // On a le token FA, on relance le login avec fa rempli
+      const fa = [{ cn: data.data.cn, cv: data.data.cv }];
+      await loginWithFa(fa);
+    } else {
+      showStatus(statusEl, `Mauvaise réponse (${data.code}) : ${data.message}`, 'error');
+    }
+  } catch(e) {
+    showStatus(statusEl, `Erreur : ${e.message}`, 'error');
+  }
+}
+
+let loginFa = [];
+
+async function loginWithFa(fa) {
+  loginFa = fa;
+  const statusEl = document.getElementById('login-status');
+  showStatus(statusEl, 'Finalisation de la connexion…', 'info');
+  const u = document.getElementById('username').value.trim();
+  const p = document.getElementById('password').value.trim();
+  try {
+    // Nouveau GTK frais juste avant le second login
+    const gtk = await getGtk();
+    const payload = { identifiant: u, motdepasse: p, isReLogin: false, uuid: '', fa };
+    const body = `data=${encodeURIComponent(JSON.stringify(payload))}`;
+    const resp = await fetch(`${getProxy()}/v3/login.awp?v=4.75.0`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-ApisVer': '4.75.0', 'X-Gtk': gtk },
+      body
+    });
+    const data = await resp.json();
+    if (data.code === 200) {
+      token = data.token; accountData = data.data;
+      localStorage.setItem('ed_session', JSON.stringify({ token: data.token, accountData: data.data, fa: loginFa }));
+      onLoggedIn(data.data);
+    } else {
+      showStatus(statusEl, `Erreur login final (${data.code}) : ${data.message}`, 'error');
+    }
+  } catch(e) {
+    showStatus(statusEl, `Erreur : ${e.message}`, 'error');
+  }
+}
+
+const ROUTES = [
+  { label: 'Notes',           method: 'POST', path: '/v3/eleves/{id}/notes.awp?verbe=get',        body: 'data={}' },
+  { label: 'Emploi du temps', method: 'POST', path: '/v3/E/{id}/emploidutemps.awp?verbe=get',     body: 'data={"dateDebut":"2026-03-10","dateFin":"2026-03-16"}' },
+  { label: 'Messages',        method: 'POST', path: '/v3/eleves/{id}/messages.awp?verbe=get',     body: 'data={"anneeMessages":"2025-2026"}' },
+  { label: 'Cahier de textes',method: 'POST', path: '/v3/eleves/{id}/cahierdetexte.awp?verbe=get',body: 'data={}' },
+  { label: 'Absences',        method: 'POST', path: '/v3/eleves/{id}/viescolaire.awp?verbe=get',  body: 'data={}' },
+  { label: 'Infos compte',    method: 'POST', path: '/v3/eleves/{id}/infos.awp?verbe=get',        body: 'data={}' },
+];
+
+function onLoggedIn(data) {
+  document.getElementById('login-card').style.display = 'none';
+  document.getElementById('api-card').classList.add('active-card');
+  const acc = data.accounts ? data.accounts[0] : data;
+  const nom = acc.prenom ? `${acc.prenom} ${acc.nom || ''}` : (acc.login || 'Utilisateur');
+  const initials = nom.split(' ').map(s => s[0] || '').join('').substring(0, 2).toUpperCase();
+  document.getElementById('user-avatar').textContent = initials;
+  document.getElementById('user-name').textContent = nom.trim();
+  document.getElementById('user-type').textContent = acc.typeCompte ? `Compte ${acc.typeCompte}` : 'EcoleDirecte';
+  // Init onglets
+  const TABS = [
+    { id: 'edt',      label: 'Emploi du temps' },
+    { id: 'notes',    label: 'Notes' },
+    { id: 'devoirs',  label: 'Devoirs' },
+    { id: 'seances',  label: 'Contenus de séances' },
+    { id: 'messages', label: 'Messages' },
+    { id: 'absences', label: 'Absences' },
+    { id: 'perso',    label: '···' },
+  ];
+  const bar = document.getElementById('tab-bar');
+  bar.innerHTML = '';
+  TABS.forEach((t, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'tab' + (i === 0 ? ' active' : '');
+    btn.textContent = t.label;
+    btn.dataset.tab = t.id;
+    btn.onclick = () => switchTab(t.id);
+    bar.appendChild(btn);
+  });
+  switchTab(localStorage.getItem('ed_last_tab') || 'edt');
+
+  // EDT : géré par edtWeekOffset
+}
+
+async function shutdownApp() {
+  if (!confirm('Fermer Mon EcoleDirecte et arrêter le serveur ?')) return;
+  try {
+    await fetch(`${getProxy()}/shutdown`, { method: 'POST' });
+  } catch(e) { /* normal, le serveur s'arrête */ }
+  window.close();
+}
+
+function logout() {
+  edCache.clear();
+  token = ''; accountData = null;
+  localStorage.removeItem('ed_session');
+  document.getElementById('login-card').style.display = 'block';
+  document.getElementById('api-card').classList.remove('active-card');
+  document.getElementById('result-area').style.display = 'none';
+  document.getElementById('login-status').innerHTML = '';
+  document.getElementById('login-btn').disabled = false;
+  document.getElementById('qcm-area').style.display = 'none';
+  document.getElementById('username').value = '';
+  document.getElementById('password').value = '';
+}
+
+function openEdtDialog(encodedData) {
+  const c = JSON.parse(decodeURIComponent(encodedData));
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1000;display:flex;align-items:center;justify-content:center;padding:2rem';
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+
+  const dot = `<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${c.color};margin-right:8px;flex-shrink:0"></span>`;
+
+  const dark = document.body.classList.contains('dark');
+  const dlgBg     = dark ? '#242424' : '#fff';
+  const dlgText   = dark ? '#f0f0ee' : '#1a1a1a';
+  const dlgBorder = dark ? '#333'    : '#f5f5f0';
+
+  let badges = '';
+  if (c.annule) badges += `<span style="background:#fef2f2;color:#b91c1c;font-size:14px;padding:2px 8px;border-radius:10px;font-weight:500">Annulé</span> `;
+  if (c.modifie && !c.annule) badges += `<span style="background:#fffbeb;color:#92400e;font-size:14px;padding:2px 8px;border-radius:10px;font-weight:500">Modifié</span> `;
+  if (c.type && c.type !== 'COURS') badges += `<span style="background:#eff6ff;color:#1d4ed8;font-size:14px;padding:2px 8px;border-radius:10px;font-weight:500">${c.type}</span>`;
+
+  const rows = [
+    { icon: '🕐', label: 'Horaire',  value: `${c.debut} → ${c.fin}` },
+    { icon: '📚', label: 'Matière',  value: c.text },
+    { icon: '👤', label: 'Professeur', value: c.prof || '—' },
+    { icon: '📍', label: 'Salle',    value: c.salle || '—' },
+  ].map(r => `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid ${dlgBorder}">
+      <span style="font-size:16px;width:24px;text-align:center">${r.icon}</span>
+      <span style="color:var(--text3);font-size:14px;min-width:80px">${r.label}</span>
+      <span style="font-size:14px;font-weight:500;color:${dlgText}">${r.value}</span>
+    </div>`).join('');
+
+  const dialog = document.createElement('div');
+  dialog.style.cssText = `background:${dlgBg};color:${dlgText};border-radius:12px;padding:1.25rem;max-width:360px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.35);position:relative`;
+  dialog.innerHTML = `
+    <button onclick="this.closest('[style*=fixed]').remove()" style="position:absolute;top:10px;right:12px;background:none;border:none;cursor:pointer;font-size:18px;color:${dark?'#666':'#aaa'}">×</button>
+    <div style="display:flex;align-items:center;margin-bottom:12px">
+      ${dot}
+      <span style="font-weight:600;font-size:15px">${c.text}</span>
+    </div>
+    ${badges ? `<div style="margin-bottom:12px">${badges}</div>` : ''}
+    ${rows}`;
+
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+}
+
+function cleanHtml(s) {
+  if (!s) return '';
+  let result = s
+    .replace(/<script[^>]*>.*?<\/script>/gi, '')
+    .replace(/<iframe[^>]*>.*?<\/iframe>/gi, '')
+    .replace(/on\w+="[^"]*"/gi, '')
+    // Supprimer background-color et color inline pour respecter le dark mode
+    .replace(/background-color\s*:\s*[^;"]*/gi, '')
+    .replace(/(?<![a-z-])color\s*:\s*(rgb\([^)]+\)|#[0-9a-fA-F]{3,6}|[a-zA-Z]+(?!-))/g, '')
+    .replace(/font-size\s*:\s*medium/gi, '')
+    // Rendre les liens cliquables avec style
+    .replace(/<a(\s[^>]*)>/gi, (_, attrs) => {
+      const href = (attrs.match(/href=["']([^"']+)["']/) || [])[1] || '';
+      return `<a href="${href}" target="_blank" rel="noopener" style="color:#1d4ed8;text-decoration:underline"${attrs}>`;
+    })
+    .replace(/(^|[\s(])(https?:\/\/[^\s<)"]+)/g,
+      (_, pre, url) => `${pre}<a href="${url}" target="_blank" rel="noopener" style="color:#1d4ed8;text-decoration:underline">${url}</a>`)
+    // Supprimer les font-family inline pour imposer system-ui
+    .replace(/font-family\s*:[^;"']*(;|(?=["']))/gi, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#([0-9]+);/g, (_, c) => String.fromCharCode(parseInt(c)))
+    // Normaliser les font-size < 12px → 12px
+    .replace(/font-size\s*:\s*([\d.]+)pt/gi, (_, v) => {
+      const px = Math.round(parseFloat(v) * 1.333);
+      return `font-size:${Math.max(px, 12)}px`;
+    })
+    .replace(/font-size\s*:\s*([\d.]+)px/gi, (_, v) => {
+      return `font-size:${Math.max(parseFloat(v), 12)}px`;
+    })
+    .trim();
+  return result;
+}
+
+async function openDevoirDialog(encodedData) {
+  const d = JSON.parse(decodeURIComponent(encodedData));
+  const dark = document.body.classList.contains('dark');
+  const panel = document.getElementById('devoir-detail-panel');
+  if (!panel) return;
+
+  const inter = d.interrogation ? '<span class="devoir-badge-interro" style="font-size:14px;padding:2px 8px;border-radius:10px;margin-left:8px">Interro</span>' : '';
+  const fait  = d.effectue ? '<span class="devoir-badge-fait" style="font-size:14px;padding:2px 8px;border-radius:10px;margin-left:8px">Fait ✅</span>' : '';
+
+  // Affichage immédiat avec spinner
+  panel.style.alignItems = 'flex-start';
+  panel.style.justifyContent = 'flex-start';
+  panel.innerHTML = `
+    <div style="width:100%">
+      <div style="font-weight:600;font-size:14px;margin-bottom:6px">${d.matiere}${inter}${fait}</div>
+      ${d.donneLe ? `<div style="font-size:11px;color:var(--text4);margin-bottom:10px">Donné le ${d.donneLe}</div>` : ''}
+      <div id="devoir-detail-content" style="font-size:14px;color:var(--text)">
+        <span class="spinner"></span>
+      </div>
+    </div>`;
+
+  const eleveId = getEleveId();
+  const cacheKey = `devoirs-detail:${eleveId}:${d.date}`;
+
+  const renderDetail = (dayData) => {
+    const contentEl = document.getElementById('devoir-detail-content');
+    if (!contentEl) return;
+    const matieres = dayData?.matieres || [];
+    const matiere = matieres.find(m => (m.matiere || m.libelleMatiere || '').toUpperCase() === d.matiere.toUpperCase()) || matieres[0];
+    if (!matiere) { contentEl.innerHTML = `<span style="color:var(--text4)">Aucun détail.</span>`; return; }
+    const contenu = matiere.contenu ? cleanHtml(b64d(matiere.contenu)) : '';
+    const aFaireArr = Array.isArray(matiere.aFaire) ? matiere.aFaire : (matiere.aFaire ? [matiere.aFaire] : []);
+    const aFaireItems = aFaireArr.map(af => {
+      const texte = af.contenu ? cleanHtml(b64d(af.contenu)) : '';
+      return texte ? `<div style="padding:8px;border-radius:6px;background:var(--bg3);border:1px solid var(--border);margin-top:6px;line-height:1.6">${texte}</div>` : '';
+    }).join('');
+    contentEl.innerHTML = `
+      ${contenu ? `<div style="margin-bottom:10px"><div style="font-size:14px;font-weight:600;color:var(--text4);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Contenu de séance</div><div style="line-height:1.6">${contenu}</div></div>` : ''}
+      ${aFaireItems ? `<div><div style="font-size:14px;font-weight:600;color:var(--text4);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">À faire</div>${aFaireItems}</div>` : ''}
+      ${!contenu && !aFaireItems ? '<span style="color:var(--text4)">Aucun détail disponible.</span>' : ''}`;
+  };
+
+  await edCache.load(cacheKey, async () => {
+    const resp = await fetch(`${getProxy()}/v3/Eleves/${eleveId}/cahierdetexte/${d.date}.awp?verbe=get`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
+      body: 'data={}'
+    });
+    const data = await resp.json();
+    if (data.code !== 200) throw new Error(`Code ${data.code}`);
+    return data.data;
+  }, {
+    onCached: data => renderDetail(data),
+    onFresh:  data => renderDetail(data),
+    diffFn:   edCache.defaultDiff,
+  }).catch(e => {
+    const el = document.getElementById('devoir-detail-content');
+    if (el) el.innerHTML = `<span style="color:#b91c1c">Erreur : ${e.message}</span>`;
+  });
+}
+
+function toggleDevoirsDate(bodyId, arrowId) {
+  const body  = document.getElementById(bodyId);
+  const arrow = document.getElementById(arrowId);
+  if (!body) return;
+  const open = body.style.display !== 'none';
+  body.style.display  = open ? 'none' : 'block';
+  if (arrow) arrow.style.transform = open ? 'rotate(0deg)' : 'rotate(90deg)';
+}
+
+function clearDevoirsDate() {
+  document.getElementById('devoirs-date').value = '';
+}
+
+// Si on est samedi (6) ou dimanche (0), on affiche la semaine prochaine par défaut
+const _todayDay = new Date().getDay();
+let edtWeekOffset = (_todayDay === 0 || _todayDay === 6) ? 1 : 0;
+
+function getMondayOfWeek(offset) {
+  const today = new Date();
+  const day = today.getDay();
+  const diffToMon = (day === 0 ? -6 : 1 - day);
+  const mon = new Date(today);
+  mon.setDate(today.getDate() + diffToMon + offset * 7);
+  mon.setHours(0,0,0,0);
+  return mon;
+}
+
+function edtNav(dir) {
+  edtWeekOffset += dir;
+  runEdt();
+}
+
+// Jours fériés France (mois 1-indexé)
+const FERIES = ['01-01','05-01','05-08','07-14','08-15','11-01','11-11','12-25'];
+function isFerie(date) {
+  const mmdd = `${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+  // Pâques dynamique (algo Oudin)
+  const y = date.getFullYear();
+  const n = y % 19, c = Math.floor(y/100), u = Math.floor(c/4);
+  const s = Math.floor((c+8)/25), p = Math.floor((c-s+1)/3);
+  const m = (19*n+c-u-p+15)%30;
+  const a = Math.floor(y%4), b = Math.floor(y%7);
+  const d = (2*a+4*b-m-32*Math.floor(m/29)+m*Math.floor((m+21)/30)+89)%7;
+  const dayEaster = m + d - 9;
+  const easterDate = new Date(y, 2, dayEaster + (dayEaster > 31 ? -31 : 0));
+  if (dayEaster > 31) easterDate.setMonth(3);
+  const lundiPaques = new Date(easterDate); lundiPaques.setDate(easterDate.getDate()+1);
+  const ascension = new Date(easterDate); ascension.setDate(easterDate.getDate()+39);
+  const pentecote = new Date(easterDate); pentecote.setDate(easterDate.getDate()+50);
+  const specials = [lundiPaques, ascension, pentecote].map(d2 =>
+    `${String(d2.getMonth()+1).padStart(2,'0')}-${String(d2.getDate()).padStart(2,'0')}`);
+  return FERIES.includes(mmdd) || specials.includes(mmdd);
+}
+
+let notesData = null;
+let notesPeriod = null; // sera définie après chargement
+let notesView = 'table'; // 'table' ou 'chart'
+
+function detectCurrentPeriod(periodes) {
+  const today = new Date().toISOString().substring(0,10);
+  for (const p of periodes) {
+    if (p.dateDebut <= today && p.dateFin >= today) return p.codePeriode;
+  }
+  // Sinon prendre le dernier non-annuel non clôturé
+  return periodes[periodes.length - 1]?.codePeriode || periodes[0]?.codePeriode;
+}
+
+let msgCounts = { received: 0, sent: 0 };
+
+async function loadMessages() {
+  const eleveId = getEleveId();
+  if (!eleveId) return;
+  const annee = document.getElementById('msg-annee').value;
+  const cacheKey = `messages:${eleveId}:${annee}`;
+
+  const fetchBoth = async () => {
+    const fetchTab = async type => {
+      const resp = await fetch(`${getProxy()}/v3/eleves/${eleveId}/messages.awp?force=false&typeRecuperation=${type}&idClasseur=0&orderBy=date&order=desc&query=&onlyRead=&page=0&itemsPerPage=100&getAll=0&verbe=get`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
+        body: `data=${encodeURIComponent(JSON.stringify({ anneeMessages: annee }))}`
+      });
+      return resp.json();
+    };
+    const [dataReceived, dataSent] = await Promise.all([fetchTab('received'), fetchTab('sent')]);
+    return {
+      received: dataReceived.code === 200 ? (dataReceived.data?.messages?.received || []) : [],
+      sent:     dataSent.code === 200     ? (dataSent.data?.messages?.sent || [])         : [],
+    };
+  };
+
+  const applyMessages = ({ received, sent }, isFresh, oldData) => {
+    msgCounts = { received: received.length, sent: sent.length };
+    [...received, ...sent].forEach(m => { cachedMessages[m.id] = m; });
+    msgData = { messages: { received, sent } };
+    document.getElementById('messages-result').innerHTML = renderMessages(msgData);
+    document.getElementById('spin-messages').style.display = 'none';
+    updateFreshnessLabel('messages', Date.now());
+    if (isFresh && oldData) {
+      const newCount = received.length + sent.length;
+      const oldCount = (oldData.received?.length || 0) + (oldData.sent?.length || 0);
+      if (newCount > oldCount) setBadge('messages', newCount - oldCount);
+    }
+  };
+
+  await edCache.load(cacheKey, fetchBoth, {
+    onSpinner: () => { document.getElementById('spin-messages').style.display = 'inline'; document.getElementById('messages-result').innerHTML = centeredSpinner(); },
+    onCached:  (data, ts) => { applyMessages(data, false, null); updateFreshnessLabel('messages', ts || Date.now()); },
+    onFresh:   (data, _, old) => applyMessages(data, true, old),
+    diffFn:    edCache.defaultDiff,
+  }).catch(e => {
+    document.getElementById('messages-result').innerHTML = `<p style="color:#b91c1c;font-size:14px">Erreur : ${e.message}</p>`;
+    document.getElementById('spin-messages').style.display = 'none';
+  });
+}
+
+async function loadAbsences() {
+  const eleveId = getEleveId();
+  if (!eleveId) return;
+  const cacheKey = `absences:${eleveId}`;
+
+  const render = (data, isFresh, oldData) => {
+    document.getElementById('absences-result').innerHTML = renderAbsences(data);
+    document.getElementById('spin-absences').style.display = 'none';
+    updateFreshnessLabel('absences', Date.now());
+    if (isFresh && oldData && edCache.defaultDiff(oldData, data)) setBadge('absences', 1);
+  };
+
+  await edCache.load(cacheKey, async () => {
+    const resp = await fetch(`${getProxy()}/v3/eleves/${eleveId}/viescolaire.awp?verbe=get`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
+      body: 'data={}'
+    });
+    const d = await resp.json();
+    if (d.code !== 200) throw new Error(`Code ${d.code}`);
+    return d.data;
+  }, {
+    onSpinner: () => { document.getElementById('spin-absences').style.display = 'inline'; document.getElementById('absences-result').innerHTML = centeredSpinner(); },
+    onCached:  (data, ts) => { render(data, false, null); updateFreshnessLabel('absences', ts || Date.now()); },
+    onFresh:   (data, _, old) => render(data, true, old),
+    diffFn:    edCache.defaultDiff,
+  }).catch(e => {
+    document.getElementById('absences-result').innerHTML = `<p style="color:#b91c1c;font-size:14px">Erreur : ${e.message}</p>`;
+    document.getElementById('spin-absences').style.display = 'none';
+  });
+}
+
+let devoirsCache = null;
+
+function toggleDevoirsHide(btn) {
+  const active = btn.getAttribute('aria-pressed') !== 'true';
+  btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+  const label = document.getElementById('devoirs-hide-label');
+  if (label) label.textContent = active ? 'Voir les devoirs faits' : 'Cacher les devoirs faits';
+  renderDevoirsFromCache();
+}
+
+function renderDevoirsFromCache() {
+  if (!devoirsCache) return;
+  const path = `/v3/Eleves/${getEleveId()}/cahierdetexte.awp?verbe=get`;
+  const container = document.getElementById('devoirs-result');
+  if (container) container.innerHTML = renderData(path, devoirsCache);
+}
+
+async function loadSeances() {
+  const eleveId = getEleveId();
+  if (!eleveId) return;
+  const dateVal = document.getElementById('seances-date')?.value;
+  const container = document.getElementById('seances-result');
+  const spinner   = document.getElementById('spin-seances');
+
+  if (!dateVal) {
+    container.innerHTML = '<span style="color:var(--text4);font-size:14px">Sélectionne une date pour voir les contenus de séances.</span>';
+    return;
+  }
+
+  const cacheKey = `seances:${eleveId}:${dateVal}`;
+  const path = `/v3/Eleves/${eleveId}/cahierdetexte/${dateVal}.awp?verbe=get`;
+
+  const render = data => {
+    const matieres = data?.matieres || [];
+    if (!matieres.length) {
+      container.innerHTML = '<span style="color:var(--text4);font-size:14px">Aucun contenu de séance pour cette date.</span>';
+      if (spinner) spinner.style.display = 'none';
+      return;
+    }
+    let html = '';
+    matieres.forEach(m => {
+      const contenuSrc = m.contenuDeSeance?.contenu || '';
+      const contenuRaw = contenuSrc ? cleanHtml(b64d(contenuSrc)).trim() : '';
+      const contenu = contenuRaw.replace(/<[^>]*>/g, '').trim() ? contenuRaw : '';
+      if (!contenu) return;
+      html += `<div style="margin-bottom:14px;padding:10px 12px;border-radius:8px;background:var(--bg3);border:1px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span style="font-weight:600;font-size:14px">${m.matiere}</span>
+          ${m.interrogation ? '<span class="devoir-badge badge-interro">Interro</span>' : ''}
+          ${m.nomProf ? `<span style="font-size:12px;color:var(--text4);margin-left:auto">${m.nomProf}</span>` : ''}
+        </div>
+        ${contenu ? `<div style="font-size:14px;line-height:1.6">${contenu}</div>` : ''}
+
+      </div>`;
+    });
+    container.innerHTML = html || '<div style="display:flex;align-items:center;justify-content:center;height:100%;padding:3rem"><span style="color:var(--text4);font-size:14px;text-align:center">Aucun contenu de séance pour cette date.</span></div>';
+    if (spinner) spinner.style.display = 'none';
+    updateFreshnessLabel('seances', Date.now());
+  };
+
+  await edCache.load(cacheKey, async () => {
+    const resp = await fetch(`${getProxy()}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
+      body: 'data={}'
+    });
+    const d = await resp.json();
+    if (d.code !== 200) throw new Error(`Code ${d.code}`);
+    return d.data;
+  }, {
+    onSpinner: () => { if (spinner) spinner.style.display = 'inline'; container.innerHTML = centeredSpinner(); },
+    onCached:  (data, ts) => { render(data); updateFreshnessLabel('seances', ts || Date.now()); },
+    onFresh:   data => render(data),
+    diffFn:    edCache.defaultDiff,
+  }).catch(e => {
+    container.innerHTML = `<p style="color:#b91c1c;font-size:14px">Erreur : ${e.message}</p>`;
+    if (spinner) spinner.style.display = 'none';
+  });
+}
+
+async function loadDevoirs() {
+  const eleveId = getEleveId();
+  if (!eleveId) return;
+  const cacheKey = `devoirs:${eleveId}`;
+  const path = `/v3/Eleves/${eleveId}/cahierdetexte.awp?verbe=get`;
+  const spinner   = document.getElementById('spin-devoirs');
+  const container = document.getElementById('devoirs-result');
+
+  const render = (data, isFresh, oldData) => {
+    devoirsCache = data;
+    container.innerHTML = renderData(path, data);
+    if (spinner) spinner.style.display = 'none';
+    updateFreshnessLabel('devoirs', Date.now());
+    if (isFresh && oldData && edCache.defaultDiff(oldData, data)) setBadge('devoirs', 1);
+  };
+
+  await edCache.load(cacheKey, async () => {
+    const resp = await fetch(`${getProxy()}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
+      body: 'data={}'
+    });
+    const d = await resp.json();
+    if (d.code !== 200) throw new Error(`Code ${d.code}`);
+    return d.data;
+  }, {
+    onSpinner: () => { if (spinner) spinner.style.display = 'inline'; container.innerHTML = centeredSpinner(); },
+    onCached:  (data, ts) => { render(data, false, null); updateFreshnessLabel('devoirs', ts || Date.now()); },
+    onFresh:   (data, _, old) => render(data, true, old),
+    diffFn:    edCache.defaultDiff,
+  }).catch(e => {
+    container.innerHTML = `<p style="color:#b91c1c;font-size:14px">Erreur : ${e.message}</p>`;
+    if (spinner) spinner.style.display = 'none';
+  });
+}
+
+async function loadNotes() {
+  const eleveId = getEleveId();
+  if (!eleveId) return;
+  const cacheKey = `notes:${eleveId}`;
+
+  const applyNotes = (data, isFresh, oldData) => {
+    notesData = data;
+    if (!notesPeriod) notesPeriod = detectCurrentPeriod(notesData.periodes || []);
+    updateNotesPeriodButtons();
+    renderNotes();
+    document.getElementById('spin-notes').style.display = 'none';
+    updateFreshnessLabel('notes', Date.now());
+    if (isFresh && oldData && edCache.defaultDiff(oldData?.notes, data?.notes))
+      setBadge('notes', (data.notes?.length || 0) - (oldData.notes?.length || 0));
+  };
+
+  await edCache.load(cacheKey, async () => {
+    const resp = await fetch(`${getProxy()}/v3/eleves/${eleveId}/notes.awp?verbe=get`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
+      body: 'data={}'
+    });
+    const d = await resp.json();
+    if (d.code !== 200) throw new Error(`Code ${d.code}`);
+    return d.data;
+  }, {
+    onSpinner: () => { document.getElementById('spin-notes').style.display = 'inline'; document.getElementById('notes-result').innerHTML = centeredSpinner(); },
+    onCached:  (data, ts) => { applyNotes(data, false, null); updateFreshnessLabel('notes', ts || Date.now()); },
+    onFresh:   (data, _, old) => applyNotes(data, true, old),
+    diffFn:    edCache.defaultDiff,
+  }).catch(e => {
+    document.getElementById('notes-result').innerHTML = `<p style="color:#b91c1c;font-size:14px">Erreur : ${e.message}</p>`;
+    document.getElementById('spin-notes').style.display = 'none';
+  });
+}
+
+function selectNotesPeriod(period) {
+  notesPeriod = period;
+  notesFilter.clear();
+  notesListOpen = false;
+  updateNotesPeriodButtons();
+  if (notesData) renderNotes();
+  else loadNotes();
+}
+
+function updateNotesPeriodButtons() {
+  document.querySelectorAll('.notes-period-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.period === notesPeriod);
+  });
+}
+
+function toggleNotesView() {
+  notesView = notesView === 'table' ? 'chart' : 'table';
+  document.getElementById('notes-view-toggle').textContent = notesView === 'table' ? '📊' : '📋';
+  if (notesData) renderNotes();
+}
+
+function renderNotes() {
+  const container = document.getElementById('notes-result');
+  if (!notesData) return;
+  const periodes = notesData.periodes || [];
+  const notes = notesData.notes || [];
+  const periode = periodes.find(p => p.codePeriode === notesPeriod);
+  if (!periode) { container.innerHTML = '<em style="color:var(--text3)">Période introuvable.</em>'; return; }
+
+  if (notesView === 'table') {
+    container.innerHTML = renderNotesTable(periode, notes);
+    // Restaurer l'état ouvert/fermé
+    if (notesListOpen) {
+      const body = document.getElementById('notes-list-body');
+      const arrow = document.getElementById('notes-list-arrow');
+      if (body) body.style.display = 'block';
+      if (arrow) arrow.style.transform = 'rotate(90deg)';
+    }
+  } else {
+    container.innerHTML = '<canvas id="notes-chart" style="width:100%;max-height:420px"></canvas>';
+    renderNotesChart(periode, notes);
+  }
+}
+
+let notesSortCol = 'moyenne';
+let notesSortDir = 1;
+let notesFilter = new Map(); // code -> nom de la discipline
+let notesListOpen = false; // état expand/collapse de la liste des notes
+
+function calcMoyenne(disciplines) {
+  // Calcule la moyenne pondérée par les coefficients
+  let sumEleve = 0, sumClasse = 0, totalCoef = 0;
+  disciplines.forEach(d => {
+    const moy  = parseFloat((d.moyenne||'').replace(',','.'));
+    const moyC = parseFloat((d.moyenneClasse||'').replace(',','.'));
+    const coef = parseFloat(d.coef) || 1;
+    if (!isNaN(moy)  && d.coef > 0) { sumEleve  += moy  * coef; totalCoef += coef; }
+    if (!isNaN(moyC) && d.coef > 0) { sumClasse += moyC * coef; }
+  });
+  if (totalCoef === 0) return { eleve: '—', classe: '—' };
+  return {
+    eleve:  Math.round(sumEleve  / totalCoef * 100) / 100,
+    classe: Math.round(sumClasse / totalCoef * 100) / 100,
+  };
+}
+
+function renderNotesTable(periode, allNotes) {
+  const em = periode.ensembleMatieres || {};
+  let disciplines = (em.disciplines || []).filter(d => !d.groupeMatiere && d.moyenne !== '' && d.moyenne !== undefined && !d.sousMatiere);
+
+  // Tri
+  disciplines = [...disciplines].sort((a, b) => {
+    let va, vb;
+    if (notesSortCol === 'matiere') { va = a.discipline; vb = b.discipline; return notesSortDir * va.localeCompare(vb); }
+    if (notesSortCol === 'moyenne') { va = parseFloat((a.moyenne||'0').replace(',','.')); vb = parseFloat((b.moyenne||'0').replace(',','.')); }
+    if (notesSortCol === 'classe')  { va = parseFloat((a.moyenneClasse||'0').replace(',','.')); vb = parseFloat((b.moyenneClasse||'0').replace(',','.')); }
+    return notesSortDir * (va - vb);
+  });
+
+  let html = '';
+
+  if (disciplines.length) {
+    const disciplinesAvecMoy = disciplines.filter(d => d.moyenne !== '' && d.moyenne !== undefined);
+    const moyCalc = calcMoyenne(disciplinesAvecMoy.length ? disciplinesAvecMoy : disciplines);
+    const moyColor = isNaN(moyCalc.eleve) ? '#1a1a1a' : moyCalc.eleve < 10 ? '#b91c1c' : moyCalc.eleve < moyCalc.classe ? '#ca8a04' : '#15803d';
+    const arrow = (col) => notesSortCol === col ? (notesSortDir === 1 ? ' ↑' : ' ↓') : '';
+    const thStyle = "padding:5px 6px;cursor:pointer;user-select:none;white-space:nowrap;color:var(--text3);font-size:14px;font-weight:500";
+    const thStyleC = "padding:5px 6px;cursor:pointer;user-select:none;white-space:nowrap;color:var(--text3);font-size:14px;font-weight:500;text-align:center";
+
+    html += `<div style="font-weight:500;font-size:14px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">
+      ${periode.periode} — Moyenne générale : <strong style="color:${moyColor}">${moyCalc.eleve}/20</strong>
+      <span style="font-size:14px;color:var(--text3);font-weight:400"> (classe : ${moyCalc.classe})</span>
+    </div>`;
+
+    const fmt1 = v => isNaN(v) ? '—' : Math.round(v * 10) / 10;
+
+    html += '<table id="notes-sort-table" style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:16px">'
+         + '<thead><tr style="border-bottom:1px solid var(--border)">'
+         + `<th style="${thStyle}" onclick="sortNotes('matiere')">Matière${arrow('matiere')}</th>`
+         + `<th style="${thStyleC}">Min</th>`
+         + `<th style="${thStyleC}" onclick="sortNotes('classe')">Moy. classe${arrow('classe')}</th>`
+         + `<th style="${thStyleC}">Max</th>`
+         + `<th style="${thStyleC}">Coef</th>`
+         + `<th style="${thStyleC}" onclick="sortNotes('moyenne')">Ma moy.${arrow('moyenne')}</th>`
+         + '</tr></thead><tbody>';
+
+    // Construire un mapping discipline → libelleMatiere depuis les notes
+    const disciplineToLibelle = {};
+    allNotes.forEach(n => { if (n.libelleMatiere) disciplineToLibelle[n.libelleMatiere.toUpperCase()] = n.libelleMatiere; });
+    const getLibelle = d => disciplineToLibelle[d.discipline?.toUpperCase()] || d.discipline;
+
+    disciplines.forEach((d, idx) => {
+      const moy  = parseFloat((d.moyenne||'').replace(',','.'));
+      const moyC = parseFloat((d.moyenneClasse||'').replace(',','.'));
+      const color = isNaN(moy) ? '#888' : moy < 10 ? '#b91c1c' : moy >= moyC ? '#15803d' : '#ca8a04';
+      const isActive = notesFilter.has(d.codeMatiere || d.discipline);
+      const rowHighlight = isActive ? 'background:var(--bg4);box-shadow:inset 3px 0 0 var(--text3);' : '';
+      const minC = d.moyenneMin  ? fmt1(parseFloat((d.moyenneMin||'').replace(',','.')))  : '—';
+      const maxC = d.moyenneMax  ? fmt1(parseFloat((d.moyenneMax||'').replace(',','.')))  : '—';
+      const coef = d.coef !== undefined ? d.coef : '—';
+      html += `<tr class="notes-filter-row" data-code="${d.codeMatiere||''}" data-disc="${d.discipline.replace(/"/g,'&quot;')}" style="border-top:1px solid #f5f5f0;cursor:pointer;${rowHighlight}">
+        <td style="padding:5px 6px">${d.discipline}</td>
+        <td style="padding:5px 6px;text-align:center;color:var(--text3)">${minC}</td>
+        <td style="padding:5px 6px;text-align:center;color:var(--text3)">${d.moyenneClasse||'—'}</td>
+        <td style="padding:5px 6px;text-align:center;color:var(--text3)">${maxC}</td>
+        <td style="padding:5px 6px;text-align:center;color:var(--text4)">${coef}</td>
+        <td style="padding:5px 6px;text-align:center;font-weight:500;color:${color}">${d.moyenne||'—'}</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+  } else {
+    html += `<div style="color:var(--text3);font-size:14px;padding:8px 0 12px">Aucune moyenne disponible pour cette période.</div>`;
+  }
+
+  // Section notes collapsible
+  const periodNotes = allNotes.filter(n => n.codePeriode === periode.codePeriode && !n.nonSignificatif && n.valeur);
+  // Mapping codeMatiere → libelleMatiere parent via LSUN
+  const lsunAll = Object.values(notesData?.LSUN || {}).flat();
+  const codeToDisc = {};
+  allNotes.forEach(n => {
+    if (n.codeMatiere && !codeToDisc[n.codeMatiere]) {
+      const entry = lsunAll.find(e => e.codeMatiere === n.codeMatiere);
+      codeToDisc[n.codeMatiere] = entry ? entry.libelleMatiere : n.libelleMatiere;
+    }
+  });
+
+  const filteredNotes = notesFilter.size > 0
+    ? periodNotes.filter(n => {
+        if (notesFilter.has(n.codeMatiere)) return true;
+        if (notesFilter.has(n.libelleMatiere)) return true;
+        if (n.codeMatiere && notesFilter.has(codeToDisc[n.codeMatiere])) return true;
+        return false;
+      })
+    : periodNotes;
+
+  const filterBadges = notesFilter.size > 0
+    ? `<span style="display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px">
+        ${[...notesFilter.entries()].map(([code, name]) =>
+          `<span onclick="removeNotesFilter('${code.replace(/'/g,"\'")}');event.stopPropagation()"
+           style="background:var(--bg4);border:1px solid var(--border);border-radius:10px;padding:2px 8px;font-size:14px;cursor:pointer"
+           title="Retirer ce filtre">${name}</span>`).join('')}
+        <button onclick="clearNotesFilter();event.stopPropagation()" title="Supprimer tous les filtres" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:24px;padding:0 2px;line-height:1">×</button>
+      </span>`
+    : '';
+
+  if (periodNotes.length) {
+    html += `<div style="border-top:1px solid var(--border);padding-top:8px">
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        <button onclick="toggleNotesList(this)" style="display:flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;font-size:14px;font-weight:500;color:var(--text);padding:4px 0;text-align:left;flex-shrink:0">
+          <span id="notes-list-arrow" style="font-size:14px;color:var(--text3);transition:transform .2s">▶</span>
+          Notes du trimestre
+          <span style="font-weight:400;color:var(--text3);font-size:14px">(${filteredNotes.length}${notesFilter.size > 0 ? ' / ' + periodNotes.length : ''})</span>
+        </button>
+        ${filterBadges}
+      </div>
+      <div id="notes-list-body" style="display:none;margin-top:6px">`;
+    const thN = 'padding:3px 0;font-size:14px;font-weight:500;color:var(--text4);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border)';
+    html += `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;margin-bottom:2px">
+      <span style="min-width:70px;${thN}">Date ↓</span>
+      <span style="min-width:140px;${thN}">Matière</span>
+      <span style="min-width:205px;${thN}">Sous-matière</span>
+      <span style="flex:1;${thN}">Devoir</span>
+      <span style="min-width:36px;text-align:center;${thN}">Min</span>
+      <span style="min-width:36px;text-align:center;${thN}">Moy</span>
+      <span style="min-width:36px;text-align:center;${thN}">Max</span>
+      <span style="min-width:36px;text-align:center;${thN}">Coef</span>
+      <span style="min-width:44px;text-align:right;${thN}">Note</span>
+    </div>`;
+    [...filteredNotes].sort((a,b) => b.date.localeCompare(a.date)).forEach(n => {
+      const sur20   = `<span style="color:var(--text4);font-size:14px">/${n.noteSur}</span>`;
+      const nVal    = parseFloat((n.valeur||'').replace(',','.'));
+      const nMoyC   = n.moyenneClasse ? parseFloat(n.moyenneClasse) : NaN;
+      const nMin    = n.minClasse     ? parseFloat(n.minClasse)     : '—';
+      const nMax    = n.maxClasse     ? parseFloat(n.maxClasse)     : '—';
+      const nCoef   = n.coef          ? parseFloat(n.coef)          : '—';
+      const noteSur = parseFloat(n.noteSur) || 20;
+      // Normaliser sur 20 pour la comparaison avec la moyenne classe
+      const nVal20  = noteSur !== 20 ? nVal * 20 / noteSur : nVal;
+      const nMoyC20 = !isNaN(nMoyC) && noteSur !== 20 ? nMoyC * 20 / noteSur : nMoyC;
+      const noteColor = isNaN(nVal20) ? 'var(--text)' : nVal20 < 10 ? '#b91c1c' : (!isNaN(nMoyC20) && nVal20 >= nMoyC20) ? '#15803d' : '#ca8a04';
+      html += `<div class="note-row" style="display:flex;align-items:center;gap:8px;padding:5px 0 5px 6px;border-bottom:1px solid var(--border2);font-size:14px">
+        <span style="color:var(--text4);min-width:70px;">${n.date}</span>
+        <span style="min-width:140px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${codeToDisc[n.codeMatiere] || n.libelleMatiere || ''}</span>
+        <span style="min-width:205px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(() => { const parent = codeToDisc[n.codeMatiere] || ''; return (n.libelleMatiere && n.libelleMatiere !== parent) ? n.libelleMatiere : '—'; })()}</span>
+        <span style="flex:1">${n.devoir}</span>
+        <span style="min-width:36px;text-align:center;color:var(--text3)">${nMin}</span>
+        <span style="min-width:36px;text-align:center;color:var(--text3)">${isNaN(nMoyC)?'—':nMoyC}</span>
+        <span style="min-width:36px;text-align:center;color:var(--text3)">${nMax}</span>
+        <span style="min-width:36px;text-align:center;color:var(--text4)">${nCoef}</span>
+        <span style="font-weight:600;min-width:44px;text-align:right;color:${noteColor}">${n.valeur} ${sur20}</span>
+      </div>`;
+    });
+    html += '</div></div>';
+  }
+  return html;
+}
+
+
+function toggleNotesFilter(matiere) {
+  if (notesFilter.has(matiere)) {
+    notesFilter.delete(matiere);
+  } else {
+    notesFilter.set(matiere, matiere);
+  }
+
+  if (notesData) renderNotes();
+}
+
+function removeNotesFilter(matiere) {
+  notesFilter.delete(matiere);
+  if (notesData) renderNotes();
+}
+
+function clearNotesFilter() {
+  notesFilter.clear();
+  if (notesData) renderNotes();
+}
+
+// Délégation de clic sur les lignes du tableau — évite les problèmes d'échappement inline
+document.addEventListener('click', function(e) {
+  const row = e.target.closest('.notes-filter-row');
+  if (!row) return;
+  if (!row.closest('#notes-sort-table')) return;
+  const code = row.dataset.code || row.dataset.disc;
+  const name = row.dataset.disc;
+  if (code) toggleNotesFilter(code, name);
+});
+
+function sortNotes(col) {
+  if (notesSortCol === col) notesSortDir *= -1;
+  else { notesSortCol = col; notesSortDir = 1; }
+  if (notesData) renderNotes();
+}
+
+function toggleNotesList(btn) {
+  notesListOpen = !notesListOpen;
+  const body = document.getElementById('notes-list-body');
+  const arrow = document.getElementById('notes-list-arrow');
+  if (body) body.style.display = notesListOpen ? 'block' : 'none';
+  if (arrow) arrow.style.transform = notesListOpen ? 'rotate(90deg)' : 'rotate(0deg)';
+}
+
+const CHART_COLORS = ['#e24b4a','#1d9e75','#378add','#BA7517','#8B5CF6','#D4537E','#0F6E56','#639922','#534AB7','#D85A30','#185FA5','#3B6D11'];
+
+function renderNotesChart(periode, allNotes) {
+  const periodNotes = allNotes.filter(n => n.codePeriode === periode.codePeriode && !n.nonSignificatif && n.valeur && parseFloat(n.noteSur) > 0);
+  if (!periodNotes.length) { document.getElementById('notes-chart').insertAdjacentHTML('afterend','<em style="color:var(--text3);font-size:14px">Pas assez de notes pour afficher le graphique.</em>'); return; }
+
+  // Grouper par matière (sans sous-matières)
+  const byMatiere = {};
+  periodNotes.forEach(n => {
+    if (n.codeSousMatiere) return;
+    const key = n.libelleMatiere;
+    if (!byMatiere[key]) byMatiere[key] = [];
+    const val20 = (parseFloat((n.valeur||'').replace(',','.')) / parseFloat(n.noteSur)) * 20;
+    if (!isNaN(val20)) byMatiere[key].push({ x: n.date, y: Math.round(val20*100)/100, label: n.devoir });
+  });
+
+  const matieres = Object.keys(byMatiere).sort();
+
+  // Collecter les moyennes de classe par matière depuis les disciplines
+  const moyClasse = {};
+  const em = periode.ensembleMatieres || {};
+  (em.disciplines || []).forEach(d => {
+    if (!d.groupeMatiere && !d.sousMatiere && d.libelleMatiere) {
+      moyClasse[d.libelleMatiere] = parseFloat((d.moyenneClasse||'').replace(',','.'));
+    }
+    if (!d.groupeMatiere && !d.sousMatiere && d.discipline) {
+      moyClasse[d.discipline] = parseFloat((d.moyenneClasse||'').replace(',','.'));
+    }
+  });
+
+  const datasets = matieres.map((m, i) => ({
+    label: m,
+    data: byMatiere[m].sort((a,b)=>a.x.localeCompare(b.x)),
+    borderColor: CHART_COLORS[i % CHART_COLORS.length],
+    backgroundColor: CHART_COLORS[i % CHART_COLORS.length] + '22',
+    tension: 0.3,
+    pointRadius: 5,
+    pointHoverRadius: 7,
+    borderWidth: 2,
+    _moyClasse: moyClasse[m] || null,
+    _isSolo: false,
+    _isClasseAvg: false,
+  }));
+
+  if (typeof Chart === 'undefined') {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js';
+    s.onload = () => buildChart(datasets, periode);
+    document.head.appendChild(s);
+  } else {
+    buildChart(datasets, periode);
+  }
+}
+
+// Plugin fond coloré + ligne 10 + hachure solo
+const bgZonesPlugin = {
+  id: 'bgZones',
+  beforeDraw(chart) {
+    const {ctx, chartArea: {top, bottom, left, right}, scales: {y}} = chart;
+    if (!y) return;
+    const dark = document.body.classList.contains('dark');
+
+    // Fond du canvas
+    ctx.save();
+    ctx.fillStyle = dark ? '#1e1e1e' : '#ffffff';
+    ctx.fillRect(left, top, right - left, bottom - top);
+    ctx.restore();
+
+    // Zones dégradées — teintes adaptées au mode
+    const zones = dark ? [
+      { from: 0,  to: 8,  colors: ['#7f1d1d','#713f12'] },
+      { from: 8,  to: 12, colors: ['#713f12','#1e3a5f'] },
+      { from: 12, to: 20, colors: ['#1e3a5f','#14532d'] },
+    ] : [
+      { from: 0,  to: 8,  colors: ['#fecaca','#fef08a'] },
+      { from: 8,  to: 12, colors: ['#fef08a','#bfdbfe'] },
+      { from: 12, to: 20, colors: ['#bfdbfe','#bbf7d0'] },
+    ];
+    const alpha = dark ? '99' : '55';
+    zones.forEach(z => {
+      const yTop = y.getPixelForValue(z.to);
+      const yBot = y.getPixelForValue(z.from);
+      const grad = ctx.createLinearGradient(0, yTop, 0, yBot);
+      grad.addColorStop(0, z.colors[1] + alpha);
+      grad.addColorStop(1, z.colors[0] + alpha);
+      ctx.fillStyle = grad;
+      ctx.fillRect(left, yTop, right - left, yBot - yTop);
+    });
+
+    // Ligne pointillée à 10
+    const y10 = y.getPixelForValue(10);
+    ctx.save();
+    ctx.setLineDash([6, 4]);
+    ctx.strokeStyle = dark ? 'rgba(200,200,200,0.4)' : 'rgba(100,100,100,0.5)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(left, y10);
+    ctx.lineTo(right, y10);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  },
+
+  afterDatasetsDraw(chart) {
+    if (chart._activeSolo === null) return;
+    const {ctx, scales: {y}, data} = chart;
+    const soloIdx = chart._activeSolo;
+    const soloDs = data.datasets[soloIdx];
+    if (!soloDs) return;
+
+    const meta = chart.getDatasetMeta(soloIdx);
+    const y10 = y.getPixelForValue(10);
+
+    // Ne prendre que les points réellement visibles (avec donnée non nulle)
+    const pts = meta.data
+      .map((pt, i) => ({ pt, val: soloDs.data[i] }))
+      .filter(({ pt, val }) => val !== null && val !== undefined && !isNaN(pt.x) && !isNaN(pt.y))
+      .map(({ pt }) => pt);
+
+    if (pts.length < 2) return;
+
+    // Hachure uniquement entre le 1er et le dernier point
+    const xStart = pts[0].x;
+    const xEnd   = pts[pts.length - 1].x;
+
+    // Couleurs de hachure selon les zones (teintes vives des dégradés de fond)
+    // Zone rouge (0-8) : rouge → jaune vif
+    // Zone orange (8-12) : jaune → bleu vif
+    // Zone verte (12-20) : bleu → vert vif
+    const hatchZones = [
+      { from: 0,  to: 8,  colors: ['#f87171', '#fbbf24'] },
+      { from: 8,  to: 12, colors: ['#fbbf24', '#60a5fa'] },
+      { from: 12, to: 20, colors: ['#60a5fa', '#34d399'] },
+    ];
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(xStart, y.getPixelForValue(20) - 2, xEnd - xStart, y.getPixelForValue(0) - y.getPixelForValue(20) + 4);
+    ctx.clip();
+
+    // Tracer le chemin de la courbe élève
+    const curvePath = new Path2D();
+    pts.forEach((pt, i) => {
+      if (i === 0) curvePath.moveTo(pt.x, pt.y);
+      else curvePath.lineTo(pt.x, pt.y);
+    });
+    for (let i = pts.length - 1; i >= 0; i--) {
+      curvePath.lineTo(pts[i].x, y10);
+    }
+    curvePath.closePath();
+
+    // Dessiner une hachure par zone avec sa couleur dégradée
+    hatchZones.forEach(zone => {
+      const yTop = y.getPixelForValue(zone.to);
+      const yBot = y.getPixelForValue(zone.from);
+
+      // Créer motif de hachure avec dégradé
+      const patCanvas = document.createElement('canvas');
+      patCanvas.width = 8; patCanvas.height = 8;
+      const pc = patCanvas.getContext('2d');
+      // Fond transparent
+      pc.clearRect(0, 0, 8, 8);
+      // Ligne de hachure colorée
+      const grad = pc.createLinearGradient(0, 8, 8, 0);
+      grad.addColorStop(0, zone.colors[0] + 'bb');
+      grad.addColorStop(1, zone.colors[1] + 'bb');
+      pc.strokeStyle = grad;
+      pc.lineWidth = 2;
+      pc.beginPath(); pc.moveTo(0, 8); pc.lineTo(8, 0); pc.stroke();
+      pc.beginPath(); pc.moveTo(-4, 8); pc.lineTo(4, 0); pc.stroke();
+      pc.beginPath(); pc.moveTo(4, 8); pc.lineTo(12, 0); pc.stroke();
+      const pattern = ctx.createPattern(patCanvas, 'repeat');
+
+      // Clipper sur la zone verticale + la courbe
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(xStart, yTop, xEnd - xStart, yBot - yTop);
+      ctx.clip();
+      ctx.fillStyle = pattern;
+      ctx.fill(curvePath);
+      ctx.restore();
+    });
+
+    ctx.restore();
+  }
+};
+
+function updateSoloState(chart) {
+  const solo = chart._activeSolo;
+  const ds = chart.data.datasets;
+
+  // Retirer l'ancien dataset moyenne classe s'il existe
+  const existingIdx = ds.findIndex(d => d._isClasseAvg);
+  if (existingIdx !== -1) { ds.splice(existingIdx, 1); }
+
+  if (solo !== null) {
+    // Recalculer l'index après suppression éventuelle
+    const soloDs = ds[solo];
+    if (soloDs && soloDs._moyClasse !== null && !isNaN(soloDs._moyClasse)) {
+      // Créer dataset ligne plate pour la moyenne classe
+      const allDates = chart.data.labels;
+      const classeDs = {
+        label: `Classe (${soloDs.label})`,
+        data: allDates.map(() => soloDs._moyClasse),
+        borderColor: 'rgba(150,150,150,0.7)',
+        backgroundColor: 'transparent',
+        borderWidth: 1.5,
+        borderDash: [4, 4],
+        pointRadius: 0,
+        tension: 0,
+        _isClasseAvg: true,
+        _isSolo: false,
+        _moyClasse: null,
+        spanGaps: true,
+      };
+      ds.push(classeDs);
+    }
+  }
+
+  // Visibilité : solo visible, classe visible, reste caché
+  ds.forEach((d, i) => {
+    if (d._isClasseAvg) { chart.setDatasetVisibility(i, solo !== null); return; }
+    chart.setDatasetVisibility(i, solo === null || i === solo);
+  });
+
+  chart.update();
+}
+
+const CHART_COLORS_DARK = ['#f87171','#34d399','#60a5fa','#fbbf24','#a78bfa','#f472b6','#2dd4bf','#86efac','#818cf8','#fb923c','#38bdf8','#4ade80'];
+
+function buildChart(datasets, periode) {
+  const ctx = document.getElementById('notes-chart');
+  if (!ctx) return;
+  if (ctx._chart) ctx._chart.destroy();
+  const dark = document.body.classList.contains('dark');
+
+  // Adapter les couleurs des courbes au mode
+  datasets = datasets.map((ds, i) => ({
+    ...ds,
+    borderColor: dark ? CHART_COLORS_DARK[i % CHART_COLORS_DARK.length] : ds.borderColor,
+    backgroundColor: (dark ? CHART_COLORS_DARK[i % CHART_COLORS_DARK.length] : ds.borderColor) + '33',
+    _origBorderColor: ds.borderColor,
+  }));
+
+  const allDates = [...new Set(datasets.flatMap(d => d.data.map(p => p.x)))].sort();
+
+  const chartInst = new Chart(ctx, {
+    type: 'line',
+    plugins: [bgZonesPlugin],
+    data: { labels: allDates, datasets: datasets.map(ds => ({
+      ...ds,
+      data: allDates.map(date => {
+        const pt = ds.data.find(p => p.x === date);
+        return pt ? pt.y : null;
+      }),
+      spanGaps: true,
+    }))},
+    options: {
+      responsive: true,
+      scales: {
+        x: {
+          type: 'category',
+          ticks: {
+            font: { size: 10 },
+            maxRotation: 45,
+            color: dark ? '#888' : '#666',
+            callback: function(val, i) {
+              const d = allDates[i];
+              if (!d) return '';
+              const parts = d.split('-');
+              return `${parts[2]}/${parts[1]}`;
+            }
+          },
+          grid: { color: dark ? '#2a2a2a' : '#f0f0ee' }
+        },
+        y: {
+          min: 0, max: 20,
+          ticks: { font: { size: 10 }, stepSize: 2, color: dark ? '#888' : '#666', callback: v => v + '/20' },
+          grid: { color: dark ? '#2a2a2a' : '#f0f0ee' }
+        }
+      },
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: {
+            font: { size: 11 },
+            boxWidth: 14,
+            padding: 12,
+            color: dark ? '#ccc' : '#1a1a1a',
+            generateLabels(chart) {
+              const active = chart._activeSolo;
+              return Chart.defaults.plugins.legend.labels.generateLabels(chart).map(item => {
+                // Bug fix : au départ _activeSolo est null donc tout visible
+                const isVisible = (active === null) || (active === item.datasetIndex);
+                return {
+                  ...item,
+                  fontColor: isVisible ? '#1a1a1a' : '#bbb',
+                  strokeStyle: isVisible ? item.strokeStyle : '#ddd',
+                  fillStyle: isVisible ? item.fillStyle : '#ddd',
+                };
+              });
+            }
+          },
+          onClick(e, legendItem, legend) {
+            const chart = legend.chart;
+            if (chart._activeSolo === legendItem.datasetIndex) {
+              chart._activeSolo = null;
+            } else {
+              chart._activeSolo = legendItem.datasetIndex;
+            }
+            updateSoloState(chart);
+          }
+        },
+        tooltip: {
+          mode: 'index',
+          intersect: false,
+          callbacks: {
+            title: items => {
+              const d = items[0]?.label;
+              if (!d) return '';
+              const parts = d.split('-');
+              return `${parts[2]}/${parts[1]}/${parts[0]}`;
+            },
+            label: item => item.raw !== null ? `${item.dataset.label} : ${item.raw}/20` : null,
+            filter: item => item.raw !== null,
+          }
+        }
+      },
+      interaction: { mode: 'index', intersect: false },
+    }
+  });
+  chartInst._activeSolo = null;
+  ctx._chart = chartInst;
+}
+
+async function forceRefresh(tab) {
+  const btn = document.getElementById('tab-refresh-btn');
+  if (btn) btn.classList.add('spinning');
+
+  // Supprimer le cache de cet onglet
+  const eleveId = getEleveId();
+  if (tab === 'edt') {
+    const mon = getMondayOfWeek(edtWeekOffset);
+    const fmt = d => d.toISOString().substring(0,10);
+    await edCache.delete(`edt:${fmt(mon)}`);
+    await runEdt();
+  } else if (tab === 'notes') {
+    await edCache.delete(`notes:${eleveId}`);
+    notesPeriod = null;
+    await loadNotes();
+  } else if (tab === 'messages') {
+    const annee = document.getElementById('msg-annee').value;
+    await edCache.delete(`messages:${eleveId}:${annee}`);
+    await loadMessages();
+  } else if (tab === 'absences') {
+    await edCache.delete(`absences:${eleveId}`);
+    await loadAbsences();
+  } else if (tab === 'devoirs') {
+    const dateVal = document.getElementById('devoirs-date')?.value || '';
+    await edCache.delete(dateVal ? `devoirs:${eleveId}:${dateVal}` : `devoirs:${eleveId}`);
+    await loadDevoirs();
+  } else if (tab === 'seances') {
+    const dateVal = document.getElementById('seances-date')?.value || '';
+    if (dateVal) await edCache.delete(`seances:${eleveId}:${dateVal}`);
+    await loadSeances();
+  }
+
+  const btn2 = document.getElementById('tab-refresh-btn');
+  if (btn2) btn2.classList.remove('spinning');
+}
+
+// Mode hors-ligne
+window.addEventListener('ed-offline', () => {
+  const banner = document.getElementById('offline-banner');
+  if (banner) banner.classList.add('visible');
+});
+
+// Cacher la bannière au prochain fetch réussi
+const _origFetch = window.fetch;
+window.fetch = async (...args) => {
+  const resp = await _origFetch(...args);
+  if (resp.ok) {
+    const banner = document.getElementById('offline-banner');
+    if (banner) banner.classList.remove('visible');
+  }
+  return resp;
+};
+
+function centeredSpinner() {
+  return `<div style="display:flex;align-items:center;justify-content:center;padding:3rem"><span class="spinner"></span></div>`;
+}
+
+async function runEdt() {
+  const eleveId = getEleveId();
+  if (!eleveId) return;
+  const mon = getMondayOfWeek(edtWeekOffset);
+  const fri = new Date(mon); fri.setDate(mon.getDate() + 6);
+  const fmt = d => d.toISOString().substring(0,10);
+  const cacheKey = `edt:${fmt(mon)}`;
+
+  const moisFr = ['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
+  document.getElementById('edt-week-label').textContent =
+    `Semaine du ${mon.getDate()} ${moisFr[mon.getMonth()]} au ${fri.getDate()} ${moisFr[fri.getMonth()]} ${fri.getFullYear()}`;
+
+  const render = (data, isFresh, oldData) => {
+    document.getElementById('edt-result').innerHTML = renderEdtGrid(data, mon);
+    document.getElementById('spin-edt').style.display = 'none';
+    updateFreshnessLabel('edt', Date.now());
+    if (isFresh && oldData && edCache.defaultDiff(oldData, data)) setBadge('edt', 1);
+  };
+
+  await edCache.load(cacheKey, async () => {
+    const resp = await fetch(`${getProxy()}/v3/E/${eleveId}/emploidutemps.awp?verbe=get`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
+      body: `data=${encodeURIComponent(JSON.stringify({ dateDebut: fmt(mon), dateFin: fmt(fri) }))}`
+    });
+    const d = await resp.json();
+    if (d.code !== 200) throw new Error(`Code ${d.code}`);
+    return d.data;
+  }, {
+    onSpinner: () => { document.getElementById('spin-edt').style.display = 'inline'; document.getElementById('edt-result').innerHTML = centeredSpinner(); },
+    onCached:  (data, ts) => { render(data, false, null); updateFreshnessLabel('edt', ts || Date.now()); },
+    onFresh:   (data, _, old) => render(data, true, old),
+    diffFn:    edCache.defaultDiff,
+  }).catch(e => {
+    document.getElementById('edt-result').innerHTML = `<p style="color:#b91c1c;font-size:14px">Erreur : ${e.message}</p>`;
+    document.getElementById('spin-edt').style.display = 'none';
+  });
+}
+
+function renderEdtGrid(cours, monday) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const START_H = 8, END_H = 18;
+  const TOTAL_MIN = (END_H - START_H) * 60;
+  const SLOT_H = 40; // px par heure
+  const GRID_H = SLOT_H * (END_H - START_H);
+  const jours = ['Lun','Mar','Mer','Jeu','Ven'];
+  const moisFr = ['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
+
+  // Indexer les cours par jour (lundi=0..vendredi=4)
+  const byDay = {0:[],1:[],2:[],3:[],4:[]};
+  (cours || []).forEach(c => {
+    const d = new Date(c.start_date.replace(' ','T'));
+    const dayIdx = d.getDay() - 1; // lundi=0
+    if (dayIdx >= 0 && dayIdx <= 4) byDay[dayIdx].push(c);
+  });
+
+  // Colonnes heure
+  let timeCol = '<div class="edt-time-col">';
+  timeCol += '<div class="edt-header" style="height:36px"></div>';
+  timeCol += `<div style="position:relative;height:${GRID_H}px">`;
+  for (let h = START_H; h < END_H; h++) {
+    const top = (h - START_H) * SLOT_H;
+    timeCol += `<div class="edt-time" style="position:absolute;top:${top}px;left:0;right:0;height:${SLOT_H}px">${h}h</div>`;
+  }
+  timeCol += '</div></div>';
+
+  // Colonnes jours
+  let dayCols = '';
+  for (let i = 0; i < 5; i++) {
+    const dayDate = new Date(monday); dayDate.setDate(monday.getDate() + i);
+    const isPast  = dayDate < today;
+    const isToday = dayDate.getTime() === today.getTime() && !isFerie(today);
+    const isFer   = isFerie(dayDate);
+    const cls = isPast ? 'past' : isToday ? 'today' : '';
+    const hdrCls = isPast ? 'past' : isToday ? 'today' : '';
+    const label = `${jours[i]} ${dayDate.getDate()} ${moisFr[dayDate.getMonth()]}`;
+
+    dayCols += `<div class="edt-day-col ${cls}">`;
+    dayCols += `<div class="edt-header ${hdrCls}" style="height:36px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px">
+      <span>${jours[i]}</span>
+      <span style="font-size:14px;font-weight:400">${dayDate.getDate()} ${moisFr[dayDate.getMonth()]}</span>
+    </div>`;
+    dayCols += `<div class="edt-day-body" style="position:relative;height:${GRID_H}px">`;
+
+    if (isFer) {
+      dayCols += `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--text4);z-index:0;pointer-events:none">Férié</div>`;
+    }
+
+    // Couche 2 : cours (z-index 1, devant les lignes)
+    byDay[i].forEach(c => {
+      const start = new Date(c.start_date.replace(' ','T'));
+      const end   = new Date(c.end_date.replace(' ','T'));
+      const topMin = (start.getHours() - START_H) * 60 + start.getMinutes();
+      const durMin = (end - start) / 60000;
+      const topPx  = (topMin / 60) * SLOT_H;
+      const hPx    = Math.max((durMin / 60) * SLOT_H - 2, 18);
+      const bg     = c.isAnnule ? '#f5f5f5' : (c.color || '#e0e7ff');
+      // Calculer couleur texte (sombre sur fond clair)
+      const hex = c.color ? c.color.replace('#','') : 'e0e7ff';
+      const r=parseInt(hex.substring(0,2),16), g=parseInt(hex.substring(2,4),16), b=parseInt(hex.substring(4,6),16);
+      const lum = (0.299*r + 0.587*g + 0.114*b);
+      const fg = c.isAnnule ? '#aaa' : (lum > 160 ? '#1a1a1a' : '#fff');
+      const cData = encodeURIComponent(JSON.stringify({
+        text: c.text, salle: c.salle || '', prof: c.prof || '',
+        debut: c.start_date.split(' ')[1].substring(0,5),
+        fin: c.end_date.split(' ')[1].substring(0,5),
+        annule: c.isAnnule, modifie: c.isModifie,
+        color: c.color, type: c.typeCours || ''
+      }));
+      dayCols += `<div class="edt-event${c.isAnnule?' annule':''}" onclick="openEdtDialog('${cData}')" style="top:${topPx}px;height:${hPx}px;background:${bg};border-left:3px solid ${c.isAnnule?'var(--border)':c.color};cursor:pointer">
+        <div class="edt-event-name" style="color:${fg}">${c.text}</div>
+        ${hPx > 28 ? `<div class="edt-event-detail" style="color:${fg}">${c.salle || ''}</div>` : ''}
+      </div>`;
+    });
+    dayCols += '</div></div>';
+  }
+
+  return `<div class="edt-grid">${timeCol}${dayCols}</div>`;
+}
+
+function switchTab(id) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === id));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + id));
+  document.getElementById('result-area').style.display = 'none';
+  document.getElementById('api-status').innerHTML = '';
+  localStorage.setItem('ed_last_tab', id);
+  clearBadge(id);
+  renderFreshnessLabel(id);
+  // Connecter le bouton refresh global à l'onglet actif
+  const refreshBtn = document.getElementById('tab-refresh-btn');
+  if (refreshBtn) {
+    refreshBtn.onclick = () => forceRefresh(id);
+  }
+  if (id === 'edt') runEdt();
+  else if (id === 'notes') loadNotes();
+  else if (id === 'absences') loadAbsences();
+  else if (id === 'devoirs') loadDevoirs();
+  else if (id === 'seances') {
+    const dateInput = document.getElementById('seances-date');
+    if (dateInput && !dateInput.value) dateInput.value = new Date().toISOString().substring(0, 10);
+    loadSeances();
+  }
+  else if (id === 'messages') loadMessages();
+}
+
+async function runTab(id) {
+  if (!token) return;
+  const eleveId = getEleveId();
+  let path = '', body = 'data={}';
+
+  if (id === 'notes') {
+    await loadNotes();
+    return;
+  } else if (id === 'edt') {
+    const debut = document.getElementById('edt-debut').value;
+    const fin   = document.getElementById('edt-fin').value;
+    path = `/v3/E/${eleveId}/emploidutemps.awp?verbe=get`;
+    body = `data=${encodeURIComponent(JSON.stringify({ dateDebut: debut, dateFin: fin }))}`;
+  } else if (id === 'messages') {
+    await loadMessages();
+    return;
+  } else if (id === 'absences') {
+    await loadAbsences();
+    return;
+  } else if (id === 'devoirs') {
+    await loadDevoirs();
+    return;
+  } else if (id === 'perso') {
+    path = resolvePath(document.getElementById('custom-path').value.trim());
+    body = document.getElementById('custom-body').value.trim() || 'data={}';
+  }
+
+  if (!path) return;
+  const spinner = document.getElementById('spin-' + id);
+  if (spinner) spinner.style.display = 'inline';
+  const statusEl = document.getElementById('api-status');
+  showStatus(statusEl, 'Chargement…', 'info');
+  try {
+    const resp = await fetch(`${getProxy()}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
+      body
+    });
+    const data = await resp.json();
+    lastResult = JSON.stringify(data, null, 2);
+    if (data.code !== 200) showStatus(statusEl, `Erreur code ${data.code ?? resp.status}`, 'error');
+    else statusEl.innerHTML = '';
+    const resultBox = document.getElementById('result-box');
+    if (data.code === 200) {
+      resultBox.innerHTML = renderData(path, data.data);
+      resultBox.style.fontFamily = 'inherit';
+      resultBox.style.fontSize = '13px';
+    } else {
+      resultBox.style.fontFamily = 'monospace';
+      resultBox.style.fontSize = '12px';
+      resultBox.textContent = lastResult;
+    }
+    document.getElementById('result-area').style.display = 'block';
+  } catch(e) {
+    showStatus(statusEl, `Erreur : ${e.message}`, 'error');
+  }
+  if (spinner) spinner.style.display = 'none';
+}
+
+function togglePwd() {
+  const input = document.getElementById('password');
+  const btn = document.getElementById('pwd-eye');
+  if (input.type === 'password') { input.type = 'text'; btn.textContent = '🙈'; }
+  else { input.type = 'password'; btn.textContent = '👁'; }
+}
+
+let cachedMessages = {};
+
+let msgActiveTab = 'received';
+// Timestamps de dernière mise à jour par onglet
+const tabFreshness = {};
+// Badges de nouveautés par onglet
+const tabBadges = {};
+
+function updateFreshnessLabel(tabId, ts) {
+  tabFreshness[tabId] = ts;
+  const el = document.getElementById('freshness-label');
+  if (!el) return;
+  const activeTab = document.querySelector('.tab.active')?.dataset?.tab;
+  if (activeTab !== tabId) return;
+  renderFreshnessLabel(tabId);
+}
+
+function renderFreshnessLabel(tabId) {
+  const el = document.getElementById('freshness-label');
+  if (!el) return;
+  const ts = tabFreshness[tabId];
+  if (!ts) { el.textContent = ''; return; }
+  const diffMin = Math.round((Date.now() - ts) / 60000);
+  if (diffMin < 1) el.textContent = 'à jour';
+  else if (diffMin === 1) el.textContent = 'il y a 1 min';
+  else el.textContent = `il y a ${diffMin} min`;
+}
+
+// Mettre à jour le label toutes les minutes
+setInterval(() => {
+  const activeTab = document.querySelector('.tab.active')?.dataset?.tab;
+  if (activeTab) renderFreshnessLabel(activeTab);
+}, 60000);
+
+function setBadge(tabId, count) {
+  tabBadges[tabId] = count;
+  const tabEl = document.querySelector(`.tab[data-tab="${tabId}"]`);
+  if (!tabEl) return;
+  const existing = tabEl.querySelector('.tab-badge');
+  if (count > 0) {
+    if (!existing) {
+      const badge = document.createElement('span');
+      badge.className = 'tab-badge';
+      badge.textContent = count;
+      tabEl.appendChild(badge);
+    } else {
+      existing.textContent = count;
+    }
+  } else if (existing) {
+    existing.remove();
+  }
+}
+
+function clearBadge(tabId) { setBadge(tabId, 0); }
+let msgData = null;
+
+function renderMessages(data) {
+  msgData = data;
+  // Mettre à jour les labels avec les vrais counts
+  document.querySelectorAll('.msg-tab').forEach(b => {
+    if (b.dataset.tab === 'received') b.textContent = `Reçus (${msgCounts.received})`;
+    if (b.dataset.tab === 'sent') b.textContent = `Envoyés (${msgCounts.sent})`;
+  });
+  return `<div id="msg-list">${renderMsgList()}</div>`;
+}
+
+function switchMsgTab(tab) {
+  msgActiveTab = tab;
+  document.querySelectorAll('.msg-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  const listEl = document.getElementById('msg-list');
+  if (listEl) listEl.innerHTML = renderMsgList();
+}
+
+function renderMsgList() {
+  if (!msgData) return '';
+  const list = msgActiveTab === 'received'
+    ? (msgData.messages?.received || [])
+    : (msgData.messages?.sent || []);
+
+  // Tri du plus récent au plus ancien
+  const sorted = [...list].sort((a, b) => b.date.localeCompare(a.date));
+
+  if (!sorted.length) return `<p style="color:var(--text3);font-size:14px;padding:8px 0">Aucun message.</p>`;
+
+  return sorted.map(m => {
+    const direction = msgActiveTab;
+    const isUnread = !m.read;
+    const weight = isUnread ? '700' : '400';
+    const dot = isUnread
+      ? `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#1d4ed8;margin-right:6px;flex-shrink:0;margin-top:3px"></span>`
+      : `<span style="display:inline-block;width:6px;margin-right:6px;flex-shrink:0"></span>`;
+    const contact = direction === 'received'
+      ? (m.from ? `${m.from.civilite} ${m.from.nom}`.trim() : '?')
+      : (m.to?.[0] ? `${m.to[0].civilite} ${m.to[0].nom}`.trim() : '?');
+    const contactLabel = direction === 'received' ? `De : ${contact}` : `À : ${contact}`;
+    const attach = m.files?.length ? `<span style="font-size:14px;color:#1d4ed8;margin-left:6px">📎${m.files.length}</span>` : '';
+    return `<div onclick="openMessageDialog(${m.id})" style="display:flex;align-items:flex-start;padding:7px 4px;border-bottom:1px solid var(--border2);font-size:14px;cursor:pointer;border-radius:4px" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background='transparent'">
+      ${dot}
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <span style="font-weight:${weight};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.subject}${attach}</span>
+          <span style="color:var(--text4);flex-shrink:0;font-size:14px">${m.date.substring(0,10)}</span>
+        </div>
+        <div style="color:var(--text3);margin-top:1px">${contactLabel}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function openMessageDialog(msgId) {
+  const eleveId = getEleveId();
+  const cached = cachedMessages[msgId];
+  const panel = document.getElementById('message-detail-panel');
+  if (!panel) return;
+
+  // Marquer comme lu si non lu
+  if (cached && !cached.read) {
+    cached.read = true;
+    const annee = document.getElementById('msg-annee')?.value || '';
+    fetch(`${getProxy()}/v3/eleves/${eleveId}/messages/${msgId}.awp?verbe=put`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
+      body: `data=${encodeURIComponent(JSON.stringify({ anneeMessages: annee }))}`
+    }).catch(() => {});
+    const row = document.querySelector(`[onclick="openMessageDialog(${msgId})"]`);
+    if (row) {
+      const dot  = row.querySelector('span:first-child');
+      const subj = row.querySelector('span[style*="font-weight"]');
+      if (dot)  { dot.style.background = 'transparent'; dot.style.width = '6px'; }
+      if (subj) { subj.style.fontWeight = '400'; }
+    }
+    edCache.delete(`messages:${eleveId}:${document.getElementById('msg-annee')?.value || ''}`);
+  }
+
+  // Afficher dans le panneau latéral
+  panel.style.alignItems = 'flex-start';
+  panel.style.justifyContent = 'flex-start';
+
+  const from = cached?.from ? `${cached.from.civilite} ${cached.from.prenom || ''} ${cached.from.nom}`.trim() : '';
+  const to   = cached?.to?.map(t => `${t.civilite} ${t.nom}`.trim()).join(', ') || '';
+
+  panel.innerHTML = `
+    <div style="width:100%">
+      <div style="font-weight:600;font-size:14px;margin-bottom:6px;line-height:1.4">${cached?.subject || ''}</div>
+      ${from ? `<div style="font-size:14px;color:var(--text3);margin-bottom:2px">De : ${from}</div>` : ''}
+      ${to   ? `<div style="font-size:14px;color:var(--text3);margin-bottom:2px">À : ${to}</div>`   : ''}
+      <div style="font-size:14px;color:var(--text4);margin-bottom:10px">${cached?.date || ''}</div>
+      ${cached?.files?.length ? `
+      <div style="margin-bottom:10px;padding:8px;background:var(--bg3);border-radius:8px;border:1px solid var(--border)">
+        <div style="font-size:14px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Pièces jointes (${cached.files.length})</div>
+        ${cached.files.map(f => `
+          <div onclick="downloadAttachment(${cached.id}, ${f.id}, '${f.libelle.replace(/'/g, "\'")}')"
+               style="display:flex;align-items:center;gap:6px;padding:4px;border-radius:4px;cursor:pointer;font-size:14px"
+               onmouseover="this.style.background='var(--bg4)'" onmouseout="this.style.background='transparent'">
+            <span>${getFileIcon(f.libelle)}</span>
+            <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.libelle}</span>
+            <span style="font-size:14px;color:var(--text4)">↓</span>
+          </div>`).join('')}
+      </div>` : ''}
+      <div style="border-top:1px solid var(--border);padding-top:10px">
+        <div id="msg-dialog-content" style="font-size:14px;line-height:1.7;color:var(--text)">
+          <span class="spinner"></span>
+        </div>
+      </div>
+    </div>`;
+
+  // Fetch le contenu complet
+  try {
+    const contentEl = document.getElementById('msg-dialog-content');
+    if (!contentEl) return;
+
+    const cached = cachedMessages[msgId];
+    const cacheKey = `msg-content:${eleveId}:${msgId}`;
+
+    // 1. Déjà dans le cache mémoire (champ content de la liste)
+    if (cached?.content) {
+      renderMessageContent(contentEl, cached.content);
+      return;
+    }
+
+    // 2. Cache IndexedDB
+    const direction = cached?.from ? 'received' : 'sent';
+    const mode = direction === 'received' ? 'destinataire' : 'expediteur';
+    const annee = document.getElementById('msg-annee')?.value || '';
+
+    await edCache.load(cacheKey, async () => {
+      const endpoints = [
+        { url: `/v3/eleves/${eleveId}/messages/${msgId}.awp?verbe=get&mode=${mode}`, body: `data=${encodeURIComponent(JSON.stringify({ anneeMessages: annee }))}` },
+        { url: `/v3/eleves/${eleveId}/messages/${msgId}.awp?verbe=get`, body: 'data={}' },
+      ];
+      for (const ep of endpoints) {
+        const resp = await fetch(`${getProxy()}${ep.url}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
+          body: ep.body
+        });
+        const data = await resp.json();
+        if (data.code === 200) {
+          const raw = data.data?.content ?? data.data?.messages?.received?.find(m => m.id === msgId)?.content
+            ?? data.data?.messages?.sent?.find(m => m.id === msgId)?.content ?? data.content ?? '';
+          if (raw) return raw;
+        }
+      }
+      throw new Error('Contenu non disponible');
+    }, {
+      onCached: raw => renderMessageContent(contentEl, raw),
+      onFresh:  raw => renderMessageContent(contentEl, raw),
+      diffFn:   (a, b) => a !== b,
+    }).catch(() => {
+      if (contentEl) contentEl.innerHTML = '<em style="color:var(--text4)">Contenu non disponible pour ce message.</em>';
+    });
+  } catch(e) {
+    const contentEl = document.getElementById('msg-dialog-content');
+    if (contentEl) contentEl.innerHTML = `<em style="color:#b91c1c">Erreur : ${e.message}</em>`;
+  }
+}
+
+function getFileIcon(filename) {
+  const ext = filename.split('.').pop().toLowerCase();
+  const icons = { pdf: '📄', doc: '📝', docx: '📝', xls: '📊', xlsx: '📊', ppt: '📑', pptx: '📑', jpg: '🖼', jpeg: '🖼', png: '🖼', gif: '🖼', zip: '🗜', rar: '🗜', mp4: '🎬', mp3: '🎵' };
+  return icons[ext] || '📎';
+}
+
+async function downloadAttachment(msgId, fileId, filename) {
+  const eleveId = getEleveId();
+  try {
+    const annee = document.getElementById('msg-annee')?.value || '2025-2026';
+    const dlUrl = `${getProxy()}/v3/telechargement.awp?verbe=get&fichierId=${fileId}&leTypeDeFichier=PIECE_JOINTE`;
+    const resp = await fetch(dlUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
+      body: `data=${encodeURIComponent(JSON.stringify({ forceDownload: 0, anneeMessages: annee }))}`
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const blob = await resp.blob();
+    if (!blob.size) throw new Error('Fichier vide');
+    const objUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objUrl;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(objUrl);
+  } catch(e) {
+    alert(`Erreur téléchargement : ${e.message}`);
+  }
+}
+
+function renderMessageContent(el, rawContent) {
+  const decoded = b64d(rawContent);
+  const clean = decoded
+    .replace(/<p[^>]*>/gi, '').replace(/<\/p>/gi, '<br>')
+    .replace(/<br\s*\/?>/gi, '<br>')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&#(\d+);/g, (_, c) => String.fromCharCode(parseInt(c)))
+    .replace(/(<br>\s*){3,}/gi, '<br><br>')
+    .trim();
+  el.innerHTML = clean || '<em style="color:var(--text4)">Contenu vide</em>';
+}
+
+function closeMessageDialog() {}
+
+function renderAbsences(data) {
+  const abs = (data.absencesRetards || []);
+  if (!abs.length) return '<p style="color:var(--text3);font-size:14px">Aucune absence enregistrée.</p>';
+  let html = `<div style="font-weight:500;font-size:14px;margin-bottom:8px">${abs.length} absence(s)</div>`;
+  abs.forEach(a => {
+    const color = a.justifie ? '#15803d' : '#b91c1c';
+    const badge = a.justifie ? 'Justifiée' : 'Non justifiée';
+    const date = (a.displayDate || '').split('\n').join(' ').trim();
+    const motif = (a.motif || '').split('\n').join(' ').trim();
+    const commentaire = (a.commentaire || '').split('\n').join(' ').trim();
+    html += `<div style="padding:8px 10px;border-radius:8px;background:var(--bg3);margin-bottom:6px;font-size:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+        <span style="font-weight:500">${date}</span>
+        <span style="color:${color};font-weight:500;font-size:14px">${badge}</span>
+      </div>
+      ${motif ? `<div style="color:var(--text2)">${motif}</div>` : ''}
+      ${commentaire ? `<div style="color:var(--text3);font-style:italic;margin-top:2px">"${commentaire}"</div>` : ''}
+    </div>`;
+  });
+  return html;
+}
+
+function b64d(s) {
+  try {
+    const binary = atob(s);
+    try {
+      return decodeURIComponent(binary.split('').map(c =>
+        '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
+      ).join(''));
+    } catch { return binary; }
+  } catch { return s; }
+}
+
+function renderData(path, data) {
+  if (!data) return '<em style="color:var(--text3)">Aucune donnée.</em>';
+
+  // EMPLOI DU TEMPS
+  if (path.includes('emploidutemps')) {
+    const jours = {};
+    (Array.isArray(data) ? data : []).forEach(c => {
+      const d = c.start_date.split(' ')[0];
+      if (!jours[d]) jours[d] = [];
+      jours[d].push(c);
+    });
+    const jourNoms = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+    let html = '';
+    Object.keys(jours).sort().forEach(date => {
+      const dt = new Date(date);
+      const label = `${jourNoms[dt.getDay()]} ${dt.getDate()}/${dt.getMonth()+1}`;
+      html += `<div style="margin-bottom:12px"><div style="font-weight:500;font-size:14px;margin-bottom:6px;color:var(--text2)">${label}</div>`;
+      jours[date].sort((a,b)=>a.start_date.localeCompare(b.start_date)).forEach(c => {
+        const hDeb = c.start_date.split(' ')[1].substring(0,5);
+        const hFin = c.end_date.split(' ')[1].substring(0,5);
+        const annule = c.isAnnule ? 'text-decoration:line-through;opacity:0.5;' : '';
+        const dot = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c.color};margin-right:6px;flex-shrink:0"></span>`;
+        html += `<div style="display:flex;align-items:center;padding:5px 8px;border-radius:6px;margin-bottom:3px;background:var(--bg3);${annule}">
+          ${dot}<span style="min-width:80px;color:var(--text3);font-size:14px">${hDeb}–${hFin}</span>
+          <span style="font-weight:500;flex:1">${c.text}</span>
+          <span style="font-size:14px;color:var(--text4)">${c.salle}</span>
+          ${c.prof ? `<span style="font-size:14px;color:var(--text4);margin-left:8px">${c.prof}</span>` : ''}
+          ${c.isAnnule ? '<span style="font-size:14px;color:#e24b4a;margin-left:6px;font-weight:500">ANNULÉ</span>' : ''}
+        </div>`;
+      });
+      html += '</div>';
+    });
+    return html || '<em style="color:var(--text3)">Aucun cours.</em>';
+  }
+
+  // NOTES — géré par renderNotes() / renderNotesTable() / renderNotesChart()
+
+  // MESSAGES
+  if (path.includes('messages') && !path.match(/messages\/\d+/)) {
+    return renderMessages(data);
+  }
+
+  // MESSAGE INDIVIDUEL
+  if (path.match(/messages\/\d+/)) {
+    const from = data.from ? `${data.from.civilite} ${data.from.prenom} ${data.from.nom}` : '?';
+    const to = data.to?.map(t => `${t.civilite} ${t.nom}`).join(', ') || '?';
+    const content = data.content ? b64d(data.content).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g,' ').replace(/&#233;/g,'é').replace(/&#232;/g,'è').replace(/&#224;/g,'à').trim() : '';
+    return `<div style="font-size:14px">
+      <div style="margin-bottom:8px"><strong>${data.subject}</strong></div>
+      <div style="font-size:14px;color:var(--text3);margin-bottom:4px">De : ${from}</div>
+      <div style="font-size:14px;color:var(--text3);margin-bottom:4px">À : ${to}</div>
+      <div style="font-size:14px;color:var(--text3);margin-bottom:12px">${data.date}</div>
+      <div style="background:var(--bg3);border-radius:8px;padding:12px;font-size:14px;line-height:1.6">${content || '<em>Contenu vide</em>'}</div>
+    </div>`;
+  }
+
+  // ABSENCES
+  if (path.includes('viescolaire')) {
+    return renderAbsences(data);
+  }
+
+  // CAHIER DE TEXTES — liste devoirs à faire (sans date)
+  if (path.includes('cahierdetexte') && !path.match(/cahierdetexte\/\d{4}/)) {
+    if (!data || Object.keys(data).length === 0) return '<p style="color:var(--text3);font-size:14px">Aucun devoir à faire.</p>';
+    const btn = document.getElementById('devoirs-hide-done'); const hideDone = btn?.getAttribute('aria-pressed') === 'true';
+    let html = '';
+    const dates = Object.keys(data).sort();
+    dates.forEach((date, dateIdx) => {
+      let devoirs = data[date] || [];
+      if (!devoirs.length) return;
+      if (hideDone) devoirs = devoirs.filter(d => !d.effectue);
+      if (!devoirs.length) return;
+      const dt = new Date(date + 'T00:00:00');
+      const jours = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+      const moisFr = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+      const label = `${jours[dt.getDay()]} ${dt.getDate()} ${moisFr[dt.getMonth()]} ${dt.getFullYear()}`;
+      const bodyId = `devoirs-body-${dateIdx}`;
+      const arrowId = `devoirs-arrow-${dateIdx}`;
+      html += `<div style="margin-bottom:10px">
+        <div onclick="toggleDevoirsDate('${bodyId}','${arrowId}')"
+             style="display:flex;align-items:center;gap:6px;font-weight:500;font-size:14px;margin-bottom:6px;color:var(--text2);cursor:pointer;user-select:none">
+          <span id="${arrowId}" style="font-size:14px;color:var(--text4);transition:transform .15s;display:inline-block;transform:rotate(90deg)">▶</span>
+          ${label}
+          <span style="font-size:14px;font-weight:400;color:var(--text4)">(${devoirs.length})</span>
+        </div>
+        <div id="${bodyId}">`;
+      devoirs.forEach(d => {
+        const fait = d.effectue;
+        const inter = d.interrogation ? '<span style="font-size:14px;background:#fef2f2;color:#b91c1c;padding:2px 6px;border-radius:10px;margin-left:6px">Interro</span>' : '';
+        const dEncoded = encodeURIComponent(JSON.stringify({ matiere: d.matiere, effectue: d.effectue, interrogation: d.interrogation, donneLe: d.donneLe || '', date: date }));
+        html += `<div onclick="openDevoirDialog('${dEncoded}')"
+          style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;background:var(--bg3);border:1px solid var(--border);margin-bottom:4px;font-size:14px;cursor:pointer;transition:background .1s"
+          onmouseover="this.style.background='var(--bg4)'" onmouseout="this.style.background='var(--bg3)'">
+          <span style="font-size:16px">${fait ? '✅' : '📚'}</span>
+          <div style="flex:1">
+            <span style="font-weight:500;color:var(--text)">${d.matiere}</span>${inter}
+            ${d.donneLe ? `<div style="font-size:11px;color:var(--text4)">Donné le ${d.donneLe}</div>` : ''}
+          </div>
+        </div>`;
+      });
+      html += '</div></div>';
+    });
+    return html || '<p style="color:var(--text3);font-size:14px">Aucun devoir à faire.</p>';
+  }
+
+  // CAHIER DE TEXTES — détail d'un jour spécifique
+  if (path.match(/cahierdetexte\/\d{4}/)) {
+    const matieres = data.matieres || [];
+    if (!matieres.length) return '<p style="color:var(--text3);font-size:14px">Aucun contenu pour ce jour.</p>';
+    let html = '';
+    matieres.forEach(m => {
+      const contenuSeance = m.contenu ? b64d(m.contenu).replace(/<[^>]+>/g,' ').replace(/&nbsp;/g,' ').replace(/&#[0-9]+;/g, c => String.fromCharCode(parseInt(c.slice(2,-1)))).trim() : '';
+      html += `<div style="margin-bottom:12px;padding:10px;border-radius:8px;background:var(--bg3);border-left:3px solid var(--border)">
+        <div style="font-weight:500;font-size:14px;margin-bottom:6px">${m.matiere || m.libelleMatiere || ''}</div>`;
+      if (contenuSeance) {
+        html += `<div style="font-size:14px;color:var(--text2);margin-bottom:6px"><span style="font-size:14px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">Contenu de séance</span><br>${contenuSeance}</div>`;
+      }
+      if (m.aFaire && m.aFaire.length) {
+        m.aFaire.forEach(af => {
+          const contenuAF = af.contenu ? b64d(af.contenu).replace(/<[^>]+>/g,' ').replace(/&nbsp;/g,' ').trim() : '';
+          const inter = af.interrogation ? '<span style="font-size:14px;background:#fef2f2;color:#b91c1c;padding:2px 6px;border-radius:10px;margin-left:6px">Interro</span>' : '';
+          html += `<div style="margin-top:6px;padding:6px 8px;border-radius:6px;background:var(--bg3);border:1px solid ${af.effectue?'#bbf7d0':'var(--border)'}">
+            <div style="font-size:14px;font-weight:500;color:var(--text)">📚 À faire${inter}</div>
+            ${contenuAF ? `<div style="font-size:14px;color:var(--text2);margin-top:3px">${contenuAF}</div>` : ''}
+          </div>`;
+        });
+      }
+      html += '</div>';
+    });
+    return html || '<p style="color:var(--text3);font-size:14px">Aucun contenu.</p>';
+  }
+
+  // FALLBACK JSON formaté
+  return `<pre style="font-family:monospace;font-size:14px;white-space:pre-wrap">${JSON.stringify(data, null, 2)}</pre>`;
+}
+
+function copyResult() {
+  if (!lastResult) return;
+  navigator.clipboard.writeText(lastResult).then(() => {
+    const btn = document.querySelector('.copy-btn');
+    btn.textContent = 'Copié !';
+    setTimeout(() => btn.textContent = 'Copier JSON', 2000);
+  });
+}
+
+// ── Gestion des paramètres de sécurité ──────────────────────────
+const SEC_KEY = 'ed_security_rules';
+const SEC_DEFAULTS = [];
+
+function loadSecuritySettings() {
+  try {
+    const saved = localStorage.getItem(SEC_KEY);
+    return saved ? JSON.parse(saved) : [...SEC_DEFAULTS];
+  } catch { return [...SEC_DEFAULTS]; }
+}
+
+function renderSecEntries(rules) {
+  const container = document.getElementById('sec-entries');
+  container.innerHTML = '';
+  rules.forEach((r, i) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 28px;gap:4px;margin-bottom:4px;align-items:center';
+    row.innerHTML = `
+      <input type="text" value="${r.keyword}" placeholder="mot-clé (ex: jour)" data-i="${i}" data-field="keyword"
+        style="height:30px;font-size:14px;border:0.5px solid var(--border);border-radius:6px;padding:0 8px;background:var(--input-bg);color:var(--text)" />
+      <input type="text" value="${r.value}" placeholder="valeur (ex: 17)" data-i="${i}" data-field="value"
+        style="height:30px;font-size:14px;border:0.5px solid var(--border);border-radius:6px;padding:0 8px;background:var(--input-bg);color:var(--text)" />
+      <button onclick="removeSecEntry(${i})" style="height:28px;width:28px;background:none;border:0.5px solid var(--border);border-radius:6px;cursor:pointer;font-size:14px;color:var(--text3);display:flex;align-items:center;justify-content:center">×</button>`;
+    container.appendChild(row);
+  });
+}
+
+function addSecEntry() {
+  const rules = getSecEntriesFromDOM();
+  rules.push({ keyword: '', value: '' });
+  renderSecEntries(rules);
+  // Focus sur le nouveau champ keyword
+  const inputs = document.querySelectorAll('#sec-entries input[data-field="keyword"]');
+  if (inputs.length) inputs[inputs.length - 1].focus();
+}
+
+function removeSecEntry(i) {
+  const rules = getSecEntriesFromDOM();
+  rules.splice(i, 1);
+  renderSecEntries(rules);
+}
+
+function getSecEntriesFromDOM() {
+  const rules = [];
+  document.querySelectorAll('#sec-entries > div').forEach(row => {
+    const kw  = row.querySelector('[data-field="keyword"]').value.trim();
+    const val = row.querySelector('[data-field="value"]').value.trim();
+    rules.push({ keyword: kw, value: val });
+  });
+  return rules;
+}
+
+function toggleSecurityPanel() {
+  const panel = document.getElementById('security-panel');
+  const visible = panel.style.display !== 'none';
+  if (!visible) {
+    renderSecEntries(loadSecuritySettings());
+  }
+  panel.style.display = visible ? 'none' : 'block';
+  document.getElementById('sec-save-msg').style.display = 'none';
+}
+
+function saveSecuritySettings() {
+  const rules = getSecEntriesFromDOM().filter(r => r.keyword && r.value);
+  localStorage.setItem(SEC_KEY, JSON.stringify(rules));
+  const msg = document.getElementById('sec-save-msg');
+  msg.textContent = '✓ Sauvegardé';
+  msg.style.display = 'block';
+  setTimeout(() => { msg.style.display = 'none'; }, 2000);
+}
+
+function resetSecuritySettings() {
+  localStorage.removeItem(SEC_KEY);
+  renderSecEntries([...SEC_DEFAULTS]);
+  const msg = document.getElementById('sec-save-msg');
+  msg.textContent = '✓ Réinitialisé';
+  msg.style.display = 'block';
+  setTimeout(() => { msg.style.display = 'none'; }, 2000);
+}
+
+// Restauration de session — UI seulement, sans appel réseau pour ne pas perturber le GTK
+// Différer restoreSession après que tous les scripts (cache.js inclus) soient chargés
+window.addEventListener('DOMContentLoaded', function restoreSession() {
+  try {
+    const saved = localStorage.getItem('ed_session');
+    if (!saved) return;
+    const s = JSON.parse(saved);
+    if (!s.token || !s.accountData) return;
+    token = s.token;
+    accountData = s.accountData;
+    onLoggedIn(s.accountData);
+    // Vérification silencieuse après 1s — le proxy a eu le temps de démarrer
+    setTimeout(() => {
+      const eleveId = s.accountData.accounts ? s.accountData.accounts[0].id : (s.accountData.id || '');
+      if (!eleveId) return;
+      fetch(`${getProxy()}/v3/eleves/${eleveId}/viescolaire.awp?verbe=get`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': s.token, 'X-ApisVer': '4.75.0' },
+        body: 'data={}'
+      }).then(r => r.json()).then(data => {
+        if (data.code !== 200) { logout(); }
+      }).catch(() => { /* proxy pas dispo, on garde la session */ });
+    }, 1500);
+  } catch(e) { localStorage.removeItem('ed_session'); }
+});
