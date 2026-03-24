@@ -102,12 +102,12 @@
   #message-detail-panel #msg-dialog-content li { background: transparent !important; color: var(--text) !important; }
   #message-detail-panel #msg-dialog-content a { color: #1d4ed8 !important; }
   /* Badges — spécificité maximale pour écraser le reset ci-dessus */
-  #devoir-detail-panel span.devoir-badge { font-size: 11px !important; padding: 2px 8px !important; border-radius: 10px !important; margin-left: 8px !important; font-weight: 500 !important; }
-  #devoir-detail-panel span.devoir-badge.badge-interro { background: #fef2f2 !important; color: #b91c1c !important; }
-  #devoir-detail-panel span.devoir-badge.badge-fait    { background: #f0fdf4 !important; color: #15803d !important; }
+  #devoir-detail-panel span.devoir-badge { font-size: 11px !important; padding: 2px 8px !important; line-height: 24px !important; border-radius: 10px !important; margin-left: 8px !important; font-weight: 500 !important; }
+  #devoir-detail-panel span.devoir-badge.badge-interro { background: #fef2f2 !important; color: #b91c1c !important; line-height: 24px !important }
+  #devoir-detail-panel span.devoir-badge.badge-fait    { background: #f0fdf4 !important; color: #15803d !important; line-height: 24px !important }
   .devoir-badge { background: revert; color: revert; }
-  #devoir-detail-panel .devoir-badge-interro { background: #fef2f2 !important; color: #b91c1c !important; }
-  #devoir-detail-panel .devoir-badge-fait    { background: #f0fdf4 !important; color: #15803d !important; }
+  #devoir-detail-panel .devoir-badge-interro { background: #fef2f2 !important; color: #b91c1c !important; line-height: 24px !important }
+  #devoir-detail-panel .devoir-badge-fait    { background: #f0fdf4 !important; color: #15803d !important; line-height: 24px !important }
 
 
   /* Scrollbars minimalistes */

@@ -630,6 +630,49 @@ function renderDevoirsFromCache() {
   if (container) container.innerHTML = renderData(path, devoirsCache);
 }
 
+async function toggleDevoirEffectue(devoirId, date, currentState) {
+  const eleveId = getEleveId();
+  if (!eleveId || !devoirId) return;
+  const newState = !currentState;
+
+  // Mise à jour optimiste du cache mémoire
+  if (devoirsCache && devoirsCache[date]) {
+    const d = devoirsCache[date].find(d => String(d.id ?? d.idDevoir) === String(devoirId));
+    if (d) d.effectue = newState;
+  }
+  renderDevoirsFromCache();
+
+  // Appel API PUT
+  try {
+    const idNum = parseInt(devoirId, 10);
+    const body = {
+      idDevoirsEffectues:    newState ? [idNum] : [],
+      idDevoirsNonEffectues: newState ? [] : [idNum],
+    };
+    const resp = await fetch(`${getProxy()}/v3/Eleves/${eleveId}/cahierdetexte.awp?verbe=put&v=4.97.0`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'X-Token': token,
+        'X-ApisVer': '4.97.0',
+      },
+      body: `data=${encodeURIComponent(JSON.stringify(body))}`,
+    });
+    const data = await resp.json();
+    if (data.code !== 200) throw new Error(`Code ${data.code}`);
+    // Invalider le cache IndexedDB pour forcer un re-fetch au prochain chargement
+    await edCache.delete(`devoirs:${eleveId}`);
+  } catch(e) {
+    // Rollback si erreur
+    if (devoirsCache && devoirsCache[date]) {
+      const d = devoirsCache[date].find(d => String(d.id ?? d.idDevoir) === String(devoirId));
+      if (d) d.effectue = currentState;
+    }
+    renderDevoirsFromCache();
+    console.error('toggleDevoirEffectue erreur :', e.message);
+  }
+}
+
 async function loadSeances() {
   const eleveId = getEleveId();
   if (!eleveId) return;
@@ -1037,29 +1080,27 @@ function renderNotesChart(periode, allNotes) {
   const periodNotes = allNotes.filter(n => n.codePeriode === periode.codePeriode && !n.nonSignificatif && n.valeur && parseFloat(n.noteSur) > 0);
   if (!periodNotes.length) { document.getElementById('notes-chart').insertAdjacentHTML('afterend','<em style="color:var(--text3);font-size:14px">Pas assez de notes pour afficher le graphique.</em>'); return; }
 
-  // Grouper par matière (sans sous-matières)
+  // Grouper par matière (sans sous-matières) — points élève ET points moyenne classe
   const byMatiere = {};
+  const byMatiereClasse = {};
   periodNotes.forEach(n => {
     if (n.codeSousMatiere) return;
     const key = n.libelleMatiere;
+    const noteSur = parseFloat(n.noteSur) || 20;
+    // Points élève
     if (!byMatiere[key]) byMatiere[key] = [];
-    const val20 = (parseFloat((n.valeur||'').replace(',','.')) / parseFloat(n.noteSur)) * 20;
+    const val20 = (parseFloat((n.valeur||'').replace(',','.')) / noteSur) * 20;
     if (!isNaN(val20)) byMatiere[key].push({ x: n.date, y: Math.round(val20*100)/100, label: n.devoir });
+    // Points moyenne classe par note (normalisés sur 20)
+    if (!byMatiereClasse[key]) byMatiereClasse[key] = [];
+    const moyC = parseFloat((n.moyenneClasse||'').replace(',','.'));
+    if (!isNaN(moyC)) {
+      const moyC20 = noteSur !== 20 ? Math.round((moyC / noteSur) * 20 * 100) / 100 : Math.round(moyC * 100) / 100;
+      byMatiereClasse[key].push({ x: n.date, y: moyC20 });
+    }
   });
 
   const matieres = Object.keys(byMatiere).sort();
-
-  // Collecter les moyennes de classe par matière depuis les disciplines
-  const moyClasse = {};
-  const em = periode.ensembleMatieres || {};
-  (em.disciplines || []).forEach(d => {
-    if (!d.groupeMatiere && !d.sousMatiere && d.libelleMatiere) {
-      moyClasse[d.libelleMatiere] = parseFloat((d.moyenneClasse||'').replace(',','.'));
-    }
-    if (!d.groupeMatiere && !d.sousMatiere && d.discipline) {
-      moyClasse[d.discipline] = parseFloat((d.moyenneClasse||'').replace(',','.'));
-    }
-  });
 
   const datasets = matieres.map((m, i) => ({
     label: m,
@@ -1070,7 +1111,7 @@ function renderNotesChart(periode, allNotes) {
     pointRadius: 5,
     pointHoverRadius: 7,
     borderWidth: 2,
-    _moyClasse: moyClasse[m] || null,
+    _moyClasseData: (byMatiereClasse[m] || []).sort((a,b)=>a.x.localeCompare(b.x)),
     _isSolo: false,
     _isClasseAvg: false,
   }));
@@ -1229,22 +1270,26 @@ function updateSoloState(chart) {
   if (solo !== null) {
     // Recalculer l'index après suppression éventuelle
     const soloDs = ds[solo];
-    if (soloDs && soloDs._moyClasse !== null && !isNaN(soloDs._moyClasse)) {
-      // Créer dataset ligne plate pour la moyenne classe
+    const moyClasseData = soloDs?._moyClasseData || [];
+    if (soloDs && moyClasseData.length > 0) {
+      // Créer dataset courbe moyenne classe, aligné sur allDates
       const allDates = chart.data.labels;
+      const moyByDate = {};
+      moyClasseData.forEach(p => { moyByDate[p.x] = p.y; });
       const classeDs = {
         label: `Classe (${soloDs.label})`,
-        data: allDates.map(() => soloDs._moyClasse),
-        borderColor: 'rgba(150,150,150,0.7)',
+        data: allDates.map(d => moyByDate[d] !== undefined ? moyByDate[d] : null),
+        borderColor: 'rgba(150,150,150,0.8)',
         backgroundColor: 'transparent',
         borderWidth: 1.5,
         borderDash: [4, 4],
-        pointRadius: 0,
-        tension: 0,
+        pointRadius: 3,
+        pointHoverRadius: 5,
+        tension: 0.3,
+        spanGaps: true,
         _isClasseAvg: true,
         _isSolo: false,
-        _moyClasse: null,
-        spanGaps: true,
+        _moyClasseData: [],
       };
       ds.push(classeDs);
     }
@@ -1335,6 +1380,40 @@ function buildChart(datasets, periode) {
   });
   chartInst._activeSolo = null;
   ctx._chart = chartInst;
+
+  // Construire la légende dans #notes-legend
+  chartInst._buildLegend = function() {
+    const legendEl = document.getElementById('notes-legend');
+    if (!legendEl) return;
+    const dark = document.body.classList.contains('dark');
+    legendEl.innerHTML = '';
+    chartInst.data.datasets
+      .filter(ds => !ds._isClasseAvg)
+      .forEach((ds, i) => {
+        const isSolo   = chartInst._activeSolo === i;
+        const isHidden = chartInst._activeSolo !== null && !isSolo;
+        const item = document.createElement('div');
+        item.style.cssText = `
+          display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:6px;
+          cursor:pointer;font-size:12px;transition:background .1s;
+          opacity:${isHidden ? '0.35' : '1'};
+          background:${isSolo ? (dark ? 'var(--bg4)' : 'var(--bg3)') : 'transparent'};
+        `;
+        item.onmouseover = () => { if (!isSolo) item.style.background = dark ? 'var(--bg3)' : 'var(--bg4)'; };
+        item.onmouseout  = () => { if (!isSolo) item.style.background = 'transparent'; };
+        item.onclick = () => {
+          chartInst._activeSolo = isSolo ? null : i;
+          updateSoloState(chartInst);
+        };
+        item.innerHTML = `
+          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;
+            background:${ds.borderColor};flex-shrink:0"></span>
+          <span style="color:var(--text);line-height:1.3">${ds.label}</span>
+        `;
+        legendEl.appendChild(item);
+      });
+  };
+  chartInst._buildLegend();
 }
 
 async function forceRefresh(tab) {
@@ -1852,16 +1931,23 @@ async function downloadAttachment(msgId, fileId, filename) {
   }
 }
 
+function decodeHtmlEntities(html) {
+  // Laisser le navigateur décoder toutes les entités HTML nativement
+  // (nommées : &oelig; &eacute; etc., décimales : &#339; et hexadécimales : &#x153;)
+  const ta = document.createElement('textarea');
+  ta.innerHTML = html;
+  return ta.value;
+}
+
 function renderMessageContent(el, rawContent) {
   const decoded = b64d(rawContent);
   const clean = decoded
     .replace(/<p[^>]*>/gi, '').replace(/<\/p>/gi, '<br>')
     .replace(/<br\s*\/?>/gi, '<br>')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&#(\d+);/g, (_, c) => String.fromCharCode(parseInt(c)))
     .replace(/(<br>\s*){3,}/gi, '<br><br>')
     .trim();
-  el.innerHTML = clean || '<em style="color:var(--text4)">Contenu vide</em>';
+  // Décoder les entités HTML résiduelles (&nbsp; &oelig; &#339; &#x153; etc.)
+  el.innerHTML = decodeHtmlEntities(clean) || '<em style="color:var(--text4)">Contenu vide</em>';
 }
 
 function closeMessageDialog() {}
@@ -1987,15 +2073,27 @@ function renderData(path, data) {
         <div id="${bodyId}">`;
       devoirs.forEach(d => {
         const fait = d.effectue;
+        const dId  = d.id ?? d.idDevoir ?? '';
         const inter = d.interrogation ? '<span style="font-size:14px;background:#fef2f2;color:#b91c1c;padding:2px 6px;border-radius:10px;margin-left:6px">Interro</span>' : '';
         const dEncoded = encodeURIComponent(JSON.stringify({ matiere: d.matiere, effectue: d.effectue, interrogation: d.interrogation, donneLe: d.donneLe || '', date: date }));
-        html += `<div onclick="openDevoirDialog('${dEncoded}')"
-          style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;background:var(--bg3);border:1px solid var(--border);margin-bottom:4px;font-size:14px;cursor:pointer;transition:background .1s"
-          onmouseover="this.style.background='var(--bg4)'" onmouseout="this.style.background='var(--bg3)'">
-          <span style="font-size:16px">${fait ? '✅' : '📚'}</span>
-          <div style="flex:1">
-            <span style="font-weight:500;color:var(--text)">${d.matiere}</span>${inter}
-            ${d.donneLe ? `<div style="font-size:11px;color:var(--text4)">Donné le ${d.donneLe}</div>` : ''}
+        const badgeFg  = fait ? '#15803d' : 'var(--text3)';
+        const badgeTxt = fait ? '✅' : '○';
+        const badgeTip = fait ? 'Marquer comme non fait' : 'Marquer comme fait';
+        html += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+          <button
+            onclick="event.stopPropagation();toggleDevoirEffectue('${dId}','${date}',${fait})"
+            title="${badgeTip}"
+            style="flex-shrink:0;width:28px;height:28px;border-radius:50%;border:1px solid var(--border);background:rgba(220,252,231,0);color:${badgeFg};font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:opacity .15s"
+            onmouseover="this.style.opacity='0.6'" onmouseout="this.style.opacity='1'">
+            ${badgeTxt}
+          </button>
+          <div onclick="openDevoirDialog('${dEncoded}')"
+            style="flex:1;display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;background:var(--bg3);border:1px solid var(--border);font-size:14px;cursor:pointer;transition:background .1s"
+            onmouseover="this.style.background='var(--bg4)'" onmouseout="this.style.background='var(--bg3)'">
+            <div style="flex:1">
+              <span style="font-weight:500;color:var(--text)">${d.matiere}</span>${inter}
+              ${d.donneLe ? `<div style="font-size:11px;color:var(--text4)">Donné le ${d.donneLe}</div>` : ''}
+            </div>
           </div>
         </div>`;
       });
