@@ -172,6 +172,7 @@ const server = https.createServer(sslOptions, async (req, res) => {
       const extraHeaders = {};
       if (req.headers['x-token'])    extraHeaders['X-Token']    = req.headers['x-token'];
       if (req.headers['2fa-token'])  extraHeaders['2fa-token']  = req.headers['2fa-token'];
+      if (req.headers['x-gtk'])      extraHeaders['X-Gtk']      = req.headers['x-gtk'];
       // Pour les PJ en GET, récupérer le token depuis le query string si absent du header
       if (targetPath.includes('/pj/')) {
         const qs = new URLSearchParams(parsedUrl.search || '');
@@ -239,6 +240,7 @@ server.listen(PORT, '127.0.0.1', async () => {
   logAlways(`\n✅  Proxy Mon EcoleDirecte démarré sur https://localhost:${PORT}${DEBUG ? ' [MODE DEBUG]' : ''}\n`);
   if (DEBUG) {
     logAlways(CYAN('  Logs activés : URL, body, réponse, GTK, durée'));
+    logAlways(GRAY('  GTK initial: ') + (session.gtk ? GREEN(session.gtk.substring(0,20)+'...') : RED('VIDE')));
     logAlways(GRAY('  ─────────────────────────────────────────────'));
   }
   await initSession();

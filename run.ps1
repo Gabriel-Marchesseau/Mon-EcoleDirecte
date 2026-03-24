@@ -43,9 +43,11 @@ Write-OK "Environnement pret"
 
 # ── 2. Gestion du proxy existant ─────────────────────────────
 $portInUse = Get-NetTCPConnection -LocalPort 3131 -ErrorAction SilentlyContinue
+$skipLaunch = $false
+
 if ($portInUse) {
     if ($debug) {
-        # En mode debug : arrêter l'ancien proxy pour relancer en fenêtre visible
+        # En mode debug : arreter l'ancien proxy pour relancer en fenetre visible
         Write-Step "Arret du proxy existant pour relancer en mode debug..."
         try {
             Stop-Process -Id $portInUse.OwningProcess -Force -ErrorAction SilentlyContinue
@@ -54,14 +56,12 @@ if ($portInUse) {
         Write-OK "Proxy precedent arrete"
     } else {
         Write-OK "Le proxy tourne deja sur le port 3131"
-        goto_open = $true
+        $skipLaunch = $true
     }
-} else {
-    $goto_open = $false
 }
 
 # ── 3. Lancer le proxy ───────────────────────────────────────
-if (-not $goto_open) {
+if (-not $skipLaunch) {
     $nodemonPath = "$DIR\node_modules\.bin\nodemon.cmd"
 
     if ($debug) {

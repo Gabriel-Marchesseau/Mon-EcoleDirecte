@@ -804,7 +804,11 @@ function renderNotes() {
       if (arrow) arrow.style.transform = 'rotate(90deg)';
     }
   } else {
-    container.innerHTML = '<canvas id="notes-chart" style="width:100%;max-height:420px"></canvas>';
+    container.innerHTML = `
+      <div style="display:flex;gap:16px;flex:1;min-height:0;overflow:hidden">
+        <div id="notes-legend" style="min-width:160px;max-width:200px;overflow-y:auto;padding-right:4px;display:flex;flex-direction:column;gap:4px"></div>
+        <div style="flex:1;min-width:0;position:relative"><canvas id="notes-chart" style="width:100%;max-height:420px"></canvas></div>
+      </div>`;
     renderNotesChart(periode, notes);
   }
 }
@@ -1253,6 +1257,7 @@ function updateSoloState(chart) {
   });
 
   chart.update();
+  if (chart._buildLegend) chart._buildLegend();
 }
 
 const CHART_COLORS_DARK = ['#f87171','#34d399','#60a5fa','#fbbf24','#a78bfa','#f472b6','#2dd4bf','#86efac','#818cf8','#fb923c','#38bdf8','#4ade80'];
@@ -1309,37 +1314,7 @@ function buildChart(datasets, periode) {
         }
       },
       plugins: {
-        legend: {
-          position: 'bottom',
-          labels: {
-            font: { size: 11 },
-            boxWidth: 14,
-            padding: 12,
-            color: dark ? '#ccc' : '#1a1a1a',
-            generateLabels(chart) {
-              const active = chart._activeSolo;
-              return Chart.defaults.plugins.legend.labels.generateLabels(chart).map(item => {
-                // Bug fix : au départ _activeSolo est null donc tout visible
-                const isVisible = (active === null) || (active === item.datasetIndex);
-                return {
-                  ...item,
-                  fontColor: isVisible ? '#1a1a1a' : '#bbb',
-                  strokeStyle: isVisible ? item.strokeStyle : '#ddd',
-                  fillStyle: isVisible ? item.fillStyle : '#ddd',
-                };
-              });
-            }
-          },
-          onClick(e, legendItem, legend) {
-            const chart = legend.chart;
-            if (chart._activeSolo === legendItem.datasetIndex) {
-              chart._activeSolo = null;
-            } else {
-              chart._activeSolo = legendItem.datasetIndex;
-            }
-            updateSoloState(chart);
-          }
-        },
+        legend: { display: false },
         tooltip: {
           mode: 'index',
           intersect: false,
