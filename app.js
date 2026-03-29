@@ -371,6 +371,107 @@ function openEdtDialog(encodedData) {
   document.body.appendChild(overlay);
 }
 
+function openNoteDialog(encodedData) {
+  const n = JSON.parse(decodeURIComponent(encodedData));
+  const dark = document.body.classList.contains('dark');
+  const dlgBg     = dark ? '#242424' : '#fff';
+  const dlgText   = dark ? '#f0f0ee' : '#1a1a1a';
+  const dlgBorder = dark ? '#333'    : '#f0f0ee';
+  const dlgSub    = dark ? '#888'    : '#888';
+
+  // Calculs note
+  const noteSur  = parseFloat(n.noteSur) || 20;
+  const nVal     = parseFloat((n.valeur||'').replace(',','.'));
+  const nMoyC    = parseFloat((n.moyenneClasse||'').replace(',','.'));
+  const nMin     = parseFloat((n.minClasse||'').replace(',','.'));
+  const nMax     = parseFloat((n.maxClasse||'').replace(',','.'));
+  const nVal20   = noteSur !== 20 ? nVal * 20 / noteSur : nVal;
+  const nMoyC20  = !isNaN(nMoyC) && noteSur !== 20 ? nMoyC * 20 / noteSur : nMoyC;
+  const noteColor = isNaN(nVal20) ? dlgText : nVal20 < 10 ? '#b91c1c' : (!isNaN(nMoyC20) && nVal20 >= nMoyC20) ? '#15803d' : '#ca8a04';
+
+  // Couleurs et labels compétences
+  const COMP_COLORS       = ['#b91c1c','#ca8a04','#1d4ed8','#15803d'];
+  const COMP_LABEL_COLORS = dark
+    ? ['#fca5a5','#fcd34d','#93c5fd','#6ee7b7']
+    : ['#b91c1c','#ca8a04','#1d4ed8','#15803d'];
+  const COMP_BG     = dark
+    ? ['#3a1a1a','#2e2408','#1e3a5f','#1a3a2a']
+    : ['#fef2f2','#fffbeb','#eff6ff','#f0fdf4'];
+  const COMP_LABELS = ['Non atteints','Partiellement atteints','Atteints','Dépassés'];
+
+  // Section compétences
+  const elems = n.elementsProgramme || [];
+  let compsHtml = '';
+  if (elems.length) {
+    compsHtml = `
+      <div style="margin-top:14px;border-top:1px solid ${dlgBorder};padding-top:12px">
+        <div style="font-size:11px;font-weight:600;color:${dlgSub};text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">
+          Bilan des compétences
+        </div>
+        ${elems.map(e => {
+          const idx    = Math.min(Math.max(parseInt(e.valeur) - 1, 0), 3);
+          const color  = COMP_COLORS[idx];
+          const labelColor = COMP_LABEL_COLORS[idx];
+          const bg     = COMP_BG[idx];
+          const label  = COMP_LABELS[idx];
+          const titre  = e.libelleCompetence || '';
+          const descr  = e.descriptif || '';
+          return `<div style="margin-bottom:8px;padding:8px 10px;border-radius:8px;background:${bg};border-left:3px solid ${color}">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:${descr?'4px':'0'}">
+              <span style="font-size:13px;font-weight:500;color:${dlgText};line-height:1.4">${titre}</span>
+              <span style="flex-shrink:0;font-size:11px;font-weight:600;color:${labelColor};white-space:nowrap">${label}</span>
+            </div>
+            ${descr ? `<div style="font-size:12px;color:${dlgSub};line-height:1.4">${descr}</div>` : ''}
+          </div>`;
+        }).join('')}
+      </div>`;
+  }
+
+  // Infos note
+  const rows = [
+    { label: 'Date',          value: n.date || '—' },
+    { label: 'Matière',       value: n.discipline || n.libelleMatiere || '—' },
+    n.libelleMatiere && n.libelleMatiere !== n.discipline
+      ? { label: 'Sous-matière', value: n.libelleMatiere }
+      : null,
+    { label: 'Devoir',        value: n.devoir || '—' },
+    { label: 'Coefficient',   value: n.coef || '—' },
+    { label: 'Min. classe',   value: isNaN(nMin)  ? '—' : nMin },
+    { label: 'Moy. classe',   value: isNaN(nMoyC) ? '—' : nMoyC },
+    { label: 'Max. classe',   value: isNaN(nMax)  ? '—' : nMax },
+    n.nonSignificatif ? { label: 'Remarque', value: 'Note non significative' } : null,
+  ].filter(Boolean);
+
+  const rowsHtml = rows.map(r =>
+    `<div style="display:flex;align-items:baseline;gap:8px;padding:5px 0;border-bottom:1px solid ${dlgBorder}">
+      <span style="font-size:13px;color:${dlgSub};min-width:110px;flex-shrink:0">${r.label}</span>
+      <span style="font-size:13px;color:${dlgText};font-weight:500">${r.value}</span>
+    </div>`
+  ).join('');
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1000;display:flex;align-items:center;justify-content:center;padding:2rem;overflow-y:auto';
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+
+  const dialog = document.createElement('div');
+  dialog.style.cssText = `background:${dlgBg};color:${dlgText};border-radius:12px;padding:1.25rem;max-width:440px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.35);position:relative;max-height:90vh;overflow-y:auto`;
+  dialog.onclick = e => e.stopPropagation();
+  dialog.innerHTML = `
+    <button onclick="this.closest('.note-dialog-overlay').remove()"
+      style="position:absolute;top:10px;right:12px;background:none;border:none;cursor:pointer;font-size:20px;color:${dark?'#666':'#aaa'};line-height:1">×</button>
+    <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:14px;padding-right:24px">
+      <span style="font-weight:700;font-size:22px;color:${noteColor}">${n.valeur}</span>
+      <span style="font-size:14px;color:${dlgSub}">/ ${n.noteSur}</span>
+      <span style="flex:1;font-size:14px;font-weight:500;color:${dlgText};margin-left:4px">${n.devoir || ''}</span>
+    </div>
+    ${rowsHtml}
+    ${compsHtml}`;
+
+  overlay.classList.add('note-dialog-overlay');
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+}
+
 function cleanHtml(s) {
   if (!s) return '';
   let result = s
@@ -404,14 +505,29 @@ function cleanHtml(s) {
   return result;
 }
 
-async function openDevoirDialog(encodedData) {
+async function openDevoirDialog(encodedData, triggerEl) {
   const d = JSON.parse(decodeURIComponent(encodedData));
   const dark = document.body.classList.contains('dark');
   const panel = document.getElementById('devoir-detail-panel');
   if (!panel) return;
 
+  // Sélection visuelle dans la liste
+  document.querySelectorAll('[data-devoir-key]').forEach(el => {
+    el.classList.remove('devoir-selected');
+    el.style.background = 'var(--bg3)';
+    el.style.boxShadow = '';
+  });
+  if (triggerEl) {
+    triggerEl.classList.add('devoir-selected');
+    triggerEl.style.background = dark ? 'var(--bg4)' : '#e0e7ff';
+    triggerEl.style.boxShadow = 'inset 3px 0 0 #1d4ed8';
+  }
+
   const inter = d.interrogation ? '<span class="devoir-badge-interro" style="font-size:14px;padding:2px 8px;border-radius:10px;margin-left:8px">Interro</span>' : '';
   const fait  = d.effectue ? '<span class="devoir-badge-fait" style="font-size:14px;padding:2px 8px;border-radius:10px;margin-left:8px">Fait ✅</span>' : '';
+
+  // Pièces jointes connues depuis le cache liste (d.documents)
+  const docsFromList = d.documents || [];
 
   // Affichage immédiat avec spinner
   panel.style.alignItems = 'flex-start';
@@ -428,6 +544,21 @@ async function openDevoirDialog(encodedData) {
   const eleveId = getEleveId();
   const cacheKey = `devoirs-detail:${eleveId}:${d.date}`;
 
+  const renderDocs = (docs) => {
+    if (!docs || !docs.length) return '';
+    return `<div style="margin-top:10px;padding:8px 10px;background:var(--bg3);border-radius:8px;border:1px solid var(--border)">
+      <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Pièces jointes (${docs.length})</div>
+      ${docs.map(doc => `
+        <div onclick="downloadDevoirDoc(${doc.id},'${(doc.libelle||doc.name||'document').replace(/'/g,"\'")}')"
+          style="display:flex;align-items:center;gap:6px;padding:4px;border-radius:4px;cursor:pointer;font-size:13px"
+          onmouseover="this.style.background='var(--bg4)'" onmouseout="this.style.background='transparent'">
+          <span>${getFileIcon(doc.libelle||doc.name||'')}</span>
+          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${doc.libelle||doc.name||'Document'}</span>
+          <span style="font-size:12px;color:var(--text4)">↓</span>
+        </div>`).join('')}
+    </div>`;
+  };
+
   const renderDetail = (dayData) => {
     const contentEl = document.getElementById('devoir-detail-content');
     if (!contentEl) return;
@@ -436,14 +567,42 @@ async function openDevoirDialog(encodedData) {
     if (!matiere) { contentEl.innerHTML = `<span style="color:var(--text4)">Aucun détail.</span>`; return; }
     const contenu = matiere.contenu ? cleanHtml(b64d(matiere.contenu)) : '';
     const aFaireArr = Array.isArray(matiere.aFaire) ? matiere.aFaire : (matiere.aFaire ? [matiere.aFaire] : []);
+
+    // Collecter tous les documents de tous les aFaire + niveau matière
+    const allDocs = [
+      ...(matiere.documents || []),
+      ...aFaireArr.flatMap(af => af.documents || []),
+    ];
+
+    // Mettre à jour le badge PJ dans la liste si des docs ont été trouvés
+    if (allDocs.length && triggerEl) {
+      const devoirKey = triggerEl.dataset.devoirKey;
+      const listItem = document.querySelector(`[data-devoir-key="${devoirKey}"]`);
+      if (listItem && !listItem.querySelector('.pj-badge')) {
+        const badge = document.createElement('span');
+        badge.className = 'pj-badge';
+        badge.style.cssText = 'font-size:11px;color:#1d4ed8;margin-left:6px';
+        badge.textContent = `📎${allDocs.length}`;
+        const nameSpan = listItem.querySelector('span[style*="font-weight:500"]');
+        if (nameSpan) nameSpan.insertAdjacentElement('afterend', badge);
+      }
+    }
+
     const aFaireItems = aFaireArr.map(af => {
       const texte = af.contenu ? cleanHtml(b64d(af.contenu)) : '';
-      return texte ? `<div style="padding:8px;border-radius:6px;background:var(--bg3);border:1px solid var(--border);margin-top:6px;line-height:1.6">${texte}</div>` : '';
+      const afDocs = af.documents || [];
+      const docsHtml = renderDocs(afDocs);
+      return (texte || docsHtml) ? `<div style="padding:8px;border-radius:6px;background:var(--bg3);border:1px solid var(--border);margin-top:6px;line-height:1.6">
+        ${texte}${docsHtml}
+      </div>` : '';
     }).join('');
+    // Documents au niveau de la matière (non liés à un aFaire spécifique)
+    const matDocs = matiere.documents || [];
     contentEl.innerHTML = `
-      ${contenu ? `<div style="margin-bottom:10px"><div style="font-size:14px;font-weight:600;color:var(--text4);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Contenu de séance</div><div style="line-height:1.6">${contenu}</div></div>` : ''}
-      ${aFaireItems ? `<div><div style="font-size:14px;font-weight:600;color:var(--text4);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">À faire</div>${aFaireItems}</div>` : ''}
-      ${!contenu && !aFaireItems ? '<span style="color:var(--text4)">Aucun détail disponible.</span>' : ''}`;
+      ${contenu ? `<div style="margin-bottom:10px"><div style="font-size:11px;font-weight:600;color:var(--text4);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Contenu de séance</div><div style="line-height:1.6">${contenu}</div></div>` : ''}
+      ${aFaireItems ? `<div><div style="font-size:11px;font-weight:600;color:var(--text4);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">À faire</div>${aFaireItems}</div>` : ''}
+      ${matDocs.length ? renderDocs(matDocs) : ''}
+      ${!contenu && !aFaireItems && !matDocs.length ? '<span style="color:var(--text4)">Aucun détail disponible.</span>' : ''}`;
   };
 
   await edCache.load(cacheKey, async () => {
@@ -628,6 +787,41 @@ function renderDevoirsFromCache() {
   const path = `/v3/Eleves/${getEleveId()}/cahierdetexte.awp?verbe=get`;
   const container = document.getElementById('devoirs-result');
   if (container) container.innerHTML = renderData(path, devoirsCache);
+}
+
+async function toggleDevoirEffectue(devoirId, date, currentState) {
+  const eleveId = getEleveId();
+  if (!eleveId || !devoirId) return;
+  const newState = !currentState;
+
+  if (devoirsCache && devoirsCache[date]) {
+    const d = devoirsCache[date].find(d => String(d.id ?? d.idDevoir) === String(devoirId));
+    if (d) d.effectue = newState;
+  }
+  renderDevoirsFromCache();
+
+  try {
+    const idNum = parseInt(devoirId, 10);
+    const body = {
+      idDevoirsEffectues:    newState ? [idNum] : [],
+      idDevoirsNonEffectues: newState ? [] : [idNum],
+    };
+    const resp = await fetch(`${getProxy()}/v3/Eleves/${eleveId}/cahierdetexte.awp?verbe=put&v=4.97.0`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.0' },
+      body: `data=${encodeURIComponent(JSON.stringify(body))}`,
+    });
+    const data = await resp.json();
+    if (data.code !== 200) throw new Error(`Code ${data.code}`);
+    await edCache.delete(`devoirs:${eleveId}`);
+  } catch(e) {
+    if (devoirsCache && devoirsCache[date]) {
+      const d = devoirsCache[date].find(d => String(d.id ?? d.idDevoir) === String(devoirId));
+      if (d) d.effectue = currentState;
+    }
+    renderDevoirsFromCache();
+    console.error('toggleDevoirEffectue erreur :', e.message);
+  }
 }
 
 async function toggleDevoirEffectue(devoirId, date, currentState) {
@@ -1012,7 +1206,17 @@ function renderNotesTable(periode, allNotes) {
       const nVal20  = noteSur !== 20 ? nVal * 20 / noteSur : nVal;
       const nMoyC20 = !isNaN(nMoyC) && noteSur !== 20 ? nMoyC * 20 / noteSur : nMoyC;
       const noteColor = isNaN(nVal20) ? 'var(--text)' : nVal20 < 10 ? '#b91c1c' : (!isNaN(nMoyC20) && nVal20 >= nMoyC20) ? '#15803d' : '#ca8a04';
-      html += `<div class="note-row" style="display:flex;align-items:center;gap:8px;padding:5px 0 5px 6px;border-bottom:1px solid var(--border2);font-size:14px">
+      const nEncoded = encodeURIComponent(JSON.stringify({
+        date: n.date, valeur: n.valeur, noteSur: n.noteSur, devoir: n.devoir,
+        libelleMatiere: n.libelleMatiere, codeMatiere: n.codeMatiere,
+        discipline: codeToDisc[n.codeMatiere] || n.libelleMatiere || '',
+        coef: n.coef, moyenneClasse: n.moyenneClasse,
+        minClasse: n.minClasse, maxClasse: n.maxClasse,
+        nonSignificatif: n.nonSignificatif,
+        elementsProgramme: n.elementsProgramme || [],
+      }));
+      html += `<div class="note-row" onclick="openNoteDialog('${nEncoded}')"
+        style="display:flex;align-items:center;gap:8px;padding:5px 0 5px 6px;border-bottom:1px solid var(--border2);font-size:14px;cursor:pointer">
         <span style="color:var(--text4);min-width:70px;">${n.date}</span>
         <span style="min-width:140px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${codeToDisc[n.codeMatiere] || n.libelleMatiere || ''}</span>
         <span style="min-width:205px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(() => { const parent = codeToDisc[n.codeMatiere] || ''; return (n.libelleMatiere && n.libelleMatiere !== parent) ? n.libelleMatiere : '—'; })()}</span>
@@ -1939,6 +2143,28 @@ function decodeHtmlEntities(html) {
   return ta.value;
 }
 
+async function downloadDevoirDoc(fileId, filename) {
+  try {
+    const dlUrl = `${getProxy()}/v3/telechargement.awp?verbe=get&fichierId=${fileId}&leTypeDeFichier=CLOUD_ELEVE`;
+    const resp = await fetch(dlUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
+      body: `data=${encodeURIComponent(JSON.stringify({ forceDownload: 0 }))}`
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const blob = await resp.blob();
+    if (!blob.size) throw new Error('Fichier vide');
+    const objUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objUrl;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(objUrl);
+  } catch(e) {
+    alert(`Erreur téléchargement : ${e.message}`);
+  }
+}
+
 function renderMessageContent(el, rawContent) {
   const decoded = b64d(rawContent);
   const clean = decoded
@@ -2074,8 +2300,11 @@ function renderData(path, data) {
       devoirs.forEach(d => {
         const fait = d.effectue;
         const dId  = d.id ?? d.idDevoir ?? '';
+        const dKey = `${date}-${dId}`;
         const inter = d.interrogation ? '<span style="font-size:14px;background:#fef2f2;color:#b91c1c;padding:2px 6px;border-radius:10px;margin-left:6px">Interro</span>' : '';
-        const dEncoded = encodeURIComponent(JSON.stringify({ matiere: d.matiere, effectue: d.effectue, interrogation: d.interrogation, donneLe: d.donneLe || '', date: date }));
+        const docs  = d.documents || [];
+        const pjBadge = docs.length ? `<span style="font-size:11px;color:#1d4ed8;margin-left:6px">📎${docs.length}</span>` : '';
+        const dEncoded = encodeURIComponent(JSON.stringify({ matiere: d.matiere, effectue: d.effectue, interrogation: d.interrogation, donneLe: d.donneLe || '', date: date, documents: docs }));
         const badgeFg  = fait ? '#15803d' : 'var(--text3)';
         const badgeTxt = fait ? '✅' : '○';
         const badgeTip = fait ? 'Marquer comme non fait' : 'Marquer comme fait';
@@ -2087,11 +2316,11 @@ function renderData(path, data) {
             onmouseover="this.style.opacity='0.6'" onmouseout="this.style.opacity='1'">
             ${badgeTxt}
           </button>
-          <div onclick="openDevoirDialog('${dEncoded}')"
-            style="flex:1;display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;background:var(--bg3);border:1px solid var(--border);font-size:14px;cursor:pointer;transition:background .1s"
-            onmouseover="this.style.background='var(--bg4)'" onmouseout="this.style.background='var(--bg3)'">
+          <div data-devoir-key="${dKey}" onclick="openDevoirDialog('${dEncoded}',this)"
+            style="flex:1;display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;background:var(--bg3);border:1px solid var(--border);font-size:14px;cursor:pointer;transition:background .1s,box-shadow .1s"
+            onmouseover="if(!this.classList.contains('devoir-selected'))this.style.background='var(--bg4)'" onmouseout="if(!this.classList.contains('devoir-selected'))this.style.background='var(--bg3)'">
             <div style="flex:1">
-              <span style="font-weight:500;color:var(--text)">${d.matiere}</span>${inter}
+              <span style="font-weight:500;color:var(--text)">${d.matiere}</span>${inter}${pjBadge}
               ${d.donneLe ? `<div style="font-size:11px;color:var(--text4)">Donné le ${d.donneLe}</div>` : ''}
             </div>
           </div>
