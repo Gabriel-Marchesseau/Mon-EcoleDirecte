@@ -944,6 +944,8 @@ async function loadDevoirs() {
     if (spinner) spinner.style.display = 'none';
     updateFreshnessLabel('devoirs', Date.now());
     if (isFresh && oldData && edCache.defaultDiff(oldData, data)) setBadge('devoirs', 1);
+    // Enrichir les badges PJ en arrière-plan sans bloquer l'affichage
+    enrichDevoirsWithDocs(eleveId, data);
   };
 
   await edCache.load(cacheKey, async () => {
@@ -964,6 +966,58 @@ async function loadDevoirs() {
     container.innerHTML = `<p style="color:#b91c1c;font-size:14px">Erreur : ${e.message}</p>`;
     if (spinner) spinner.style.display = 'none';
   });
+}
+
+// Précharge en arrière-plan les détails par jour pour afficher les badges PJ
+// sans bloquer le rendu initial. Utilise le cache IndexedDB si disponible.
+async function enrichDevoirsWithDocs(eleveId, listData) {
+  const dates = Object.keys(listData || {});
+  let changed = false;
+  await Promise.all(dates.map(async date => {
+    try {
+      const cacheKey = `devoirs-detail:${eleveId}:${date}`;
+      let dayData = null;
+      // Lire le cache IndexedDB d'abord
+      const cached = await edCache.get(cacheKey);
+      if (cached) {
+        dayData = cached.data;
+      } else {
+        // Fetch silencieux
+        const resp = await fetch(`${getProxy()}/v3/Eleves/${eleveId}/cahierdetexte/${date}.awp?verbe=get`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
+          body: 'data={}'
+        });
+        const json = await resp.json();
+        if (json.code === 200) {
+          dayData = json.data;
+          await edCache.set(cacheKey, dayData);
+        }
+      }
+      if (!dayData) return;
+      // Construire un map matiere → docs depuis les aFaire
+      const matieres = dayData.matieres || [];
+      matieres.forEach(m => {
+        const aFaireArr = Array.isArray(m.aFaire) ? m.aFaire : (m.aFaire ? [m.aFaire] : []);
+        const allDocs = [
+          ...(m.documents || []),
+          ...aFaireArr.flatMap(af => af.documents || []),
+        ];
+        if (!allDocs.length) return;
+        const matiereUp = (m.matiere || m.libelleMatiere || '').toUpperCase();
+        // Trouver le devoir correspondant dans devoirsCache
+        const devoir = (devoirsCache?.[date] || []).find(
+          d => (d.matiere || '').toUpperCase() === matiereUp
+        );
+        if (devoir && (!devoir.documents || !devoir.documents.length)) {
+          devoir.documents = allDocs;
+          changed = true;
+        }
+      });
+    } catch(e) { /* silencieux — les badges resteront vides pour cette date */ }
+  }));
+  // Re-rendre la liste uniquement si des docs ont été trouvés
+  if (changed) renderDevoirsFromCache();
 }
 
 async function loadNotes() {
@@ -1214,7 +1268,7 @@ function renderNotesTable(periode, allNotes) {
         minClasse: n.minClasse, maxClasse: n.maxClasse,
         nonSignificatif: n.nonSignificatif,
         elementsProgramme: n.elementsProgramme || [],
-      }));
+      })).replace(/'/g, '%27');
       html += `<div class="note-row" onclick="openNoteDialog('${nEncoded}')"
         style="display:flex;align-items:center;gap:8px;padding:5px 0 5px 6px;border-bottom:1px solid var(--border2);font-size:14px;cursor:pointer">
         <span style="color:var(--text4);min-width:70px;">${n.date}</span>
@@ -1785,7 +1839,7 @@ function renderEdtGrid(cours, monday) {
         fin: c.end_date.split(' ')[1].substring(0,5),
         annule: c.isAnnule, modifie: c.isModifie,
         color: c.color, type: c.typeCours || ''
-      }));
+      })).replace(/'/g, '%27');
       dayCols += `<div class="edt-event${c.isAnnule?' annule':''}" onclick="openEdtDialog('${cData}')" style="top:${topPx}px;height:${hPx}px;background:${bg};border-left:3px solid ${c.isAnnule?'var(--border)':c.color};cursor:pointer">
         <div class="edt-event-name" style="color:${fg}">${c.text}</div>
         ${hPx > 28 ? `<div class="edt-event-detail" style="color:${fg}">${c.salle || ''}</div>` : ''}
@@ -2303,8 +2357,8 @@ function renderData(path, data) {
         const dKey = `${date}-${dId}`;
         const inter = d.interrogation ? '<span style="font-size:14px;background:#fef2f2;color:#b91c1c;padding:2px 6px;border-radius:10px;margin-left:6px">Interro</span>' : '';
         const docs  = d.documents || [];
-        const pjBadge = docs.length ? `<span style="font-size:11px;color:#1d4ed8;margin-left:6px">📎${docs.length}</span>` : '';
-        const dEncoded = encodeURIComponent(JSON.stringify({ matiere: d.matiere, effectue: d.effectue, interrogation: d.interrogation, donneLe: d.donneLe || '', date: date, documents: docs }));
+        const pjBadge = docs.length ? `<span class="pj-badge" style="font-size:11px;color:var(--text2);margin-left:6px">📎 ${docs.length}</span>` : '';
+        const dEncoded = encodeURIComponent(JSON.stringify({ matiere: d.matiere, effectue: d.effectue, interrogation: d.interrogation, donneLe: d.donneLe || '', date: date, documents: docs })).replace(/'/g, '%27');
         const badgeFg  = fait ? '#15803d' : 'var(--text3)';
         const badgeTxt = fait ? '✅' : '○';
         const badgeTip = fait ? 'Marquer comme non fait' : 'Marquer comme fait';
