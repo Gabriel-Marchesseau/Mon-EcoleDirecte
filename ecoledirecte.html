@@ -132,12 +132,22 @@
 
     <!-- Panel Contenus de séances -->
     <div class="tab-panel" id="panel-seances">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-        <input type="date" id="seances-date" style="font-size:14px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);cursor:pointer" onchange="loadSeances()">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+        <div class="seances-date-range">
+          <div class="seances-date-field" onclick="document.getElementById('seances-date-debut').showPicker?.() || document.getElementById('seances-date-debut').click()">
+            <span class="seances-date-label">Du</span>
+            <input type="date" id="seances-date-debut" onchange="loadSeances()" onclick="event.stopPropagation()">
+          </div>
+          <span class="seances-date-sep">→</span>
+          <div class="seances-date-field" onclick="document.getElementById('seances-date-fin').showPicker?.() || document.getElementById('seances-date-fin').click()">
+            <span class="seances-date-label">Au</span>
+            <input type="date" id="seances-date-fin" onchange="loadSeances()" onclick="event.stopPropagation()">
+          </div>
+        </div>
         <span id="spin-seances" style="display:none"><span class="spinner"></span></span>
       </div>
       <div id="seances-result" style="flex:1;overflow-y:auto;min-height:0">
-        <span style="color:var(--text4);font-size:14px">Sélectionne une date pour voir les contenus de séances.</span>
+        <span style="color:var(--text4);font-size:14px">Sélectionne une période pour voir les contenus de séances.</span>
       </div>
     </div>
 

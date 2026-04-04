@@ -102,12 +102,12 @@
   #message-detail-panel #msg-dialog-content li { background: transparent !important; color: var(--text) !important; }
   #message-detail-panel #msg-dialog-content a { color: #1d4ed8 !important; }
   /* Badges — spécificité maximale pour écraser le reset ci-dessus */
-  #devoir-detail-panel span.devoir-badge { font-size: 11px !important; padding: 2px 8px !important; border-radius: 10px !important; margin-left: 8px !important; font-weight: 500 !important; }
-  #devoir-detail-panel span.devoir-badge.badge-interro { background: #fef2f2 !important; color: #b91c1c !important; }
-  #devoir-detail-panel span.devoir-badge.badge-fait    { background: #f0fdf4 !important; color: #15803d !important; }
+  #devoir-detail-panel span.devoir-badge { font-size: 11px !important; padding: 2px 8px !important; line-height: 24px !important; border-radius: 10px !important; margin-left: 8px !important; font-weight: 500 !important; }
+  #devoir-detail-panel span.devoir-badge.badge-interro { background: #fef2f2 !important; color: #b91c1c !important; line-height: 24px !important }
+  #devoir-detail-panel span.devoir-badge.badge-fait    { background: #f0fdf4 !important; color: #15803d !important; line-height: 24px !important }
   .devoir-badge { background: revert; color: revert; }
-  #devoir-detail-panel .devoir-badge-interro { background: #fef2f2 !important; color: #b91c1c !important; }
-  #devoir-detail-panel .devoir-badge-fait    { background: #f0fdf4 !important; color: #15803d !important; }
+  #devoir-detail-panel .devoir-badge-interro { background: #fef2f2 !important; color: #b91c1c !important; line-height: 24px !important }
+  #devoir-detail-panel .devoir-badge-fait    { background: #f0fdf4 !important; color: #15803d !important; line-height: 24px !important }
 
 
   /* Scrollbars minimalistes */
@@ -176,3 +176,52 @@
   .edt-event.annule { text-decoration: line-through; filter: grayscale(60%) opacity(0.4); }
   .edt-week-nav { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
   .edt-week-label { font-size: 13px; color: var(--text2); font-weight: 500; flex: 1; text-align: center; }
+
+/* ── Séances date range picker ───────────────────────────────────────────── */
+.seances-date-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.seances-date-range:hover { border-color: var(--border2); }
+.seances-date-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.seances-date-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text3);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.seances-date-sep {
+  font-size: 13px;
+  color: var(--text4);
+  margin: 0 2px;
+}
+.seances-date-field input[type="date"] {
+  font-size: 13px;
+  padding: 2px 4px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  outline: none;
+  min-width: 120px;
+}
+/* Dark mode calendar popup */
+body.dark input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(0.8);
+}
+body.dark input[type="date"] {
+  color-scheme: dark;
+}

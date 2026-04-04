@@ -29,6 +29,7 @@ darkStyle.textContent = `
   body.dark .status.error { background: #3a1a1a; color: #fca5a5; }
   body.dark .notes-period-btn.active { background: var(--text); color: var(--bg); }
   body.dark #security-panel { background: var(--bg3); border-color: var(--border); }
+  body.dark .pj-badge { background: #1e3a5f !important; color: #93c5fd !important; }
 `;
 document.head.appendChild(darkStyle);
 (function() {
@@ -371,6 +372,107 @@ function openEdtDialog(encodedData) {
   document.body.appendChild(overlay);
 }
 
+function openNoteDialog(encodedData) {
+  const n = JSON.parse(decodeURIComponent(encodedData));
+  const dark = document.body.classList.contains('dark');
+  const dlgBg     = dark ? '#242424' : '#fff';
+  const dlgText   = dark ? '#f0f0ee' : '#1a1a1a';
+  const dlgBorder = dark ? '#333'    : '#f0f0ee';
+  const dlgSub    = dark ? '#888'    : '#888';
+
+  // Calculs note
+  const noteSur  = parseFloat(n.noteSur) || 20;
+  const nVal     = parseFloat((n.valeur||'').replace(',','.'));
+  const nMoyC    = parseFloat((n.moyenneClasse||'').replace(',','.'));
+  const nMin     = parseFloat((n.minClasse||'').replace(',','.'));
+  const nMax     = parseFloat((n.maxClasse||'').replace(',','.'));
+  const nVal20   = noteSur !== 20 ? nVal * 20 / noteSur : nVal;
+  const nMoyC20  = !isNaN(nMoyC) && noteSur !== 20 ? nMoyC * 20 / noteSur : nMoyC;
+  const noteColor = isNaN(nVal20) ? dlgText : nVal20 < 10 ? '#b91c1c' : (!isNaN(nMoyC20) && nVal20 >= nMoyC20) ? '#15803d' : '#ca8a04';
+
+  // Couleurs et labels compétences
+  const COMP_COLORS       = ['#b91c1c','#ca8a04','#1d4ed8','#15803d'];
+  const COMP_LABEL_COLORS = dark
+    ? ['#fca5a5','#fcd34d','#93c5fd','#6ee7b7']
+    : ['#b91c1c','#ca8a04','#1d4ed8','#15803d'];
+  const COMP_BG     = dark
+    ? ['#3a1a1a','#2e2408','#1e3a5f','#1a3a2a']
+    : ['#fef2f2','#fffbeb','#eff6ff','#f0fdf4'];
+  const COMP_LABELS = ['Non atteints','Partiellement atteints','Atteints','Dépassés'];
+
+  // Section compétences
+  const elems = n.elementsProgramme || [];
+  let compsHtml = '';
+  if (elems.length) {
+    compsHtml = `
+      <div style="margin-top:14px;border-top:1px solid ${dlgBorder};padding-top:12px">
+        <div style="font-size:11px;font-weight:600;color:${dlgSub};text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">
+          Bilan des compétences
+        </div>
+        ${elems.map(e => {
+          const idx    = Math.min(Math.max(parseInt(e.valeur) - 1, 0), 3);
+          const color  = COMP_COLORS[idx];
+          const labelColor = COMP_LABEL_COLORS[idx];
+          const bg     = COMP_BG[idx];
+          const label  = COMP_LABELS[idx];
+          const titre  = e.libelleCompetence || '';
+          const descr  = e.descriptif || '';
+          return `<div style="margin-bottom:8px;padding:8px 10px;border-radius:8px;background:${bg};border-left:3px solid ${color}">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:${descr?'4px':'0'}">
+              <span style="font-size:13px;font-weight:500;color:${dlgText};line-height:1.4">${titre}</span>
+              <span style="flex-shrink:0;font-size:11px;font-weight:600;color:${labelColor};white-space:nowrap">${label}</span>
+            </div>
+            ${descr ? `<div style="font-size:12px;color:${dlgSub};line-height:1.4">${descr}</div>` : ''}
+          </div>`;
+        }).join('')}
+      </div>`;
+  }
+
+  // Infos note
+  const rows = [
+    { label: 'Date',          value: n.date || '—' },
+    { label: 'Matière',       value: n.discipline || n.libelleMatiere || '—' },
+    n.libelleMatiere && n.libelleMatiere !== n.discipline
+      ? { label: 'Sous-matière', value: n.libelleMatiere }
+      : null,
+    { label: 'Devoir',        value: n.devoir || '—' },
+    { label: 'Coefficient',   value: n.coef || '—' },
+    { label: 'Min. classe',   value: isNaN(nMin)  ? '—' : nMin },
+    { label: 'Moy. classe',   value: isNaN(nMoyC) ? '—' : nMoyC },
+    { label: 'Max. classe',   value: isNaN(nMax)  ? '—' : nMax },
+    n.nonSignificatif ? { label: 'Remarque', value: 'Note non significative' } : null,
+  ].filter(Boolean);
+
+  const rowsHtml = rows.map(r =>
+    `<div style="display:flex;align-items:baseline;gap:8px;padding:5px 0;border-bottom:1px solid ${dlgBorder}">
+      <span style="font-size:13px;color:${dlgSub};min-width:110px;flex-shrink:0">${r.label}</span>
+      <span style="font-size:13px;color:${dlgText};font-weight:500">${r.value}</span>
+    </div>`
+  ).join('');
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1000;display:flex;align-items:center;justify-content:center;padding:2rem;overflow-y:auto';
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+
+  const dialog = document.createElement('div');
+  dialog.style.cssText = `background:${dlgBg};color:${dlgText};border-radius:12px;padding:1.25rem;max-width:440px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.35);position:relative;max-height:90vh;overflow-y:auto`;
+  dialog.onclick = e => e.stopPropagation();
+  dialog.innerHTML = `
+    <button onclick="this.closest('.note-dialog-overlay').remove()"
+      style="position:absolute;top:10px;right:12px;background:none;border:none;cursor:pointer;font-size:20px;color:${dark?'#666':'#aaa'};line-height:1">×</button>
+    <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:14px;padding-right:24px">
+      <span style="font-weight:700;font-size:22px;color:${noteColor}">${n.valeur}</span>
+      <span style="font-size:14px;color:${dlgSub}">/ ${n.noteSur}</span>
+      <span style="flex:1;font-size:14px;font-weight:500;color:${dlgText};margin-left:4px">${n.devoir || ''}</span>
+    </div>
+    ${rowsHtml}
+    ${compsHtml}`;
+
+  overlay.classList.add('note-dialog-overlay');
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+}
+
 function cleanHtml(s) {
   if (!s) return '';
   let result = s
@@ -404,14 +506,29 @@ function cleanHtml(s) {
   return result;
 }
 
-async function openDevoirDialog(encodedData) {
+async function openDevoirDialog(encodedData, triggerEl) {
   const d = JSON.parse(decodeURIComponent(encodedData));
   const dark = document.body.classList.contains('dark');
   const panel = document.getElementById('devoir-detail-panel');
   if (!panel) return;
 
+  // Sélection visuelle dans la liste
+  document.querySelectorAll('[data-devoir-key]').forEach(el => {
+    el.classList.remove('devoir-selected');
+    el.style.background = 'var(--bg3)';
+    el.style.boxShadow = '';
+  });
+  if (triggerEl) {
+    triggerEl.classList.add('devoir-selected');
+    triggerEl.style.background = dark ? 'var(--bg4)' : '#e0e7ff';
+    triggerEl.style.boxShadow = 'inset 3px 0 0 #1d4ed8';
+  }
+
   const inter = d.interrogation ? '<span class="devoir-badge-interro" style="font-size:14px;padding:2px 8px;border-radius:10px;margin-left:8px">Interro</span>' : '';
   const fait  = d.effectue ? '<span class="devoir-badge-fait" style="font-size:14px;padding:2px 8px;border-radius:10px;margin-left:8px">Fait ✅</span>' : '';
+
+  // Pièces jointes connues depuis le cache liste (d.documents)
+  const docsFromList = d.documents || [];
 
   // Affichage immédiat avec spinner
   panel.style.alignItems = 'flex-start';
@@ -428,6 +545,21 @@ async function openDevoirDialog(encodedData) {
   const eleveId = getEleveId();
   const cacheKey = `devoirs-detail:${eleveId}:${d.date}`;
 
+  const renderDocs = (docs) => {
+    if (!docs || !docs.length) return '';
+    return `<div style="margin-top:10px;padding:8px 10px;background:var(--bg3);border-radius:8px;border:1px solid var(--border)">
+      <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Pièces jointes (${docs.length})</div>
+      ${docs.map(doc => `
+        <div onclick="downloadDevoirDoc(${doc.id},'${(doc.libelle||doc.name||'document').replace(/'/g,"\'")}')"
+          style="display:flex;align-items:center;gap:6px;padding:4px;border-radius:4px;cursor:pointer;font-size:13px"
+          onmouseover="this.style.background='var(--bg4)'" onmouseout="this.style.background='transparent'">
+          <span>${getFileIcon(doc.libelle||doc.name||'')}</span>
+          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${doc.libelle||doc.name||'Document'}</span>
+          <span style="font-size:12px;color:var(--text4)">↓</span>
+        </div>`).join('')}
+    </div>`;
+  };
+
   const renderDetail = (dayData) => {
     const contentEl = document.getElementById('devoir-detail-content');
     if (!contentEl) return;
@@ -436,14 +568,42 @@ async function openDevoirDialog(encodedData) {
     if (!matiere) { contentEl.innerHTML = `<span style="color:var(--text4)">Aucun détail.</span>`; return; }
     const contenu = matiere.contenu ? cleanHtml(b64d(matiere.contenu)) : '';
     const aFaireArr = Array.isArray(matiere.aFaire) ? matiere.aFaire : (matiere.aFaire ? [matiere.aFaire] : []);
+
+    // Collecter tous les documents de tous les aFaire + niveau matière
+    const allDocs = [
+      ...(matiere.documents || []),
+      ...aFaireArr.flatMap(af => af.documents || []),
+    ];
+
+    // Mettre à jour le badge PJ dans la liste si des docs ont été trouvés
+    if (allDocs.length && triggerEl) {
+      const devoirKey = triggerEl.dataset.devoirKey;
+      const listItem = document.querySelector(`[data-devoir-key="${devoirKey}"]`);
+      if (listItem && !listItem.querySelector('.pj-badge')) {
+        const badge = document.createElement('span');
+        badge.className = 'pj-badge';
+        badge.style.cssText = 'font-size:11px;color:#1d4ed8;margin-left:6px';
+        badge.textContent = `📎${allDocs.length}`;
+        const nameSpan = listItem.querySelector('span[style*="font-weight:500"]');
+        if (nameSpan) nameSpan.insertAdjacentElement('afterend', badge);
+      }
+    }
+
     const aFaireItems = aFaireArr.map(af => {
       const texte = af.contenu ? cleanHtml(b64d(af.contenu)) : '';
-      return texte ? `<div style="padding:8px;border-radius:6px;background:var(--bg3);border:1px solid var(--border);margin-top:6px;line-height:1.6">${texte}</div>` : '';
+      const afDocs = af.documents || [];
+      const docsHtml = renderDocs(afDocs);
+      return (texte || docsHtml) ? `<div style="padding:8px;border-radius:6px;background:var(--bg3);border:1px solid var(--border);margin-top:6px;line-height:1.6">
+        ${texte}${docsHtml}
+      </div>` : '';
     }).join('');
+    // Documents au niveau de la matière (non liés à un aFaire spécifique)
+    const matDocs = matiere.documents || [];
     contentEl.innerHTML = `
-      ${contenu ? `<div style="margin-bottom:10px"><div style="font-size:14px;font-weight:600;color:var(--text4);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Contenu de séance</div><div style="line-height:1.6">${contenu}</div></div>` : ''}
-      ${aFaireItems ? `<div><div style="font-size:14px;font-weight:600;color:var(--text4);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">À faire</div>${aFaireItems}</div>` : ''}
-      ${!contenu && !aFaireItems ? '<span style="color:var(--text4)">Aucun détail disponible.</span>' : ''}`;
+      ${contenu ? `<div style="margin-bottom:10px"><div style="font-size:11px;font-weight:600;color:var(--text4);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Contenu de séance</div><div style="line-height:1.6">${contenu}</div></div>` : ''}
+      ${aFaireItems ? `<div><div style="font-size:11px;font-weight:600;color:var(--text4);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">À faire</div>${aFaireItems}</div>` : ''}
+      ${matDocs.length ? renderDocs(matDocs) : ''}
+      ${!contenu && !aFaireItems && !matDocs.length ? '<span style="color:var(--text4)">Aucun détail disponible.</span>' : ''}`;
   };
 
   await edCache.load(cacheKey, async () => {
@@ -630,67 +790,193 @@ function renderDevoirsFromCache() {
   if (container) container.innerHTML = renderData(path, devoirsCache);
 }
 
+async function toggleDevoirEffectue(devoirId, date, currentState) {
+  const eleveId = getEleveId();
+  if (!eleveId || !devoirId) return;
+  const newState = !currentState;
+
+  if (devoirsCache && devoirsCache[date]) {
+    const d = devoirsCache[date].find(d => String(d.id ?? d.idDevoir) === String(devoirId));
+    if (d) d.effectue = newState;
+  }
+  renderDevoirsFromCache();
+
+  try {
+    const idNum = parseInt(devoirId, 10);
+    const body = {
+      idDevoirsEffectues:    newState ? [idNum] : [],
+      idDevoirsNonEffectues: newState ? [] : [idNum],
+    };
+    const resp = await fetch(`${getProxy()}/v3/Eleves/${eleveId}/cahierdetexte.awp?verbe=put&v=4.97.0`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.0' },
+      body: `data=${encodeURIComponent(JSON.stringify(body))}`,
+    });
+    const data = await resp.json();
+    if (data.code !== 200) throw new Error(`Code ${data.code}`);
+    await edCache.delete(`devoirs:${eleveId}`);
+  } catch(e) {
+    if (devoirsCache && devoirsCache[date]) {
+      const d = devoirsCache[date].find(d => String(d.id ?? d.idDevoir) === String(devoirId));
+      if (d) d.effectue = currentState;
+    }
+    renderDevoirsFromCache();
+    console.error('toggleDevoirEffectue erreur :', e.message);
+  }
+}
+
+async function toggleDevoirEffectue(devoirId, date, currentState) {
+  const eleveId = getEleveId();
+  if (!eleveId || !devoirId) return;
+  const newState = !currentState;
+
+  // Mise à jour optimiste du cache mémoire
+  if (devoirsCache && devoirsCache[date]) {
+    const d = devoirsCache[date].find(d => String(d.id ?? d.idDevoir) === String(devoirId));
+    if (d) d.effectue = newState;
+  }
+  renderDevoirsFromCache();
+
+  // Appel API PUT
+  try {
+    const idNum = parseInt(devoirId, 10);
+    const body = {
+      idDevoirsEffectues:    newState ? [idNum] : [],
+      idDevoirsNonEffectues: newState ? [] : [idNum],
+    };
+    const resp = await fetch(`${getProxy()}/v3/Eleves/${eleveId}/cahierdetexte.awp?verbe=put&v=4.97.0`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'X-Token': token,
+        'X-ApisVer': '4.97.0',
+      },
+      body: `data=${encodeURIComponent(JSON.stringify(body))}`,
+    });
+    const data = await resp.json();
+    if (data.code !== 200) throw new Error(`Code ${data.code}`);
+    // Invalider le cache IndexedDB pour forcer un re-fetch au prochain chargement
+    await edCache.delete(`devoirs:${eleveId}`);
+  } catch(e) {
+    // Rollback si erreur
+    if (devoirsCache && devoirsCache[date]) {
+      const d = devoirsCache[date].find(d => String(d.id ?? d.idDevoir) === String(devoirId));
+      if (d) d.effectue = currentState;
+    }
+    renderDevoirsFromCache();
+    console.error('toggleDevoirEffectue erreur :', e.message);
+  }
+}
+
+// Retourne un tableau de dates YYYY-MM-DD entre debut et fin inclus
+function dateRange(debut, fin) {
+  const dates = [];
+  const d = new Date(debut);
+  const f = new Date(fin);
+  while (d <= f) {
+    dates.push(d.toISOString().substring(0, 10));
+    d.setDate(d.getDate() + 1);
+  }
+  return dates;
+}
+
 async function loadSeances() {
   const eleveId = getEleveId();
   if (!eleveId) return;
-  const dateVal = document.getElementById('seances-date')?.value;
+  const debut = document.getElementById('seances-date-debut')?.value;
+  const fin   = document.getElementById('seances-date-fin')?.value;
   const container = document.getElementById('seances-result');
   const spinner   = document.getElementById('spin-seances');
 
-  if (!dateVal) {
-    container.innerHTML = '<span style="color:var(--text4);font-size:14px">Sélectionne une date pour voir les contenus de séances.</span>';
+  if (!debut || !fin) {
+    container.innerHTML = '<span style="color:var(--text4);font-size:14px">Sélectionne une période pour voir les contenus de séances.</span>';
+    return;
+  }
+  if (debut > fin) {
+    container.innerHTML = '<span style="color:#b91c1c;font-size:14px">La date de début doit être antérieure à la date de fin.</span>';
     return;
   }
 
-  const cacheKey = `seances:${eleveId}:${dateVal}`;
-  const path = `/v3/Eleves/${eleveId}/cahierdetexte/${dateVal}.awp?verbe=get`;
+  const dates = dateRange(debut, fin);
+  // Limiter à 60 jours pour éviter trop de requêtes
+  if (dates.length > 60) {
+    container.innerHTML = '<span style="color:#b91c1c;font-size:14px">La période ne peut pas dépasser 60 jours.</span>';
+    return;
+  }
 
-  const render = data => {
-    const matieres = data?.matieres || [];
-    if (!matieres.length) {
-      container.innerHTML = '<span style="color:var(--text4);font-size:14px">Aucun contenu de séance pour cette date.</span>';
-      if (spinner) spinner.style.display = 'none';
-      return;
+  if (spinner) spinner.style.display = 'inline';
+  container.innerHTML = centeredSpinner();
+
+  // Formater une date YYYY-MM-DD en affichage court "Lun. 14 jan."
+  function fmtDate(dateStr) {
+    const d = new Date(dateStr + 'T12:00:00');
+    return d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+  }
+
+  // Rendu d'un bloc matière
+  function renderMatiere(m) {
+    const contenuSrc = m.contenuDeSeance?.contenu || '';
+    const contenuRaw = contenuSrc ? cleanHtml(b64d(contenuSrc)).trim() : '';
+    const contenu = contenuRaw.replace(/<[^>]*>/g, '').trim() ? contenuRaw : '';
+    if (!contenu) return '';
+    return `<div style="margin-bottom:10px;padding:10px 12px;border-radius:8px;background:var(--bg3);border:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="font-weight:600;font-size:14px">${m.matiere}</span>
+        ${m.interrogation ? '<span class="devoir-badge badge-interro">Interro</span>' : ''}
+        ${m.nomProf ? `<span style="font-size:12px;color:var(--text4);margin-left:auto">${m.nomProf}</span>` : ''}
+      </div>
+      <div style="font-size:14px;line-height:1.6">${contenu}</div>
+    </div>`;
+  }
+
+  // Charger toutes les dates en parallèle via cache
+  let allResults = [];
+  await Promise.all(dates.map(async dateVal => {
+    const cacheKey = `seances:${eleveId}:${dateVal}`;
+    let data = null;
+    try {
+      await edCache.load(cacheKey, async () => {
+        const resp = await fetch(`${getProxy()}/v3/Eleves/${eleveId}/cahierdetexte/${dateVal}.awp?verbe=get`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
+          body: 'data={}'
+        });
+        const d = await resp.json();
+        if (d.code !== 200) throw new Error(`Code ${d.code}`);
+        return d.data;
+      }, {
+        onCached: d => { data = d; },
+        onFresh:  d => { data = d; },
+        diffFn:   edCache.defaultDiff,
+      });
+    } catch(e) {
+      // Ignorer les erreurs par date (week-end, férié...)
     }
-    let html = '';
-    matieres.forEach(m => {
-      const contenuSrc = m.contenuDeSeance?.contenu || '';
-      const contenuRaw = contenuSrc ? cleanHtml(b64d(contenuSrc)).trim() : '';
-      const contenu = contenuRaw.replace(/<[^>]*>/g, '').trim() ? contenuRaw : '';
-      if (!contenu) return;
-      html += `<div style="margin-bottom:14px;padding:10px 12px;border-radius:8px;background:var(--bg3);border:1px solid var(--border)">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-          <span style="font-weight:600;font-size:14px">${m.matiere}</span>
-          ${m.interrogation ? '<span class="devoir-badge badge-interro">Interro</span>' : ''}
-          ${m.nomProf ? `<span style="font-size:12px;color:var(--text4);margin-left:auto">${m.nomProf}</span>` : ''}
-        </div>
-        ${contenu ? `<div style="font-size:14px;line-height:1.6">${contenu}</div>` : ''}
+    if (data) allResults.push({ dateVal, data });
+  }));
 
-      </div>`;
-    });
-    container.innerHTML = html || '<div style="display:flex;align-items:center;justify-content:center;height:100%;padding:3rem"><span style="color:var(--text4);font-size:14px;text-align:center">Aucun contenu de séance pour cette date.</span></div>';
-    if (spinner) spinner.style.display = 'none';
-    updateFreshnessLabel('seances', Date.now());
-  };
+  // Trier par date
+  allResults.sort((a, b) => a.dateVal.localeCompare(b.dateVal));
 
-  await edCache.load(cacheKey, async () => {
-    const resp = await fetch(`${getProxy()}${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
-      body: 'data={}'
-    });
-    const d = await resp.json();
-    if (d.code !== 200) throw new Error(`Code ${d.code}`);
-    return d.data;
-  }, {
-    onSpinner: () => { if (spinner) spinner.style.display = 'inline'; container.innerHTML = centeredSpinner(); },
-    onCached:  (data, ts) => { render(data); updateFreshnessLabel('seances', ts || Date.now()); },
-    onFresh:   data => render(data),
-    diffFn:    edCache.defaultDiff,
-  }).catch(e => {
-    container.innerHTML = `<p style="color:#b91c1c;font-size:14px">Erreur : ${e.message}</p>`;
-    if (spinner) spinner.style.display = 'none';
-  });
+  // Construire le HTML global, groupé par date
+  let html = '';
+  for (const { dateVal, data } of allResults) {
+    const matieres = data?.matieres || [];
+    const items = matieres.map(m => renderMatiere(m)).filter(Boolean).join('');
+    if (!items) continue;
+    html += `<div style="margin-bottom:18px">
+      <div style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border2)">${fmtDate(dateVal)}</div>
+      ${items}
+    </div>`;
+  }
+
+  if (!html) {
+    container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;padding:3rem"><span style="color:var(--text4);font-size:14px;text-align:center">Aucun contenu de séance sur cette période.</span></div>';
+  } else {
+    container.innerHTML = html;
+  }
+  if (spinner) spinner.style.display = 'none';
+  updateFreshnessLabel('seances', Date.now());
 }
 
 async function loadDevoirs() {
@@ -707,6 +993,8 @@ async function loadDevoirs() {
     if (spinner) spinner.style.display = 'none';
     updateFreshnessLabel('devoirs', Date.now());
     if (isFresh && oldData && edCache.defaultDiff(oldData, data)) setBadge('devoirs', 1);
+    // Enrichir les badges PJ en arrière-plan sans bloquer l'affichage
+    enrichDevoirsWithDocs(eleveId, data);
   };
 
   await edCache.load(cacheKey, async () => {
@@ -727,6 +1015,58 @@ async function loadDevoirs() {
     container.innerHTML = `<p style="color:#b91c1c;font-size:14px">Erreur : ${e.message}</p>`;
     if (spinner) spinner.style.display = 'none';
   });
+}
+
+// Précharge en arrière-plan les détails par jour pour afficher les badges PJ
+// sans bloquer le rendu initial. Utilise le cache IndexedDB si disponible.
+async function enrichDevoirsWithDocs(eleveId, listData) {
+  const dates = Object.keys(listData || {});
+  let changed = false;
+  await Promise.all(dates.map(async date => {
+    try {
+      const cacheKey = `devoirs-detail:${eleveId}:${date}`;
+      let dayData = null;
+      // Lire le cache IndexedDB d'abord
+      const cached = await edCache.get(cacheKey);
+      if (cached) {
+        dayData = cached.data;
+      } else {
+        // Fetch silencieux
+        const resp = await fetch(`${getProxy()}/v3/Eleves/${eleveId}/cahierdetexte/${date}.awp?verbe=get`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
+          body: 'data={}'
+        });
+        const json = await resp.json();
+        if (json.code === 200) {
+          dayData = json.data;
+          await edCache.set(cacheKey, dayData);
+        }
+      }
+      if (!dayData) return;
+      // Construire un map matiere → docs depuis les aFaire
+      const matieres = dayData.matieres || [];
+      matieres.forEach(m => {
+        const aFaireArr = Array.isArray(m.aFaire) ? m.aFaire : (m.aFaire ? [m.aFaire] : []);
+        const allDocs = [
+          ...(m.documents || []),
+          ...aFaireArr.flatMap(af => af.documents || []),
+        ];
+        if (!allDocs.length) return;
+        const matiereUp = (m.matiere || m.libelleMatiere || '').toUpperCase();
+        // Trouver le devoir correspondant dans devoirsCache
+        const devoir = (devoirsCache?.[date] || []).find(
+          d => (d.matiere || '').toUpperCase() === matiereUp
+        );
+        if (devoir && (!devoir.documents || !devoir.documents.length)) {
+          devoir.documents = allDocs;
+          changed = true;
+        }
+      });
+    } catch(e) { /* silencieux — les badges resteront vides pour cette date */ }
+  }));
+  // Re-rendre la liste uniquement si des docs ont été trouvés
+  if (changed) renderDevoirsFromCache();
 }
 
 async function loadNotes() {
@@ -969,7 +1309,17 @@ function renderNotesTable(periode, allNotes) {
       const nVal20  = noteSur !== 20 ? nVal * 20 / noteSur : nVal;
       const nMoyC20 = !isNaN(nMoyC) && noteSur !== 20 ? nMoyC * 20 / noteSur : nMoyC;
       const noteColor = isNaN(nVal20) ? 'var(--text)' : nVal20 < 10 ? '#b91c1c' : (!isNaN(nMoyC20) && nVal20 >= nMoyC20) ? '#15803d' : '#ca8a04';
-      html += `<div class="note-row" style="display:flex;align-items:center;gap:8px;padding:5px 0 5px 6px;border-bottom:1px solid var(--border2);font-size:14px">
+      const nEncoded = encodeURIComponent(JSON.stringify({
+        date: n.date, valeur: n.valeur, noteSur: n.noteSur, devoir: n.devoir,
+        libelleMatiere: n.libelleMatiere, codeMatiere: n.codeMatiere,
+        discipline: codeToDisc[n.codeMatiere] || n.libelleMatiere || '',
+        coef: n.coef, moyenneClasse: n.moyenneClasse,
+        minClasse: n.minClasse, maxClasse: n.maxClasse,
+        nonSignificatif: n.nonSignificatif,
+        elementsProgramme: n.elementsProgramme || [],
+      })).replace(/'/g, '%27');
+      html += `<div class="note-row" onclick="openNoteDialog('${nEncoded}')"
+        style="display:flex;align-items:center;gap:8px;padding:5px 0 5px 6px;border-bottom:1px solid var(--border2);font-size:14px;cursor:pointer">
         <span style="color:var(--text4);min-width:70px;">${n.date}</span>
         <span style="min-width:140px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${codeToDisc[n.codeMatiere] || n.libelleMatiere || ''}</span>
         <span style="min-width:205px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(() => { const parent = codeToDisc[n.codeMatiere] || ''; return (n.libelleMatiere && n.libelleMatiere !== parent) ? n.libelleMatiere : '—'; })()}</span>
@@ -1037,29 +1387,27 @@ function renderNotesChart(periode, allNotes) {
   const periodNotes = allNotes.filter(n => n.codePeriode === periode.codePeriode && !n.nonSignificatif && n.valeur && parseFloat(n.noteSur) > 0);
   if (!periodNotes.length) { document.getElementById('notes-chart').insertAdjacentHTML('afterend','<em style="color:var(--text3);font-size:14px">Pas assez de notes pour afficher le graphique.</em>'); return; }
 
-  // Grouper par matière (sans sous-matières)
+  // Grouper par matière (sans sous-matières) — points élève ET points moyenne classe
   const byMatiere = {};
+  const byMatiereClasse = {};
   periodNotes.forEach(n => {
     if (n.codeSousMatiere) return;
     const key = n.libelleMatiere;
+    const noteSur = parseFloat(n.noteSur) || 20;
+    // Points élève
     if (!byMatiere[key]) byMatiere[key] = [];
-    const val20 = (parseFloat((n.valeur||'').replace(',','.')) / parseFloat(n.noteSur)) * 20;
+    const val20 = (parseFloat((n.valeur||'').replace(',','.')) / noteSur) * 20;
     if (!isNaN(val20)) byMatiere[key].push({ x: n.date, y: Math.round(val20*100)/100, label: n.devoir });
+    // Points moyenne classe par note (normalisés sur 20)
+    if (!byMatiereClasse[key]) byMatiereClasse[key] = [];
+    const moyC = parseFloat((n.moyenneClasse||'').replace(',','.'));
+    if (!isNaN(moyC)) {
+      const moyC20 = noteSur !== 20 ? Math.round((moyC / noteSur) * 20 * 100) / 100 : Math.round(moyC * 100) / 100;
+      byMatiereClasse[key].push({ x: n.date, y: moyC20 });
+    }
   });
 
   const matieres = Object.keys(byMatiere).sort();
-
-  // Collecter les moyennes de classe par matière depuis les disciplines
-  const moyClasse = {};
-  const em = periode.ensembleMatieres || {};
-  (em.disciplines || []).forEach(d => {
-    if (!d.groupeMatiere && !d.sousMatiere && d.libelleMatiere) {
-      moyClasse[d.libelleMatiere] = parseFloat((d.moyenneClasse||'').replace(',','.'));
-    }
-    if (!d.groupeMatiere && !d.sousMatiere && d.discipline) {
-      moyClasse[d.discipline] = parseFloat((d.moyenneClasse||'').replace(',','.'));
-    }
-  });
 
   const datasets = matieres.map((m, i) => ({
     label: m,
@@ -1070,7 +1418,7 @@ function renderNotesChart(periode, allNotes) {
     pointRadius: 5,
     pointHoverRadius: 7,
     borderWidth: 2,
-    _moyClasse: moyClasse[m] || null,
+    _moyClasseData: (byMatiereClasse[m] || []).sort((a,b)=>a.x.localeCompare(b.x)),
     _isSolo: false,
     _isClasseAvg: false,
   }));
@@ -1229,22 +1577,26 @@ function updateSoloState(chart) {
   if (solo !== null) {
     // Recalculer l'index après suppression éventuelle
     const soloDs = ds[solo];
-    if (soloDs && soloDs._moyClasse !== null && !isNaN(soloDs._moyClasse)) {
-      // Créer dataset ligne plate pour la moyenne classe
+    const moyClasseData = soloDs?._moyClasseData || [];
+    if (soloDs && moyClasseData.length > 0) {
+      // Créer dataset courbe moyenne classe, aligné sur allDates
       const allDates = chart.data.labels;
+      const moyByDate = {};
+      moyClasseData.forEach(p => { moyByDate[p.x] = p.y; });
       const classeDs = {
         label: `Classe (${soloDs.label})`,
-        data: allDates.map(() => soloDs._moyClasse),
-        borderColor: 'rgba(150,150,150,0.7)',
+        data: allDates.map(d => moyByDate[d] !== undefined ? moyByDate[d] : null),
+        borderColor: 'rgba(150,150,150,0.8)',
         backgroundColor: 'transparent',
         borderWidth: 1.5,
         borderDash: [4, 4],
-        pointRadius: 0,
-        tension: 0,
+        pointRadius: 3,
+        pointHoverRadius: 5,
+        tension: 0.3,
+        spanGaps: true,
         _isClasseAvg: true,
         _isSolo: false,
-        _moyClasse: null,
-        spanGaps: true,
+        _moyClasseData: [],
       };
       ds.push(classeDs);
     }
@@ -1335,6 +1687,40 @@ function buildChart(datasets, periode) {
   });
   chartInst._activeSolo = null;
   ctx._chart = chartInst;
+
+  // Construire la légende dans #notes-legend
+  chartInst._buildLegend = function() {
+    const legendEl = document.getElementById('notes-legend');
+    if (!legendEl) return;
+    const dark = document.body.classList.contains('dark');
+    legendEl.innerHTML = '';
+    chartInst.data.datasets
+      .filter(ds => !ds._isClasseAvg)
+      .forEach((ds, i) => {
+        const isSolo   = chartInst._activeSolo === i;
+        const isHidden = chartInst._activeSolo !== null && !isSolo;
+        const item = document.createElement('div');
+        item.style.cssText = `
+          display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:6px;
+          cursor:pointer;font-size:12px;transition:background .1s;
+          opacity:${isHidden ? '0.35' : '1'};
+          background:${isSolo ? (dark ? 'var(--bg4)' : 'var(--bg3)') : 'transparent'};
+        `;
+        item.onmouseover = () => { if (!isSolo) item.style.background = dark ? 'var(--bg3)' : 'var(--bg4)'; };
+        item.onmouseout  = () => { if (!isSolo) item.style.background = 'transparent'; };
+        item.onclick = () => {
+          chartInst._activeSolo = isSolo ? null : i;
+          updateSoloState(chartInst);
+        };
+        item.innerHTML = `
+          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;
+            background:${ds.borderColor};flex-shrink:0"></span>
+          <span style="color:var(--text);line-height:1.3">${ds.label}</span>
+        `;
+        legendEl.appendChild(item);
+      });
+  };
+  chartInst._buildLegend();
 }
 
 async function forceRefresh(tab) {
@@ -1364,8 +1750,13 @@ async function forceRefresh(tab) {
     await edCache.delete(dateVal ? `devoirs:${eleveId}:${dateVal}` : `devoirs:${eleveId}`);
     await loadDevoirs();
   } else if (tab === 'seances') {
-    const dateVal = document.getElementById('seances-date')?.value || '';
-    if (dateVal) await edCache.delete(`seances:${eleveId}:${dateVal}`);
+    const debut = document.getElementById('seances-date-debut')?.value || '';
+    const fin   = document.getElementById('seances-date-fin')?.value || '';
+    if (debut && fin) {
+      for (const d of dateRange(debut, fin)) {
+        await edCache.delete(`seances:${eleveId}:${d}`);
+      }
+    }
     await loadSeances();
   }
 
@@ -1502,7 +1893,7 @@ function renderEdtGrid(cours, monday) {
         fin: c.end_date.split(' ')[1].substring(0,5),
         annule: c.isAnnule, modifie: c.isModifie,
         color: c.color, type: c.typeCours || ''
-      }));
+      })).replace(/'/g, '%27');
       dayCols += `<div class="edt-event${c.isAnnule?' annule':''}" onclick="openEdtDialog('${cData}')" style="top:${topPx}px;height:${hPx}px;background:${bg};border-left:3px solid ${c.isAnnule?'var(--border)':c.color};cursor:pointer">
         <div class="edt-event-name" style="color:${fg}">${c.text}</div>
         ${hPx > 28 ? `<div class="edt-event-detail" style="color:${fg}">${c.salle || ''}</div>` : ''}
@@ -1532,8 +1923,14 @@ function switchTab(id) {
   else if (id === 'absences') loadAbsences();
   else if (id === 'devoirs') loadDevoirs();
   else if (id === 'seances') {
-    const dateInput = document.getElementById('seances-date');
-    if (dateInput && !dateInput.value) dateInput.value = new Date().toISOString().substring(0, 10);
+    const today = new Date();
+    const todayStr = today.toISOString().substring(0, 10);
+    const j14 = new Date(today); j14.setDate(j14.getDate() - 14);
+    const j14Str = j14.toISOString().substring(0, 10);
+    const debutInput = document.getElementById('seances-date-debut');
+    const finInput   = document.getElementById('seances-date-fin');
+    if (debutInput && !debutInput.value) debutInput.value = j14Str;
+    if (finInput   && !finInput.value)   finInput.value   = todayStr;
     loadSeances();
   }
   else if (id === 'messages') loadMessages();
@@ -1828,25 +2225,107 @@ function getFileIcon(filename) {
   return icons[ext] || '📎';
 }
 
+async function triggerDownload(url, fetchOptions, filename) {
+  const resp = await fetch(url, fetchOptions);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+  const ext = filename.split('.').pop().toLowerCase();
+  const MIMES = {
+    mp3:'audio/mpeg', mp4:'video/mp4', m4a:'audio/mp4', wav:'audio/wav', ogg:'audio/ogg',
+    pdf:'application/pdf', doc:'application/msword',
+    docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xls:'application/vnd.ms-excel',
+    xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ppt:'application/vnd.ms-powerpoint',
+    pptx:'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    jpg:'image/jpeg', jpeg:'image/jpeg', png:'image/png', gif:'image/gif', webp:'image/webp',
+    zip:'application/zip', rar:'application/x-rar-compressed',
+    txt:'text/plain',
+  };
+  const mime = MIMES[ext] || 'application/octet-stream';
+
+  // Lire en ArrayBuffer - fonctionne quel que soit le Content-Type
+  const buffer = await resp.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+
+  // Détecter le type de réponse via le premier octet non-espace :
+  //   '{' (0x7B) → JSON avec base64 → à décoder
+  //   '<' (0x3C) → HTML (page d'erreur EcoleDirecte "Accès non autorisé") → erreur claire
+  //   autre      → binaire brut
+  let firstNonSpace = 0;
+  while (firstNonSpace < bytes.length && bytes[firstNonSpace] <= 32) firstNonSpace++;
+  const firstByte = bytes[firstNonSpace];
+
+  let blob;
+  if (firstByte === 0x3C) { // '<' = HTML
+    throw new Error('Accès refusé par EcoleDirecte — session expirée ou fichier indisponible');
+  } else if (firstByte === 0x7B) { // '{' = JSON
+    let json;
+    try {
+      json = JSON.parse(new TextDecoder().decode(buffer));
+    } catch(e) {
+      throw new Error('Réponse invalide du serveur');
+    }
+    if (json.code !== 200) throw new Error(`Erreur API ${json.code} : ${json.message || ''}`);
+    const b64 = json.data;
+    if (!b64) throw new Error('Données vides dans la réponse');
+    // Décoder le base64 → binaire
+    const binaryStr = atob(b64);
+    const fileBytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) fileBytes[i] = binaryStr.charCodeAt(i);
+    blob = new Blob([fileBytes.buffer], { type: mime });
+  } else {
+    // Binaire brut transmis directement
+    blob = new Blob([buffer], { type: mime });
+  }
+
+  if (!blob.size) throw new Error('Fichier vide');
+  const objUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = objUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(objUrl), 10000);
+}
+
 async function downloadAttachment(msgId, fileId, filename) {
-  const eleveId = getEleveId();
   try {
     const annee = document.getElementById('msg-annee')?.value || '2025-2026';
     const dlUrl = `${getProxy()}/v3/telechargement.awp?verbe=get&fichierId=${fileId}&leTypeDeFichier=PIECE_JOINTE`;
-    const resp = await fetch(dlUrl, {
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
+    if (twoFaToken) headers['2fa-token'] = twoFaToken;
+    await triggerDownload(dlUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
+      headers,
       body: `data=${encodeURIComponent(JSON.stringify({ forceDownload: 0, anneeMessages: annee }))}`
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const blob = await resp.blob();
-    if (!blob.size) throw new Error('Fichier vide');
-    const objUrl = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = objUrl;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(objUrl);
+    }, filename);
+  } catch(e) {
+    alert(`Erreur téléchargement : ${e.message}`);
+  }
+}
+
+function decodeHtmlEntities(html) {
+  // Laisser le navigateur décoder toutes les entités HTML nativement
+  // (nommées : &oelig; &eacute; etc., décimales : &#339; et hexadécimales : &#x153;)
+  const ta = document.createElement('textarea');
+  ta.innerHTML = html;
+  return ta.value;
+}
+
+async function downloadDevoirDoc(fileId, filename) {
+  try {
+    // L'appli officielle ED utilise FICHIER_CDT (pas CLOUD_ELEVE) pour les docs du cahier de texte
+    // Le body ne contient PAS le token - l'auth passe uniquement par x-token et 2fa-token headers
+    const dlUrl = `${getProxy()}/v3/telechargement.awp?verbe=get&fichierId=${fileId}&leTypeDeFichier=FICHIER_CDT`;
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
+    if (twoFaToken) headers['2fa-token'] = twoFaToken;
+    await triggerDownload(dlUrl, {
+      method: 'POST',
+      headers,
+      body: `data=${encodeURIComponent(JSON.stringify({ forceDownload: 0 }))}`
+    }, filename);
   } catch(e) {
     alert(`Erreur téléchargement : ${e.message}`);
   }
@@ -1857,11 +2336,10 @@ function renderMessageContent(el, rawContent) {
   const clean = decoded
     .replace(/<p[^>]*>/gi, '').replace(/<\/p>/gi, '<br>')
     .replace(/<br\s*\/?>/gi, '<br>')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&#(\d+);/g, (_, c) => String.fromCharCode(parseInt(c)))
     .replace(/(<br>\s*){3,}/gi, '<br><br>')
     .trim();
-  el.innerHTML = clean || '<em style="color:var(--text4)">Contenu vide</em>';
+  // Décoder les entités HTML résiduelles (&nbsp; &oelig; &#339; &#x153; etc.)
+  el.innerHTML = decodeHtmlEntities(clean) || '<em style="color:var(--text4)">Contenu vide</em>';
 }
 
 function closeMessageDialog() {}
@@ -1987,15 +2465,30 @@ function renderData(path, data) {
         <div id="${bodyId}">`;
       devoirs.forEach(d => {
         const fait = d.effectue;
+        const dId  = d.id ?? d.idDevoir ?? '';
+        const dKey = `${date}-${dId}`;
         const inter = d.interrogation ? '<span style="font-size:14px;background:#fef2f2;color:#b91c1c;padding:2px 6px;border-radius:10px;margin-left:6px">Interro</span>' : '';
-        const dEncoded = encodeURIComponent(JSON.stringify({ matiere: d.matiere, effectue: d.effectue, interrogation: d.interrogation, donneLe: d.donneLe || '', date: date }));
-        html += `<div onclick="openDevoirDialog('${dEncoded}')"
-          style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;background:var(--bg3);border:1px solid var(--border);margin-bottom:4px;font-size:14px;cursor:pointer;transition:background .1s"
-          onmouseover="this.style.background='var(--bg4)'" onmouseout="this.style.background='var(--bg3)'">
-          <span style="font-size:16px">${fait ? '✅' : '📚'}</span>
-          <div style="flex:1">
-            <span style="font-weight:500;color:var(--text)">${d.matiere}</span>${inter}
-            ${d.donneLe ? `<div style="font-size:11px;color:var(--text4)">Donné le ${d.donneLe}</div>` : ''}
+        const docs  = d.documents || [];
+        const pjBadge = docs.length ? `<span class="pj-badge" style="font-size:11px;background:#eff6ff;color:#1d4ed8;padding:2px 8px;border-radius:10px;font-weight:500;margin-left:6px;white-space:nowrap">📎 ${docs.length}</span>` : '';
+        const dEncoded = encodeURIComponent(JSON.stringify({ matiere: d.matiere, effectue: d.effectue, interrogation: d.interrogation, donneLe: d.donneLe || '', date: date, documents: docs })).replace(/'/g, '%27');
+        const badgeFg  = fait ? '#15803d' : 'var(--text3)';
+        const badgeTxt = fait ? '✅' : '○';
+        const badgeTip = fait ? 'Marquer comme non fait' : 'Marquer comme fait';
+        html += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+          <button
+            onclick="event.stopPropagation();toggleDevoirEffectue('${dId}','${date}',${fait})"
+            title="${badgeTip}"
+            style="flex-shrink:0;width:28px;height:28px;border-radius:50%;border:1px solid var(--border);background:rgba(220,252,231,0);color:${badgeFg};font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:opacity .15s"
+            onmouseover="this.style.opacity='0.6'" onmouseout="this.style.opacity='1'">
+            ${badgeTxt}
+          </button>
+          <div data-devoir-key="${dKey}" onclick="openDevoirDialog('${dEncoded}',this)"
+            style="flex:1;display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;background:var(--bg3);border:1px solid var(--border);font-size:14px;cursor:pointer;transition:background .1s,box-shadow .1s"
+            onmouseover="if(!this.classList.contains('devoir-selected'))this.style.background='var(--bg4)'" onmouseout="if(!this.classList.contains('devoir-selected'))this.style.background='var(--bg3)'">
+            <div style="flex:1">
+              <span style="font-weight:500;color:var(--text)">${d.matiere}</span>${inter}${pjBadge}
+              ${d.donneLe ? `<div style="font-size:11px;color:var(--text4)">Donné le ${d.donneLe}</div>` : ''}
+            </div>
           </div>
         </div>`;
       });
