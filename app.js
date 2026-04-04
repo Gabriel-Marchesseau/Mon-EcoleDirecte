@@ -1883,10 +1883,17 @@ function renderEdtGrid(cours, monday) {
 
   // Indexer les cours par jour (lundi=0..vendredi=4)
   const byDay = {0:[],1:[],2:[],3:[],4:[]};
+  const isCongeDay = {0:false,1:false,2:false,3:false,4:false};
   (cours || []).forEach(c => {
     const d = new Date(c.start_date.replace(' ','T'));
     const dayIdx = d.getDay() - 1; // lundi=0
-    if (dayIdx >= 0 && dayIdx <= 4) byDay[dayIdx].push(c);
+    if (dayIdx >= 0 && dayIdx <= 4) {
+      if (c.typeCours === 'CONGE') {
+        isCongeDay[dayIdx] = true;
+      } else {
+        byDay[dayIdx].push(c);
+      }
+    }
   });
 
   // Colonnes heure
@@ -1915,10 +1922,12 @@ function renderEdtGrid(cours, monday) {
       <span>${jours[i]}</span>
       <span style="font-size:14px;font-weight:400">${dayDate.getDate()} ${moisFr[dayDate.getMonth()]}</span>
     </div>`;
-    dayCols += `<div class="edt-day-body" style="position:relative;height:${GRID_H}px">`;
+    dayCols += `<div class="edt-day-body" style="position:relative;height:${GRID_H}px;overflow:hidden">`;
 
     if (isFer) {
-      dayCols += `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--text4);z-index:0;pointer-events:none">Férié</div>`;
+      dayCols += `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--text4);z-index:1;pointer-events:none">Férié</div>`;
+    } else if (isCongeDay[i]) {
+      dayCols += `<div style="position:absolute;inset:0;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--text4);z-index:1;pointer-events:none">Congés</div>`;
     }
 
     // Couche 2 : cours (z-index 1, devant les lignes)
@@ -2131,8 +2140,85 @@ function renderMessages(data) {
 function switchMsgTab(tab) {
   msgActiveTab = tab;
   document.querySelectorAll('.msg-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-  const listEl = document.getElementById('msg-list');
-  if (listEl) listEl.innerHTML = renderMsgList();
+  const detailEl = document.getElementById('message-detail-panel');
+  if (tab === 'correspondance') {
+    if (detailEl) detailEl.style.display = 'none';
+    loadCorrespondance();
+    return;
+  }
+  if (detailEl) detailEl.style.display = '';
+  const resultEl = document.getElementById('messages-result');
+  if (resultEl) {
+    let listEl = document.getElementById('msg-list');
+    if (!listEl) {
+      resultEl.innerHTML = `<div id="msg-list"></div>`;
+      listEl = document.getElementById('msg-list');
+    }
+    if (listEl) listEl.innerHTML = renderMsgList();
+  }
+}
+
+async function loadCorrespondance() {
+  const resultEl = document.getElementById('messages-result');
+  if (!resultEl) return;
+  resultEl.innerHTML = `<div style="padding:16px">${centeredSpinner()}</div>`;
+
+  try {
+    const acc = accountData?.accounts ? accountData.accounts[0] : accountData;
+    const idClasse = acc?.profile?.classe?.id || acc?.classe?.id || acc?.idClasse || '';
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
+    if (twoFaToken) headers['2fa-token'] = twoFaToken;
+
+    const fetchGroup = async (key, url) => {
+      if (contactsCache[key]) return contactsCache[key];
+      const resp = await fetch(`${getProxy()}${url}`, { method: 'POST', headers, body: 'data={}' });
+      const data = await resp.json();
+      if (data.code !== 200) throw new Error(data.message || `Code ${data.code}`);
+      const raw = Array.isArray(data.data) ? data.data
+        : Array.isArray(data.data?.professeurs) ? data.data.professeurs
+        : Array.isArray(data.data?.personnels)   ? data.data.personnels
+        : Array.isArray(data.data?.contacts)     ? data.data.contacts
+        : Array.isArray(data.data?.eleves)        ? data.data.eleves
+        : Object.values(data.data || {}).find(Array.isArray) || [];
+      const strVal = v => typeof v === 'string' ? v : (v?.libelle || v?.nom || '');
+      const list = raw.map(c => ({
+        id: c.id,
+        nom: [c.civilite, c.prenom, c.nom].filter(Boolean).join(' ').trim() || c.login || String(c.id),
+        info: strVal(c.matiere) || strVal(c.fonction) || strVal(c.role) || '',
+      }));
+      contactsCache[key] = list;
+      return list;
+    };
+
+    const [teachers, staff, tutors] = await Promise.all([
+      fetchGroup('teachers', `/v3/messagerie/contacts/professeurs.awp?nom=&idClasse=${idClasse}&verbe=get&v=4.97.2`),
+      fetchGroup('staff',    `/v3/messagerie/contacts/personnels.awp?verbe=get&v=4.97.2`),
+      fetchGroup('tutors',   `/v3/messagerie/contacts/entreprises.awp?verbe=get&v=4.97.2`),
+    ]);
+
+    const renderGroup = (title, list, type) => {
+      if (!list.length) return '';
+      const rows = list.map(c => {
+        const nomEnc = encodeURIComponent(c.nom).replace(/'/g, '%27');
+        return `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid var(--border)">
+          <span style="flex:1;font-size:13px">${c.nom}${c.info ? `<span style="color:var(--text4);font-size:12px;margin-left:6px">${c.info}</span>` : ''}</span>
+          <button onclick="openMsgToContact(${c.id},'${nomEnc}','${type}')"
+            style="padding:3px 10px;border-radius:6px;border:1px solid #1d4ed8;background:transparent;color:#1d4ed8;font-size:12px;cursor:pointer;white-space:nowrap">✉ Écrire</button>
+        </div>`;
+      }).join('');
+      return `<div style="margin-bottom:16px">
+        <div style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;padding:8px 10px 4px;border-bottom:2px solid var(--border2)">${title} (${list.length})</div>
+        ${rows}
+      </div>`;
+    };
+
+    const html = renderGroup('Professeurs', teachers, 'teachers')
+      + renderGroup('Personnels', staff, 'staff')
+      + renderGroup('Autres contacts', tutors, 'tutors');
+    resultEl.innerHTML = html || `<p style="color:var(--text3);font-size:14px;padding:8px">Aucun contact.</p>`;
+  } catch(e) {
+    if (resultEl) resultEl.innerHTML = `<p style="color:#b91c1c;font-size:13px;padding:8px">Erreur : ${e.message}</p>`;
+  }
 }
 
 function renderMsgList() {
@@ -2729,8 +2815,12 @@ function getIdClasse() {
   return acc?.profile?.classe?.id || acc?.classe?.id || '';
 }
 
-function openNewMessageDialog() {
-  newMsgRecipients = [];
+function openMsgToContact(id, nomEnc, type) {
+  openNewMessageDialog({ id, nom: decodeURIComponent(nomEnc), type });
+}
+
+function openNewMessageDialog(initialRecipient = null) {
+  newMsgRecipients = initialRecipient ? [initialRecipient] : [];
   newMsgAttachments = [];
   const dark = document.body.classList.contains('dark');
   const overlay = document.createElement('div');
@@ -2806,6 +2896,7 @@ function openNewMessageDialog() {
 
   overlay.appendChild(dlg);
   document.body.appendChild(overlay);
+  if (initialRecipient) renderNewMsgChips();
 }
 
 function renderNewMsgChips() {

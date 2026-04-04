@@ -146,7 +146,7 @@
   .copy-btn { font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid #ccc; background: var(--bg2); cursor: pointer; margin-top: 8px; }
   .copy-btn:hover { background: var(--bg); }
   .edt-grid { display: grid; grid-template-columns: 44px repeat(5, minmax(0,1fr)); gap: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; font-size: 11px; }
-  .edt-header { background: var(--bg3); font-weight: 500; text-align: center; padding: 6px 2px; border-bottom: 1px solid var(--border); font-size: 11px; }
+  .edt-header { background: var(--bg3); font-weight: 500; text-align: center; padding: 6px 2px; border-bottom: 1px solid var(--border); font-size: 11px; position: relative; z-index: 3; }
   .edt-header.today { background: #1a1a1a; color: #fff; }
   .edt-header.past { color: #bbb; }
   .edt-time-col { border-right: 1px solid #e0e0d8; }
