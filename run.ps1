@@ -95,7 +95,7 @@ if (-not $skipLaunch) {
     }
 
     if ($started) {
-        Write-OK "Proxy demarre sur https://localhost:3131"
+        Write-OK "Proxy demarre sur https://monecoledirecte.local"
         if ($debug) {
             Write-Host "  Logs URL, body, reponse, GTK et duree actives" -ForegroundColor Yellow
             Write-Host "  Fichiers surveilles : proxy.js, app.js, style.css, ecoledirecte.html" -ForegroundColor Yellow
@@ -107,7 +107,7 @@ if (-not $skipLaunch) {
 
 # ── 5. Ouvrir dans le navigateur ─────────────────────────────
 Write-Step "Ouverture de Mon EcoleDirecte..."
-Start-Process "https://localhost:3131"
+Start-Process "https://monecoledirecte.local"
 Write-OK "Mon EcoleDirecte est ouvert !"
 Write-Host ""
 if (-not $debug) {

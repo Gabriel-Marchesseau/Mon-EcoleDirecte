@@ -28,11 +28,14 @@ cert.validity.notBefore = new Date();
 cert.validity.notAfter  = new Date();
 cert.validity.notAfter.setFullYear(cert.validity.notBefore.getFullYear() + 1);
 
-const attrs = [{ name: 'commonName', value: 'localhost' }];
+const attrs = [{ name: 'commonName', value: 'monecoledirecte.local' }];
 cert.setSubject(attrs);
 cert.setIssuer(attrs);
 cert.setExtensions([
-  { name: 'subjectAltName', altNames: [{ type: 2, value: 'localhost' }] }
+  { name: 'subjectAltName', altNames: [
+    { type: 2, value: 'localhost' },
+    { type: 2, value: 'monecoledirecte.local' },
+  ]}
 ]);
 cert.sign(keys.privateKey, forge.md.sha256.create());
 

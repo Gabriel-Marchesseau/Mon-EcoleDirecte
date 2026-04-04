@@ -92,11 +92,42 @@ if ((Test-Path "$DIR\cert.pem") -and (Test-Path "$DIR\key.pem")) {
     }
 }
 
+# ── 5. Entrée hosts ──────────────────────────────────────────
+Write-Step "Configuration de monecoledirecte.local dans le fichier hosts..."
+$hostsPath = "$env:SystemRoot\System32\drivers\etc\hosts"
+$hostEntry = "127.0.0.1`tmonecoledirecte.local"
+try {
+    $hostsContent = Get-Content $hostsPath -Raw -ErrorAction Stop
+    if ($hostsContent -match "monecoledirecte\.local") {
+        Write-OK "Entree hosts deja presente"
+    } else {
+        Add-Content -Path $hostsPath -Value "`n$hostEntry" -Encoding ASCII
+        Write-OK "Entree hosts ajoutee : 127.0.0.1  monecoledirecte.local"
+    }
+} catch {
+    Write-Err "Impossible de modifier le fichier hosts - relancez install.ps1 en tant qu'Administrateur"
+}
+
+# ── 6. Portproxy 443 → 3131 ──────────────────────────────────
+Write-Step "Configuration du portproxy HTTPS (443 -> 3131)..."
+try {
+    $existingProxy = & netsh interface portproxy show v4tov4 2>$null
+    if ($existingProxy -match "443") {
+        Write-OK "Portproxy deja configure"
+    } else {
+        & netsh interface portproxy add v4tov4 listenaddress=127.0.0.1 listenport=443 connectaddress=127.0.0.1 connectport=3131 | Out-Null
+        Write-OK "Portproxy configure : https://monecoledirecte.local -> localhost:3131"
+    }
+} catch {
+    Write-Err "Impossible de configurer le portproxy - relancez install.ps1 en tant qu'Administrateur"
+}
+
 # ── Bilan ────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "  ================================" -ForegroundColor White
 if ($errors.Count -eq 0) {
     Write-Host "  Installation terminee avec succes !" -ForegroundColor Green
+    Write-Host "  Acces : https://monecoledirecte.local" -ForegroundColor Green
     Write-Host "  Lancez run.ps1 pour demarrer l'application." -ForegroundColor Green
 } else {
     Write-Host "  Installation terminee avec $($errors.Count) erreur(s) :" -ForegroundColor Red

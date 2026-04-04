@@ -43,9 +43,16 @@ document.head.appendChild(darkStyle);
 
 let token = '';
 let accountData = null;
+let sessionExpired = false;
 let lastResult = '';
 
 function getProxy() { return window.location.origin; }
+
+// ── Routeur ────────────────────────────────────────────────
+const ROUTE_TO_TAB = { '/edt': 'edt', '/notes': 'notes', '/devoirs': 'devoirs', '/seances': 'seances', '/messages': 'messages', '/vie-scolaire': 'absences', '/perso': 'perso' };
+const TAB_TO_ROUTE = { 'edt': '/edt', 'notes': '/notes', 'devoirs': '/devoirs', 'seances': '/seances', 'messages': '/messages', 'absences': '/vie-scolaire', 'perso': '/perso' };
+function getTabFromPath() { return ROUTE_TO_TAB[location.pathname] || null; }
+window.addEventListener('popstate', () => { const t = getTabFromPath(); if (t) switchTab(t, true); });
 function getEleveId() {
   if (!accountData) return '';
   const acc = accountData.accounts ? accountData.accounts[0] : accountData;
@@ -286,7 +293,7 @@ function onLoggedIn(data) {
     { id: 'devoirs',  label: 'Devoirs' },
     { id: 'seances',  label: 'Contenus de séances' },
     { id: 'messages', label: 'Messages' },
-    { id: 'absences', label: 'Absences' },
+    { id: 'absences', label: 'Vie scolaire' },
     { id: 'perso',    label: '···' },
   ];
   const bar = document.getElementById('tab-bar');
@@ -299,7 +306,7 @@ function onLoggedIn(data) {
     btn.onclick = () => switchTab(t.id);
     bar.appendChild(btn);
   });
-  switchTab(localStorage.getItem('ed_last_tab') || 'edt');
+  switchTab(getTabFromPath() || localStorage.getItem('ed_last_tab') || 'edt');
 
   // EDT : géré par edtWeekOffset
 }
@@ -314,6 +321,7 @@ async function shutdownApp() {
 
 function logout() {
   edCache.clear();
+  sessionExpired = false;
   token = ''; accountData = null;
   localStorage.removeItem('ed_session');
   document.getElementById('login-card').style.display = 'block';
@@ -324,6 +332,20 @@ function logout() {
   document.getElementById('qcm-area').style.display = 'none';
   document.getElementById('username').value = '';
   document.getElementById('password').value = '';
+  // Remettre le texte par défaut de la bannière hors-ligne
+  const banner = document.getElementById('offline-banner');
+  if (banner) { banner.innerHTML = '⚠ Mode hors-ligne — données en cache'; banner.classList.remove('visible'); }
+}
+
+function enterExpiredMode() {
+  sessionExpired = true;
+  token = '';
+  // Ne pas vider le cache ni accountData — navigation en cache possible
+  const banner = document.getElementById('offline-banner');
+  if (banner) {
+    banner.innerHTML = '⚠ Session expirée — naviguez avec les données en cache. <button onclick="logout()" style="margin-left:10px;padding:2px 10px;border-radius:8px;border:none;background:#fef3c7;color:#92400e;font-size:12px;font-weight:600;cursor:pointer">Se reconnecter</button>';
+    banner.classList.add('visible');
+  }
 }
 
 function openEdtDialog(encodedData) {
@@ -506,6 +528,16 @@ function cleanHtml(s) {
   return result;
 }
 
+function applyDevoirSelection() {
+  const dark = document.body.classList.contains('dark');
+  document.querySelectorAll('[data-devoir-key]').forEach(el => {
+    const isSelected = el.dataset.devoirKey === selectedDevoirKey;
+    el.classList.toggle('devoir-selected', isSelected);
+    el.style.background = isSelected ? (dark ? 'var(--bg4)' : '#e0e7ff') : 'var(--bg3)';
+    el.style.boxShadow = isSelected ? 'inset 3px 0 0 #1d4ed8' : '';
+  });
+}
+
 async function openDevoirDialog(encodedData, triggerEl) {
   const d = JSON.parse(decodeURIComponent(encodedData));
   const dark = document.body.classList.contains('dark');
@@ -513,16 +545,8 @@ async function openDevoirDialog(encodedData, triggerEl) {
   if (!panel) return;
 
   // Sélection visuelle dans la liste
-  document.querySelectorAll('[data-devoir-key]').forEach(el => {
-    el.classList.remove('devoir-selected');
-    el.style.background = 'var(--bg3)';
-    el.style.boxShadow = '';
-  });
-  if (triggerEl) {
-    triggerEl.classList.add('devoir-selected');
-    triggerEl.style.background = dark ? 'var(--bg4)' : '#e0e7ff';
-    triggerEl.style.boxShadow = 'inset 3px 0 0 #1d4ed8';
-  }
+  if (triggerEl) selectedDevoirKey = triggerEl.dataset.devoirKey;
+  applyDevoirSelection();
 
   const inter = d.interrogation ? '<span class="devoir-badge-interro" style="font-size:14px;padding:2px 8px;border-radius:10px;margin-left:8px">Interro</span>' : '';
   const fait  = d.effectue ? '<span class="devoir-badge-fait" style="font-size:14px;padding:2px 8px;border-radius:10px;margin-left:8px">Fait ✅</span>' : '';
@@ -692,7 +716,7 @@ function detectCurrentPeriod(periodes) {
   return periodes[periodes.length - 1]?.codePeriode || periodes[0]?.codePeriode;
 }
 
-let msgCounts = { received: 0, sent: 0 };
+let msgCounts = { received: 0, sent: 0, draft: 0, archived: 0 };
 
 async function loadMessages() {
   const eleveId = getEleveId();
@@ -709,18 +733,23 @@ async function loadMessages() {
       });
       return resp.json();
     };
-    const [dataReceived, dataSent] = await Promise.all([fetchTab('received'), fetchTab('sent')]);
+    const [dataReceived, dataSent, dataDraft, dataArchived] = await Promise.all([
+      fetchTab('received'), fetchTab('sent'), fetchTab('draft'), fetchTab('archived')
+    ]);
     return {
       received: dataReceived.code === 200 ? (dataReceived.data?.messages?.received || []) : [],
       sent:     dataSent.code === 200     ? (dataSent.data?.messages?.sent || [])         : [],
+      draft:    dataDraft.code === 200    ? (dataDraft.data?.messages?.draft || dataDraft.data?.messages?.received || []) : [],
+      archived: dataArchived.code === 200 ? (dataArchived.data?.messages?.archived || dataArchived.data?.messages?.received || []) : [],
     };
   };
 
-  const applyMessages = ({ received, sent }, isFresh, oldData) => {
-    msgCounts = { received: received.length, sent: sent.length };
-    [...received, ...sent].forEach(m => { cachedMessages[m.id] = m; });
-    msgData = { messages: { received, sent } };
+  const applyMessages = ({ received = [], sent = [], draft = [], archived = [] }, isFresh, oldData) => {
+    msgCounts = { received: received.length, sent: sent.length, draft: draft.length, archived: archived.length };
+    [...received, ...sent, ...draft, ...archived].forEach(m => { cachedMessages[m.id] = m; });
+    msgData = { messages: { received, sent, draft, archived } };
     document.getElementById('messages-result').innerHTML = renderMessages(msgData);
+    applyMessageSelection();
     document.getElementById('spin-messages').style.display = 'none';
     updateFreshnessLabel('messages', Date.now());
     if (isFresh && oldData) {
@@ -741,13 +770,27 @@ async function loadMessages() {
   });
 }
 
+let vieScolaireSection = 'absences';
+
+function switchVieScolaireTab(section) {
+  vieScolaireSection = section;
+  document.querySelectorAll('.vs-subtab').forEach(b => b.classList.remove('active'));
+  document.getElementById(`vs-tab-${section}`).classList.add('active');
+  // Re-render depuis le cache sans refetch
+  const eleveId = getEleveId();
+  if (!eleveId) return;
+  edCache.get(`absences:${eleveId}`).then(entry => {
+    if (entry) document.getElementById('absences-result').innerHTML = renderVieScolaireSection(entry.data, section);
+  });
+}
+
 async function loadAbsences() {
   const eleveId = getEleveId();
   if (!eleveId) return;
   const cacheKey = `absences:${eleveId}`;
 
   const render = (data, isFresh, oldData) => {
-    document.getElementById('absences-result').innerHTML = renderAbsences(data);
+    document.getElementById('absences-result').innerHTML = renderVieScolaireSection(data, vieScolaireSection);
     document.getElementById('spin-absences').style.display = 'none';
     updateFreshnessLabel('absences', Date.now());
     if (isFresh && oldData && edCache.defaultDiff(oldData, data)) setBadge('absences', 1);
@@ -774,6 +817,7 @@ async function loadAbsences() {
 }
 
 let devoirsCache = null;
+let selectedDevoirKey = null;
 
 function toggleDevoirsHide(btn) {
   const active = btn.getAttribute('aria-pressed') !== 'true';
@@ -788,6 +832,7 @@ function renderDevoirsFromCache() {
   const path = `/v3/Eleves/${getEleveId()}/cahierdetexte.awp?verbe=get`;
   const container = document.getElementById('devoirs-result');
   if (container) container.innerHTML = renderData(path, devoirsCache);
+  applyDevoirSelection();
 }
 
 async function toggleDevoirEffectue(devoirId, date, currentState) {
@@ -958,9 +1003,9 @@ async function loadSeances() {
   // Trier par date
   allResults.sort((a, b) => a.dateVal.localeCompare(b.dateVal));
 
-  // Construire le HTML global, groupé par date
+  // Construire le HTML global, groupé par date (plus récent en premier)
   let html = '';
-  for (const { dateVal, data } of allResults) {
+  for (const { dateVal, data } of allResults.reverse()) {
     const matieres = data?.matieres || [];
     const items = matieres.map(m => renderMatiere(m)).filter(Boolean).join('');
     if (!items) continue;
@@ -1724,6 +1769,9 @@ function buildChart(datasets, periode) {
 }
 
 async function forceRefresh(tab) {
+  // Session expirée → aller se reconnecter
+  if (!token) { logout(); return; }
+
   const btn = document.getElementById('tab-refresh-btn');
   if (btn) btn.classList.add('spinning');
 
@@ -1905,7 +1953,7 @@ function renderEdtGrid(cours, monday) {
   return `<div class="edt-grid">${timeCol}${dayCols}</div>`;
 }
 
-function switchTab(id) {
+function switchTab(id, fromPopstate = false) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === id));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + id));
   document.getElementById('result-area').style.display = 'none';
@@ -1913,6 +1961,9 @@ function switchTab(id) {
   localStorage.setItem('ed_last_tab', id);
   clearBadge(id);
   renderFreshnessLabel(id);
+  // Mettre à jour l'URL sans recharger la page
+  const route = TAB_TO_ROUTE[id] || '/edt';
+  if (!fromPopstate && location.pathname !== route) history.pushState({ tab: id }, '', route);
   // Connecter le bouton refresh global à l'onglet actif
   const refreshBtn = document.getElementById('tab-refresh-btn');
   if (refreshBtn) {
@@ -1920,7 +1971,13 @@ function switchTab(id) {
   }
   if (id === 'edt') runEdt();
   else if (id === 'notes') loadNotes();
-  else if (id === 'absences') loadAbsences();
+  else if (id === 'absences') {
+    vieScolaireSection = 'absences';
+    document.querySelectorAll('.vs-subtab').forEach(b => b.classList.remove('active'));
+    const defaultTab = document.getElementById('vs-tab-absences');
+    if (defaultTab) defaultTab.classList.add('active');
+    loadAbsences();
+  }
   else if (id === 'devoirs') loadDevoirs();
   else if (id === 'seances') {
     const today = new Date();
@@ -2003,6 +2060,7 @@ function togglePwd() {
 }
 
 let cachedMessages = {};
+let selectedMessageId = null;
 
 let msgActiveTab = 'received';
 // Timestamps de dernière mise à jour par onglet
@@ -2063,7 +2121,9 @@ function renderMessages(data) {
   // Mettre à jour les labels avec les vrais counts
   document.querySelectorAll('.msg-tab').forEach(b => {
     if (b.dataset.tab === 'received') b.textContent = `Reçus (${msgCounts.received})`;
-    if (b.dataset.tab === 'sent') b.textContent = `Envoyés (${msgCounts.sent})`;
+    if (b.dataset.tab === 'sent')     b.textContent = `Envoyés (${msgCounts.sent})`;
+    if (b.dataset.tab === 'draft')    b.textContent = `Brouillons (${msgCounts.draft})`;
+    if (b.dataset.tab === 'archived') b.textContent = `Archivés (${msgCounts.archived})`;
   });
   return `<div id="msg-list">${renderMsgList()}</div>`;
 }
@@ -2077,9 +2137,7 @@ function switchMsgTab(tab) {
 
 function renderMsgList() {
   if (!msgData) return '';
-  const list = msgActiveTab === 'received'
-    ? (msgData.messages?.received || [])
-    : (msgData.messages?.sent || []);
+  const list = msgData.messages?.[msgActiveTab] || [];
 
   // Tri du plus récent au plus ancien
   const sorted = [...list].sort((a, b) => b.date.localeCompare(a.date));
@@ -2087,7 +2145,7 @@ function renderMsgList() {
   if (!sorted.length) return `<p style="color:var(--text3);font-size:14px;padding:8px 0">Aucun message.</p>`;
 
   return sorted.map(m => {
-    const direction = msgActiveTab;
+    const direction = (msgActiveTab === 'sent' || msgActiveTab === 'draft') ? 'sent' : 'received';
     const isUnread = !m.read;
     const weight = isUnread ? '700' : '400';
     const dot = isUnread
@@ -2098,7 +2156,7 @@ function renderMsgList() {
       : (m.to?.[0] ? `${m.to[0].civilite} ${m.to[0].nom}`.trim() : '?');
     const contactLabel = direction === 'received' ? `De : ${contact}` : `À : ${contact}`;
     const attach = m.files?.length ? `<span style="font-size:14px;color:#1d4ed8;margin-left:6px">📎${m.files.length}</span>` : '';
-    return `<div onclick="openMessageDialog(${m.id})" style="display:flex;align-items:flex-start;padding:7px 4px;border-bottom:1px solid var(--border2);font-size:14px;cursor:pointer;border-radius:4px" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background='transparent'">
+    return `<div data-message-id="${m.id}" onclick="openMessageDialog(${m.id})" style="display:flex;align-items:flex-start;padding:7px 4px;border-bottom:1px solid var(--border2);font-size:14px;cursor:pointer;border-radius:4px" onmouseover="if(${m.id}!==selectedMessageId)this.style.background='var(--bg3)'" onmouseout="if(${m.id}!==selectedMessageId)this.style.background='transparent'">
       ${dot}
       <div style="flex:1;min-width:0">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
@@ -2111,11 +2169,23 @@ function renderMsgList() {
   }).join('');
 }
 
+function applyMessageSelection() {
+  const dark = document.body.classList.contains('dark');
+  document.querySelectorAll('[data-message-id]').forEach(el => {
+    const isSelected = parseInt(el.dataset.messageId) === selectedMessageId;
+    el.style.background = isSelected ? (dark ? 'var(--bg4)' : '#e0e7ff') : 'transparent';
+    el.style.boxShadow = isSelected ? 'inset 3px 0 0 #1d4ed8' : '';
+  });
+}
+
 async function openMessageDialog(msgId) {
   const eleveId = getEleveId();
   const cached = cachedMessages[msgId];
   const panel = document.getElementById('message-detail-panel');
   if (!panel) return;
+
+  selectedMessageId = msgId;
+  applyMessageSelection();
 
   // Marquer comme lu si non lu
   if (cached && !cached.read) {
@@ -2344,6 +2414,11 @@ function renderMessageContent(el, rawContent) {
 
 function closeMessageDialog() {}
 
+function renderVieScolaireSection(data, section) {
+  if (section === 'sanctions') return renderSanctions(data);
+  return renderAbsences(data);
+}
+
 function renderAbsences(data) {
   const abs = (data.absencesRetards || []);
   if (!abs.length) return '<p style="color:var(--text3);font-size:14px">Aucune absence enregistrée.</p>';
@@ -2360,6 +2435,31 @@ function renderAbsences(data) {
         <span style="color:${color};font-weight:500;font-size:14px">${badge}</span>
       </div>
       ${motif ? `<div style="color:var(--text2)">${motif}</div>` : ''}
+      ${commentaire ? `<div style="color:var(--text3);font-style:italic;margin-top:2px">"${commentaire}"</div>` : ''}
+    </div>`;
+  });
+  return html;
+}
+
+function renderSanctions(data) {
+  const items = (data.sanctionsEncouragements || []);
+  if (!items.length) return '<p style="color:var(--text3);font-size:14px">Aucune sanction enregistrée.</p>';
+  let html = `<div style="font-weight:500;font-size:14px;margin-bottom:8px">${items.length} sanction(s)</div>`;
+  items.forEach(s => {
+    const date = (s.displayDate || s.date || '').split('\n').join(' ').trim();
+    const type = (s.typeElement || s.libelle || '').trim();
+    const motif = (s.motif || '').trim();
+    const commentaire = (s.commentaire || '').trim();
+    const matiere = (s.matiere || '').trim();
+    const par = (s.par || '').trim();
+    html += `<div style="padding:8px 10px;border-radius:8px;background:var(--bg3);margin-bottom:6px;font-size:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+        <span style="font-weight:500">${date}</span>
+        ${type ? `<span style="color:#b91c1c;font-weight:500;font-size:13px">${type}</span>` : ''}
+      </div>
+      ${matiere ? `<div style="color:var(--text2)">${matiere}</div>` : ''}
+      ${motif ? `<div style="color:var(--text2)">${motif}</div>` : ''}
+      ${par ? `<div style="color:var(--text3);font-size:13px">Par : ${par}</div>` : ''}
       ${commentaire ? `<div style="color:var(--text3);font-style:italic;margin-top:2px">"${commentaire}"</div>` : ''}
     </div>`;
   });
@@ -2435,7 +2535,7 @@ function renderData(path, data) {
 
   // ABSENCES
   if (path.includes('viescolaire')) {
-    return renderAbsences(data);
+    return renderVieScolaireSection(data, vieScolaireSection);
   }
 
   // CAHIER DE TEXTES — liste devoirs à faire (sans date)
@@ -2617,6 +2717,316 @@ function resetSecuritySettings() {
   setTimeout(() => { msg.style.display = 'none'; }, 2000);
 }
 
+// ── Nouveau message ────────────────────────────────────────────────────────
+
+let newMsgRecipients = []; // { id, nom, type }
+let newMsgAttachments = []; // File[]
+let contactsCache = { teachers: null, staff: null, tutors: null };
+function resetContactsCache() { contactsCache = { teachers: null, staff: null, tutors: null }; }
+
+function getIdClasse() {
+  const acc = accountData?.accounts ? accountData.accounts[0] : accountData;
+  return acc?.profile?.classe?.id || acc?.classe?.id || '';
+}
+
+function openNewMessageDialog() {
+  newMsgRecipients = [];
+  newMsgAttachments = [];
+  const dark = document.body.classList.contains('dark');
+  const overlay = document.createElement('div');
+  overlay.id = 'new-msg-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:1rem';
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+
+  const dlg = document.createElement('div');
+  dlg.style.cssText = `background:${dark?'#242424':'#fff'};color:${dark?'#f0f0ee':'#1a1a1a'};border-radius:12px;padding:20px;width:100%;max-width:680px;max-height:90vh;overflow-y:auto;display:flex;flex-direction:column;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,0.25)`;
+  dlg.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <span style="font-weight:600;font-size:15px">Nouveau message</span>
+      <button onclick="document.getElementById('new-msg-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text3);line-height:1">×</button>
+    </div>
+
+    <!-- À -->
+    <div>
+      <label style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">À</label>
+      <div id="new-msg-to-wrap" onclick="openContactPicker()" style="min-height:36px;border:1px solid var(--border);border-radius:8px;padding:6px 10px;cursor:pointer;display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-top:4px;background:var(--bg2)">
+        <span id="new-msg-to-chips" style="display:contents"></span>
+        <span style="color:var(--text4);font-size:13px" id="new-msg-to-hint">Cliquer pour ajouter des destinataires…</span>
+      </div>
+    </div>
+
+    <!-- Sujet -->
+    <div>
+      <label style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Sujet</label>
+      <input id="new-msg-subject" type="text" placeholder="Sujet du message" style="width:100%;margin-top:4px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text);font-size:14px;box-sizing:border-box;outline:none">
+    </div>
+
+    <!-- Message (contenteditable enrichi) -->
+    <div style="flex:1">
+      <label style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Message</label>
+      <div id="new-msg-toolbar" style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;margin-bottom:4px">
+        ${['bold','italic','underline'].map(cmd =>
+          `<button onmousedown="event.preventDefault();document.execCommand('${cmd}')" title="${cmd}"
+            style="padding:3px 8px;border:1px solid var(--border);border-radius:5px;background:var(--bg2);color:var(--text);cursor:pointer;font-size:13px">
+            ${cmd==='bold'?'<b>G</b>':cmd==='italic'?'<i>I</i>':'<u>S</u>'}
+          </button>`).join('')}
+        ${[1,2,3].map(n =>
+          `<button onmousedown="event.preventDefault();document.execCommand('fontSize',false,'${n+2}')" title="Taille ${n}"
+            style="padding:3px 8px;border:1px solid var(--border);border-radius:5px;background:var(--bg2);color:var(--text);cursor:pointer;font-size:${10+n*2}px">A</button>`).join('')}
+        <button onmousedown="event.preventDefault();document.execCommand('insertUnorderedList')"
+          style="padding:3px 8px;border:1px solid var(--border);border-radius:5px;background:var(--bg2);color:var(--text);cursor:pointer;font-size:13px">• Liste</button>
+        <button onmousedown="event.preventDefault();document.execCommand('removeFormat')"
+          style="padding:3px 8px;border:1px solid var(--border);border-radius:5px;background:var(--bg2);color:var(--text);cursor:pointer;font-size:13px">Effacer format</button>
+      </div>
+      <div id="new-msg-body" contenteditable="true"
+        style="min-height:160px;border:1px solid var(--border);border-radius:8px;padding:10px;background:var(--bg2);color:var(--text);font-size:14px;line-height:1.6;outline:none;overflow-y:auto"></div>
+    </div>
+
+    <!-- Pièces jointes -->
+    <div>
+      <label style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Pièces jointes</label>
+      <div id="new-msg-dropzone" onclick="document.getElementById('new-msg-file-input').click()"
+        ondragover="event.preventDefault();this.style.borderColor='#1d4ed8'"
+        ondragleave="this.style.borderColor=''"
+        ondrop="event.preventDefault();this.style.borderColor='';handleMsgFileDrop(event)"
+        style="margin-top:4px;border:2px dashed var(--border);border-radius:8px;padding:14px;text-align:center;cursor:pointer;font-size:13px;color:var(--text3);transition:border-color .15s">
+        Glissez des fichiers ici ou <u>cliquez pour parcourir</u>
+        <div id="new-msg-files-list" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;justify-content:center"></div>
+      </div>
+      <input type="file" id="new-msg-file-input" multiple style="display:none" onchange="handleMsgFileInput(this)">
+    </div>
+
+    <!-- Boutons -->
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px">
+      <button onclick="saveMsgDraft()" style="padding:7px 16px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:13px;font-weight:500;cursor:pointer">Enregistrer dans les brouillons</button>
+      <button onclick="sendNewMessage()" style="padding:7px 16px;border-radius:8px;border:none;background:#1d4ed8;color:#fff;font-size:13px;font-weight:500;cursor:pointer">Envoyer</button>
+    </div>
+    <div id="new-msg-status" style="font-size:13px;text-align:right"></div>
+  `;
+
+  overlay.appendChild(dlg);
+  document.body.appendChild(overlay);
+}
+
+function renderNewMsgChips() {
+  const chips = document.getElementById('new-msg-to-chips');
+  const hint  = document.getElementById('new-msg-to-hint');
+  if (!chips) return;
+  chips.innerHTML = newMsgRecipients.map(r =>
+    `<span style="display:inline-flex;align-items:center;gap:4px;background:#eff6ff;color:#1d4ed8;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:500">
+      ${r.nom}
+      <span onclick="removeRecipient(${r.id})" style="cursor:pointer;font-size:14px;line-height:1;color:#1d4ed8">×</span>
+    </span>`
+  ).join('');
+  if (hint) hint.style.display = newMsgRecipients.length ? 'none' : '';
+}
+
+function removeRecipient(id) {
+  newMsgRecipients = newMsgRecipients.filter(r => r.id !== id);
+  renderNewMsgChips();
+}
+
+function handleMsgFileDrop(e) {
+  const files = Array.from(e.dataTransfer.files);
+  files.forEach(f => { if (!newMsgAttachments.find(x => x.name === f.name)) newMsgAttachments.push(f); });
+  renderAttachmentList();
+}
+
+function handleMsgFileInput(input) {
+  Array.from(input.files).forEach(f => { if (!newMsgAttachments.find(x => x.name === f.name)) newMsgAttachments.push(f); });
+  renderAttachmentList();
+  input.value = '';
+}
+
+function renderAttachmentList() {
+  const list = document.getElementById('new-msg-files-list');
+  if (!list) return;
+  list.innerHTML = newMsgAttachments.map((f, i) =>
+    `<span style="display:inline-flex;align-items:center;gap:4px;background:var(--bg3);padding:3px 8px;border-radius:10px;font-size:12px">
+      ${getFileIcon(f.name)} ${f.name}
+      <span onclick="removeAttachment(${i})" style="cursor:pointer;color:var(--text3);font-size:14px;line-height:1">×</span>
+    </span>`
+  ).join('');
+}
+
+function removeAttachment(i) {
+  newMsgAttachments.splice(i, 1);
+  renderAttachmentList();
+}
+
+// ── Dialog sélection destinataires ─────────────────────────────────────────
+
+let contactPickerTab = 'teachers';
+
+async function openContactPicker() {
+  const dark = document.body.classList.contains('dark');
+  const overlay = document.createElement('div');
+  overlay.id = 'contact-picker-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1100;display:flex;align-items:center;justify-content:center;padding:1rem';
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+
+  const dlg = document.createElement('div');
+  dlg.style.cssText = `background:${dark?'#242424':'#fff'};color:${dark?'#f0f0ee':'#1a1a1a'};border-radius:12px;padding:20px;width:100%;max-width:480px;max-height:80vh;display:flex;flex-direction:column;gap:10px;box-shadow:0 8px 32px rgba(0,0,0,0.25)`;
+  dlg.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <span style="font-weight:600;font-size:15px">Choisir des destinataires</span>
+      <button onclick="document.getElementById('contact-picker-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text3);line-height:1">×</button>
+    </div>
+    <div style="display:flex;gap:4px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:3px">
+      <button class="contact-tab active" data-ctab="teachers" onclick="switchContactTab('teachers')" style="flex:1;padding:4px;border:none;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;background:var(--bg);color:var(--text)">Enseignants</button>
+      <button class="contact-tab" data-ctab="staff" onclick="switchContactTab('staff')" style="flex:1;padding:4px;border:none;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;background:transparent;color:var(--text3)">Personnels</button>
+      <button class="contact-tab" data-ctab="tutors" onclick="switchContactTab('tutors')" style="flex:1;padding:4px;border:none;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;background:transparent;color:var(--text3)">Tuteurs</button>
+    </div>
+    <input id="contact-search" type="text" placeholder="Rechercher…" oninput="filterContacts()" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text);font-size:13px;outline:none">
+    <div id="contact-list" style="flex:1;overflow-y:auto;max-height:340px;display:flex;flex-direction:column;gap:2px">
+      <span style="color:var(--text4);font-size:13px;text-align:center;padding:16px">Chargement…</span>
+    </div>
+    <button onclick="document.getElementById('contact-picker-overlay').remove()" style="padding:7px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:13px;font-weight:500;cursor:pointer">Valider</button>
+  `;
+
+  overlay.appendChild(dlg);
+  document.body.appendChild(overlay);
+  contactPickerTab = 'teachers';
+  resetContactsCache();
+  await loadContactsTab('teachers');
+}
+
+async function switchContactTab(tab) {
+  contactPickerTab = tab;
+  document.querySelectorAll('.contact-tab').forEach(b => {
+    const active = b.dataset.ctab === tab;
+    b.style.background = active ? 'var(--bg)' : 'transparent';
+    b.style.color = active ? 'var(--text)' : 'var(--text3)';
+  });
+  document.getElementById('contact-search').value = '';
+  await loadContactsTab(tab);
+}
+
+async function loadContactsTab(tab) {
+  const listEl = document.getElementById('contact-list');
+  if (!listEl) return;
+
+  if (contactsCache[tab]) { renderContactList(contactsCache[tab]); return; }
+
+  listEl.innerHTML = `<span style="color:var(--text4);font-size:13px;text-align:center;padding:16px">${centeredSpinner()}</span>`;
+
+  try {
+    const acc = accountData?.accounts ? accountData.accounts[0] : accountData;
+    const idClasse = acc?.profile?.classe?.id || acc?.classe?.id || acc?.idClasse || '';
+    const endpoints = {
+      teachers: `/v3/messagerie/contacts/professeurs.awp?nom=&idClasse=${idClasse}&verbe=get&v=4.97.2`,
+      staff:    `/v3/messagerie/contacts/personnels.awp?verbe=get&v=4.97.2`,
+      tutors:   `/v3/messagerie/contacts/entreprises.awp?verbe=get&v=4.97.2`,
+    };
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
+    if (twoFaToken) headers['2fa-token'] = twoFaToken;
+    const resp = await fetch(`${getProxy()}${endpoints[tab]}`, { method: 'POST', headers, body: 'data={}' });
+    const data = await resp.json();
+    if (data.code !== 200) throw new Error(data.message || `Code ${data.code}`);
+    // Normaliser : extraire le tableau selon la structure retournée
+    const raw = Array.isArray(data.data) ? data.data
+      : Array.isArray(data.data?.professeurs) ? data.data.professeurs
+      : Array.isArray(data.data?.personnels)   ? data.data.personnels
+      : Array.isArray(data.data?.contacts)     ? data.data.contacts
+      : Array.isArray(data.data?.eleves)        ? data.data.eleves
+      : Object.values(data.data || {}).find(Array.isArray) || [];
+    const strVal = v => typeof v === 'string' ? v : (v?.libelle || v?.nom || '');
+    const list = raw.map(c => ({
+      id:  c.id,
+      nom: [c.civilite, c.prenom, c.nom].filter(Boolean).join(' ').trim() || c.login || String(c.id),
+      info: strVal(c.matiere) || strVal(c.fonction) || strVal(c.role) || '',
+    }));
+    contactsCache[tab] = list;
+    renderContactList(list);
+  } catch(e) {
+    if (listEl) listEl.innerHTML = `<span style="color:#b91c1c;font-size:13px;padding:8px">Erreur : ${e.message}</span>`;
+  }
+}
+
+function filterContacts() {
+  const q = document.getElementById('contact-search')?.value.toLowerCase() || '';
+  const list = (contactsCache[contactPickerTab] || []).filter(c =>
+    c.nom.toLowerCase().includes(q) || c.info.toLowerCase().includes(q)
+  );
+  renderContactList(list);
+}
+
+function renderContactList(list) {
+  const listEl = document.getElementById('contact-list');
+  if (!listEl) return;
+  if (!list.length) { listEl.innerHTML = `<span style="color:var(--text4);font-size:13px;text-align:center;padding:16px">Aucun résultat.</span>`; return; }
+  const dark = document.body.classList.contains('dark');
+  listEl.innerHTML = list.map(c => {
+    const selected = newMsgRecipients.some(r => r.id === c.id);
+    return `<div onclick="toggleRecipient(${c.id},'${c.nom.replace(/'/g,"\\'")}','${contactPickerTab}')"
+      style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:7px;cursor:pointer;
+        background:${selected?(dark?'#1e3a5f':'#eff6ff'):'transparent'};
+        border:1px solid ${selected?'#1d4ed8':'transparent'};font-size:13px;transition:background .1s"
+      onmouseover="if(!this.classList.contains('c-sel'))this.style.background='var(--bg3)'"
+      onmouseout="this.style.background='${selected?(dark?'#1e3a5f':'#eff6ff'):'transparent'}'">
+      <span style="flex:1">${c.nom}${c.info?`<span style="color:var(--text4);font-size:12px;margin-left:6px">${c.info}</span>`:''}</span>
+      ${selected?'<span style="color:#1d4ed8;font-weight:700;font-size:16px">✓</span>':''}
+    </div>`;
+  }).join('');
+}
+
+function toggleRecipient(id, nom, type) {
+  const idx = newMsgRecipients.findIndex(r => r.id === id);
+  if (idx >= 0) newMsgRecipients.splice(idx, 1);
+  else newMsgRecipients.push({ id, nom, type });
+  renderNewMsgChips();
+  renderContactList(contactsCache[contactPickerTab] || []);
+}
+
+// ── Envoi / brouillon ──────────────────────────────────────────────────────
+
+function getMsgPayload(isDraft) {
+  const subject = document.getElementById('new-msg-subject')?.value.trim() || '';
+  const body    = document.getElementById('new-msg-body')?.innerHTML || '';
+  const to = newMsgRecipients.map(r => ({ id: r.id, typeDestinataire: r.type === 'teachers' ? 'P' : r.type === 'staff' ? 'A' : 'L' }));
+  return { subject, body: btoa(unescape(encodeURIComponent(body))), to, isDraft: isDraft ? 1 : 0 };
+}
+
+function setMsgStatus(msg, color) {
+  const el = document.getElementById('new-msg-status');
+  if (el) { el.textContent = msg; el.style.color = color; }
+}
+
+async function sendNewMessage() {
+  if (!newMsgRecipients.length) { setMsgStatus('Ajoutez au moins un destinataire.', '#b91c1c'); return; }
+  const subject = document.getElementById('new-msg-subject')?.value.trim();
+  if (!subject) { setMsgStatus('Le sujet est obligatoire.', '#b91c1c'); return; }
+  setMsgStatus('Envoi en cours…', 'var(--text3)');
+  try {
+    const eleveId = getEleveId();
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
+    if (twoFaToken) headers['2fa-token'] = twoFaToken;
+    const resp = await fetch(`${getProxy()}/v3/eleves/${eleveId}/messages.awp?verbe=post&v=4.97.2`, {
+      method: 'POST', headers, body: `data=${encodeURIComponent(JSON.stringify(getMsgPayload(false)))}`
+    });
+    const data = await resp.json();
+    if (data.code !== 200) throw new Error(data.message || `Code ${data.code}`);
+    setMsgStatus('Message envoyé !', '#15803d');
+    setTimeout(() => { document.getElementById('new-msg-overlay')?.remove(); loadMessages(); }, 1200);
+  } catch(e) { setMsgStatus(`Erreur : ${e.message}`, '#b91c1c'); }
+}
+
+async function saveMsgDraft() {
+  setMsgStatus('Enregistrement…', 'var(--text3)');
+  try {
+    const eleveId = getEleveId();
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
+    if (twoFaToken) headers['2fa-token'] = twoFaToken;
+    const resp = await fetch(`${getProxy()}/v3/eleves/${eleveId}/messages.awp?verbe=post&v=4.97.2`, {
+      method: 'POST', headers, body: `data=${encodeURIComponent(JSON.stringify(getMsgPayload(true)))}`
+    });
+    const data = await resp.json();
+    if (data.code !== 200) throw new Error(data.message || `Code ${data.code}`);
+    setMsgStatus('Brouillon enregistré !', '#15803d');
+    setTimeout(() => { document.getElementById('new-msg-overlay')?.remove(); loadMessages(); }, 1200);
+  } catch(e) { setMsgStatus(`Erreur : ${e.message}`, '#b91c1c'); }
+}
+
 // Restauration de session — UI seulement, sans appel réseau pour ne pas perturber le GTK
 // Différer restoreSession après que tous les scripts (cache.js inclus) soient chargés
 window.addEventListener('DOMContentLoaded', function restoreSession() {
@@ -2637,7 +3047,7 @@ window.addEventListener('DOMContentLoaded', function restoreSession() {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': s.token, 'X-ApisVer': '4.75.0' },
         body: 'data={}'
       }).then(r => r.json()).then(data => {
-        if (data.code !== 200) { logout(); }
+        if (data.code !== 200) { enterExpiredMode(); }
       }).catch(() => { /* proxy pas dispo, on garde la session */ });
     }, 1500);
   } catch(e) { localStorage.removeItem('ed_session'); }

@@ -133,11 +133,15 @@ const server = https.createServer(sslOptions, async (req, res) => {
   // Pour les fichiers statiques GET, pas besoin d'attendre le body
   const parsedPathOnly = new URL(req.url, 'https://localhost').pathname;
   const staticFiles2 = { '/': 'ecoledirecte.html', '/app.js': 'app.js', '/style.css': 'style.css', '/cache.js': 'cache.js', '/ecoledirecte.html': 'ecoledirecte.html', '/favicon.ico': 'favicon.ico' };
-  if (staticFiles2[parsedPathOnly] && req.method === 'GET') {
-    const filePath = path.join(__dirname, staticFiles2[parsedPathOnly]);
+  // Routes SPA — toute URL non-API non-statique sert l'app HTML (routeur côté client)
+  const SPA_ROUTES = ['/edt', '/notes', '/devoirs', '/seances', '/messages', '/vie-scolaire', '/perso'];
+  const isSpaRoute = SPA_ROUTES.includes(parsedPathOnly);
+  const fileKey = isSpaRoute ? '/' : parsedPathOnly;
+  if ((staticFiles2[fileKey] || isSpaRoute) && req.method === 'GET') {
+    const filePath = path.join(__dirname, staticFiles2[isSpaRoute ? '/' : fileKey] || 'ecoledirecte.html');
     try {
       let fileContent = fs.readFileSync(filePath);
-      const ext = path.extname(filePath);
+      const ext = path.extname(filePath) || '.html';
       // Remplacer __VERSION__ dans HTML et JS
       if (ext === '.html' || ext === '.js') {
         fileContent = fileContent.toString().replace(/__VERSION__/g, BUILD_VERSION);
@@ -237,7 +241,7 @@ const server = https.createServer(sslOptions, async (req, res) => {
 });
 
 server.listen(PORT, '127.0.0.1', async () => {
-  logAlways(`\n✅  Proxy Mon EcoleDirecte démarré sur https://localhost:${PORT}${DEBUG ? ' [MODE DEBUG]' : ''}\n`);
+  logAlways(`\n✅  Proxy Mon EcoleDirecte démarré sur https://monecoledirecte.local (port ${PORT})${DEBUG ? ' [MODE DEBUG]' : ''}\n`);
   if (DEBUG) {
     logAlways(CYAN('  Logs activés : URL, body, réponse, GTK, durée'));
     logAlways(GRAY('  GTK initial: ') + (session.gtk ? GREEN(session.gtk.substring(0,20)+'...') : RED('VIDE')));

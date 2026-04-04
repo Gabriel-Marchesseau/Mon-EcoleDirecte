@@ -134,14 +134,14 @@
     <div class="tab-panel" id="panel-seances">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
         <div class="seances-date-range">
-          <div class="seances-date-field" onclick="document.getElementById('seances-date-debut').showPicker?.() || document.getElementById('seances-date-debut').click()">
+          <div class="seances-date-field" onclick="document.getElementById('seances-date-debut').showPicker?.()">
             <span class="seances-date-label">Du</span>
-            <input type="date" id="seances-date-debut" onchange="loadSeances()" onclick="event.stopPropagation()">
+            <input type="date" id="seances-date-debut" onchange="loadSeances()" onmousedown="event.preventDefault();this.showPicker?.()">
           </div>
           <span class="seances-date-sep">→</span>
-          <div class="seances-date-field" onclick="document.getElementById('seances-date-fin').showPicker?.() || document.getElementById('seances-date-fin').click()">
+          <div class="seances-date-field" onclick="document.getElementById('seances-date-fin').showPicker?.()">
             <span class="seances-date-label">Au</span>
-            <input type="date" id="seances-date-fin" onchange="loadSeances()" onclick="event.stopPropagation()">
+            <input type="date" id="seances-date-fin" onchange="loadSeances()" onmousedown="event.preventDefault();this.showPicker?.()">
           </div>
         </div>
         <span id="spin-seances" style="display:none"><span class="spinner"></span></span>
@@ -160,9 +160,12 @@
           <option value="2024-2025">2024-2025</option>
           <option value="2023-2024">2023-2024</option>
         </select>
+        <button onclick="openNewMessageDialog()" style="display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:8px;border:none;background:#1d4ed8;color:#fff;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap">✏ Nouveau</button>
         <div class="msg-tabs" style="margin-bottom:0;border-bottom:none;flex:1">
           <button class="msg-tab active" data-tab="received" onclick="switchMsgTab('received')">Reçus</button>
           <button class="msg-tab" data-tab="sent" onclick="switchMsgTab('sent')">Envoyés</button>
+          <button class="msg-tab" data-tab="draft" onclick="switchMsgTab('draft')">Brouillons</button>
+          <button class="msg-tab" data-tab="archived" onclick="switchMsgTab('archived')">Archivés</button>
         </div>
         <span id="spin-messages" style="display:none"><span class="spinner"></span></span>
       </div>
@@ -176,7 +179,11 @@
 
     <!-- Panel Absences -->
     <div class="tab-panel" id="panel-absences">
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+        <div id="viescolaire-tabs" style="display:flex;gap:4px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:3px">
+          <button id="vs-tab-absences" class="vs-subtab active" onclick="switchVieScolaireTab('absences')">Absences</button>
+          <button id="vs-tab-sanctions" class="vs-subtab" onclick="switchVieScolaireTab('sanctions')">Sanctions</button>
+        </div>
         <span id="spin-absences" style="display:none"><span class="spinner"></span></span>
       </div>
       <div id="absences-result" style="flex:1;overflow-y:auto;min-height:0"></div>

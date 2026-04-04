@@ -133,6 +133,9 @@
   #devoirs-hide-done[aria-pressed="true"] { color: var(--text); }
   .tab-freshness-row { display: flex; align-items: center; gap: 6px; margin-left: auto; padding-right: 2px; }
   .tab-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: #1d4ed8; color: #fff; font-size: 10px; font-weight: 700; margin-left: 4px; vertical-align: middle; }
+  .vs-subtab { background: transparent; border: none; border-radius: 6px; padding: 4px 12px; font-size: 13px; font-weight: 500; color: var(--text3); cursor: pointer; transition: background 0.15s, color 0.15s; }
+  .vs-subtab:hover { background: var(--bg3); color: var(--text); }
+  .vs-subtab.active { background: var(--bg); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
   .offline-banner { display: none; position: sticky; top: 0; z-index: 100; background: #92400e; color: #fef3c7; font-size: 12px; font-weight: 500; padding: 6px 12px; text-align: center; border-radius: 6px; margin-bottom: 8px; }
   .offline-banner.visible { display: block; }
   #api-card { display: none; }
@@ -217,11 +220,13 @@
   cursor: pointer;
   outline: none;
   min-width: 120px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.seances-date-field input[type="date"]::-webkit-calendar-picker-indicator {
+  display: none;
 }
 /* Dark mode calendar popup */
-body.dark input[type="date"]::-webkit-calendar-picker-indicator {
-  filter: invert(1) brightness(0.8);
-}
 body.dark input[type="date"] {
   color-scheme: dark;
 }
