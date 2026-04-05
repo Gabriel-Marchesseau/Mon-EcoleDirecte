@@ -27,9 +27,10 @@ darkStyle.textContent = `
   body.dark .status.info { background: #1e3a5f; color: #93c5fd; }
   body.dark .status.success { background: #1a3a2a; color: #6ee7b7; }
   body.dark .status.error { background: #3a1a1a; color: #fca5a5; }
-  body.dark .notes-period-btn.active { background: var(--text); color: var(--bg); }
   body.dark #security-panel { background: var(--bg3); border-color: var(--border); }
-  body.dark .pj-badge { background: #1e3a5f !important; color: #93c5fd !important; }
+  .pj-badge { border: 1px solid #bfdbfe; display:inline-block; line-height:1.5; vertical-align:middle; }
+  body.dark .pj-badge { background: #1e3a5f !important; color: #93c5fd !important; border-color: #1e40af !important; }
+  body.dark #notes-view-toggle { background: #242424 !important; border-color: var(--border) !important; }
 `;
 document.head.appendChild(darkStyle);
 (function() {
@@ -44,13 +45,13 @@ document.head.appendChild(darkStyle);
 let token = '';
 let accountData = null;
 let sessionExpired = false;
-let lastResult = '';
+
 
 function getProxy() { return window.location.origin; }
 
 // ── Routeur ────────────────────────────────────────────────
-const ROUTE_TO_TAB = { '/edt': 'edt', '/notes': 'notes', '/devoirs': 'devoirs', '/seances': 'seances', '/messages': 'messages', '/vie-scolaire': 'absences', '/perso': 'perso' };
-const TAB_TO_ROUTE = { 'edt': '/edt', 'notes': '/notes', 'devoirs': '/devoirs', 'seances': '/seances', 'messages': '/messages', 'absences': '/vie-scolaire', 'perso': '/perso' };
+const ROUTE_TO_TAB = { '/edt': 'edt', '/notes': 'notes', '/devoirs': 'devoirs', '/seances': 'seances', '/messages': 'messages', '/vie-scolaire': 'absences' };
+const TAB_TO_ROUTE = { 'edt': '/edt', 'notes': '/notes', 'devoirs': '/devoirs', 'seances': '/seances', 'messages': '/messages', 'absences': '/vie-scolaire' };
 function getTabFromPath() { return ROUTE_TO_TAB[location.pathname] || null; }
 window.addEventListener('popstate', () => { const t = getTabFromPath(); if (t) switchTab(t, true); });
 function getEleveId() {
@@ -58,7 +59,7 @@ function getEleveId() {
   const acc = accountData.accounts ? accountData.accounts[0] : accountData;
   return acc.id || '';
 }
-function resolvePath(p) { return p.replace('{id}', getEleveId()); }
+
 function showStatus(el, msg, type) { el.innerHTML = `<div class="status ${type}">${msg}</div>`; }
 
 async function checkProxy() {
@@ -294,7 +295,6 @@ function onLoggedIn(data) {
     { id: 'seances',  label: 'Contenus de séances' },
     { id: 'messages', label: 'Messages' },
     { id: 'absences', label: 'Vie scolaire' },
-    { id: 'perso',    label: '···' },
   ];
   const bar = document.getElementById('tab-bar');
   bar.innerHTML = '';
@@ -309,6 +309,184 @@ function onLoggedIn(data) {
   switchTab(getTabFromPath() || localStorage.getItem('ed_last_tab') || 'edt');
 
   // EDT : géré par edtWeekOffset
+}
+
+async function openProfile() {
+  const acc = accountData?.accounts ? accountData.accounts[0] : accountData;
+  if (!acc) return;
+  const loginId = acc.id || '';
+  const dark = document.body.classList.contains('dark');
+  const dlgBg   = dark ? '#242424' : '#fff';
+  const dlgText = dark ? '#f0f0ee' : '#1a1a1a';
+  const inputBg = dark ? '#2e2e2e' : '#f9f9fb';
+  const inputBorder = dark ? '#444' : '#d1d5db';
+
+  const nom = acc.prenom ? `${acc.prenom} ${acc.nom || ''}` : (acc.login || 'Utilisateur');
+  const initials = nom.split(' ').map(s => s[0] || '').join('').substring(0, 2).toUpperCase();
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1000;display:flex;align-items:center;justify-content:center;padding:1.5rem;overflow-y:auto';
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+
+  const dialog = document.createElement('div');
+  dialog.style.cssText = `background:${dlgBg};color:${dlgText};border-radius:12px;padding:1.5rem;max-width:480px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.35);position:relative;margin:auto`;
+  dialog.innerHTML = `
+    <button onclick="this.closest('[style*=fixed]').remove()" style="position:absolute;top:10px;right:12px;background:none;border:none;cursor:pointer;font-size:18px;color:${dark?'#666':'#aaa'}">×</button>
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
+      <div style="width:52px;height:52px;border-radius:50%;background:#4f46e5;color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;flex-shrink:0">${initials}</div>
+      <div>
+        <div style="font-size:17px;font-weight:600">${nom.trim()}</div>
+        <div style="font-size:13px;color:var(--text3)">${acc.typeCompte ? `Compte ${acc.typeCompte}` : 'EcoleDirecte'}</div>
+      </div>
+    </div>
+    <div id="profile-form-area" style="font-size:14px;text-align:center;padding:16px 0"><span class="spinner"></span> Chargement…</div>`;
+
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+
+  let profileData = {};
+  try {
+    const resp = await fetch(`${getProxy()}/v3/logins/${loginId}.awp?verbe=get&v=4.97.2`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' },
+      body: 'data={}'
+    });
+    const json = await resp.json();
+    profileData = json.data || {};
+  } catch(e) {
+    document.getElementById('profile-form-area').textContent = 'Erreur lors du chargement du profil.';
+    return;
+  }
+
+  const fs = `width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid ${inputBorder};border-radius:8px;background:${inputBg};color:${dlgText};font-size:14px;outline:none`;
+  const ls = `font-size:13px;font-weight:600;color:var(--text2);margin-bottom:4px;display:block`;
+  const hs = `font-size:11px;color:var(--text3);margin-top:3px`;
+  const qOptions = (profileData.questionsPossibles || [])
+    .map(q => `<option value="${q}"${q === profileData.questionSecrete ? ' selected' : ''}>${q}</option>`).join('');
+
+  function pwField(id) {
+    return `<div style="position:relative;display:flex;align-items:center">
+      <input id="${id}" type="password" style="${fs};padding-right:36px" autocomplete="new-password">
+      <button type="button" onclick="const f=document.getElementById('${id}');f.type=f.type==='password'?'text':'password';this.textContent=f.type==='password'?'👁':'🙈'"
+        style="position:absolute;right:6px;background:none;border:none;cursor:pointer;font-size:15px;padding:2px;color:var(--text3)">👁</button>
+    </div>`;
+  }
+
+  const tabBarStyle = `display:flex;gap:4px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:3px;margin-bottom:16px`;
+
+  document.getElementById('profile-form-area').innerHTML = `
+    <div style="${tabBarStyle}">
+      <button id="pf-tab-compte"   class="vs-subtab active"  onclick="switchProfileTab('compte')">Compte</button>
+      <button id="pf-tab-securite" class="vs-subtab"         onclick="switchProfileTab('securite')">Sécurité</button>
+    </div>
+
+    <!-- Section Compte -->
+    <div id="pf-section-compte" style="display:grid;gap:14px">
+      <div>
+        <label style="${ls}">Nom d'utilisateur</label>
+        <input id="pf-login" type="text" value="${(profileData.identifiant||'').replace(/"/g,'&quot;')}" style="${fs}" autocomplete="username">
+        <p style="${hs}">Attention aux Majuscules/Minuscules</p>
+      </div>
+      <div>
+        <label style="${ls}">Adresse Email</label>
+        <input id="pf-email" type="email" value="${(profileData.email||'').replace(/"/g,'&quot;')}" style="${fs}" autocomplete="email">
+      </div>
+      <div>
+        <label style="${ls}">Téléphone mobile <span style="font-weight:400;color:var(--text3)">(facultatif)</span></label>
+        <input id="pf-tel" type="tel" value="${(profileData.portable||'').replace(/"/g,'&quot;')}" style="${fs}" autocomplete="tel">
+      </div>
+      <div id="pf-status-compte" style="font-size:13px;min-height:18px"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button onclick="this.closest('[style*=fixed]').remove()" style="padding:8px 22px;border-radius:8px;border:1px solid ${inputBorder};background:${inputBg};color:${dlgText};font-size:14px;cursor:pointer;font-weight:500">Annuler</button>
+        <button id="pf-save-compte" onclick="saveProfile(${loginId},'compte')" style="padding:8px 22px;border-radius:8px;border:none;background:#4f46e5;color:#fff;font-size:14px;cursor:pointer;font-weight:600">Valider</button>
+      </div>
+    </div>
+
+    <!-- Section Sécurité -->
+    <div id="pf-section-securite" style="display:none;gap:14px">
+      <div>
+        <label style="${ls}">Mot de passe</label>
+        ${pwField('pf-mdp')}
+      </div>
+      <div>
+        <label style="${ls}">Confirmation du mot de passe</label>
+        ${pwField('pf-mdp2')}
+      </div>
+      <div>
+        <label style="${ls}">Question secrète</label>
+        <select id="pf-question" style="${fs}">${qOptions}</select>
+      </div>
+      <div>
+        <label style="${ls}">Réponse</label>
+        <input id="pf-reponse" type="text" value="${(profileData.reponse||'').replace(/"/g,'&quot;')}" style="${fs}">
+      </div>
+      <div id="pf-status-securite" style="font-size:13px;min-height:18px"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button onclick="this.closest('[style*=fixed]').remove()" style="padding:8px 22px;border-radius:8px;border:1px solid ${inputBorder};background:${inputBg};color:${dlgText};font-size:14px;cursor:pointer;font-weight:500">Annuler</button>
+        <button id="pf-save-securite" onclick="saveProfile(${loginId},'securite')" style="padding:8px 22px;border-radius:8px;border:none;background:#4f46e5;color:#fff;font-size:14px;cursor:pointer;font-weight:600">Valider</button>
+      </div>
+    </div>`;
+}
+
+function switchProfileTab(section) {
+  document.getElementById('pf-section-compte').style.display   = section === 'compte'   ? 'grid' : 'none';
+  document.getElementById('pf-section-securite').style.display = section === 'securite' ? 'grid' : 'none';
+  document.getElementById('pf-tab-compte').classList.toggle('active',   section === 'compte');
+  document.getElementById('pf-tab-securite').classList.toggle('active', section === 'securite');
+}
+
+async function saveProfile(loginId, section) {
+  const statusId = `pf-status-${section}`;
+  const btnId    = `pf-save-${section}`;
+  const status = document.getElementById(statusId);
+  const btn    = document.getElementById(btnId);
+
+  let payload = {};
+
+  if (section === 'compte') {
+    payload = {
+      identifiant: document.getElementById('pf-login')?.value || '',
+      email:       document.getElementById('pf-email')?.value || '',
+      portable:    document.getElementById('pf-tel')?.value   || '',
+    };
+  } else {
+    const mdp  = document.getElementById('pf-mdp')?.value  || '';
+    const mdp2 = document.getElementById('pf-mdp2')?.value || '';
+    if (mdp && mdp !== mdp2) {
+      status.style.color = '#dc2626';
+      status.textContent = 'Les mots de passe ne correspondent pas.';
+      return;
+    }
+    payload = {
+      questionSecrete: document.getElementById('pf-question')?.value || '',
+      reponse:         document.getElementById('pf-reponse')?.value  || '',
+    };
+    if (mdp) { payload.motDePasse = mdp; payload.motDePasseConf = mdp2; }
+  }
+
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  status.style.color = 'var(--text3)';
+  status.textContent = 'Enregistrement…';
+
+  try {
+    const resp = await fetch(`${getProxy()}/v3/logins/${loginId}.awp?verbe=put&v=4.97.2`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' },
+      body: 'data=' + encodeURIComponent(JSON.stringify(payload))
+    });
+    const json = await resp.json();
+    if (json.code === 200) {
+      status.style.color = '#16a34a';
+      status.textContent = 'Modifications enregistrées.';
+    } else {
+      status.style.color = '#dc2626';
+      status.textContent = json.message || `Erreur ${json.code}`;
+    }
+  } catch(e) {
+    status.style.color = '#dc2626';
+    status.textContent = 'Erreur réseau.';
+  }
+  if (btn) { btn.disabled = false; btn.textContent = 'Valider'; }
 }
 
 async function shutdownApp() {
@@ -326,7 +504,6 @@ function logout() {
   localStorage.removeItem('ed_session');
   document.getElementById('login-card').style.display = 'block';
   document.getElementById('api-card').classList.remove('active-card');
-  document.getElementById('result-area').style.display = 'none';
   document.getElementById('login-status').innerHTML = '';
   document.getElementById('login-btn').disabled = false;
   document.getElementById('qcm-area').style.display = 'none';
@@ -725,6 +902,7 @@ async function loadMessages() {
   const cacheKey = `messages:${eleveId}:${annee}`;
 
   const fetchBoth = async () => {
+    if (sessionExpired) throw new Error('Session expirée');
     const fetchTab = async type => {
       const resp = await fetch(`${getProxy()}/v3/eleves/${eleveId}/messages.awp?force=false&typeRecuperation=${type}&idClasseur=0&orderBy=date&order=desc&query=&onlyRead=&page=0&itemsPerPage=100&getAll=0&verbe=get`, {
         method: 'POST',
@@ -752,6 +930,8 @@ async function loadMessages() {
     applyMessageSelection();
     document.getElementById('spin-messages').style.display = 'none';
     updateFreshnessLabel('messages', Date.now());
+    if (msgActiveTab === 'correspondance') loadCorrespondance();
+    else fetchCorrespondanceCount();
     if (isFresh && oldData) {
       const newCount = received.length + sent.length;
       const oldCount = (oldData.received?.length || 0) + (oldData.sent?.length || 0);
@@ -1965,8 +2145,6 @@ function renderEdtGrid(cours, monday) {
 function switchTab(id, fromPopstate = false) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === id));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + id));
-  document.getElementById('result-area').style.display = 'none';
-  document.getElementById('api-status').innerHTML = '';
   localStorage.setItem('ed_last_tab', id);
   clearBadge(id);
   renderFreshnessLabel(id);
@@ -2000,65 +2178,6 @@ function switchTab(id, fromPopstate = false) {
     loadSeances();
   }
   else if (id === 'messages') loadMessages();
-}
-
-async function runTab(id) {
-  if (!token) return;
-  const eleveId = getEleveId();
-  let path = '', body = 'data={}';
-
-  if (id === 'notes') {
-    await loadNotes();
-    return;
-  } else if (id === 'edt') {
-    const debut = document.getElementById('edt-debut').value;
-    const fin   = document.getElementById('edt-fin').value;
-    path = `/v3/E/${eleveId}/emploidutemps.awp?verbe=get`;
-    body = `data=${encodeURIComponent(JSON.stringify({ dateDebut: debut, dateFin: fin }))}`;
-  } else if (id === 'messages') {
-    await loadMessages();
-    return;
-  } else if (id === 'absences') {
-    await loadAbsences();
-    return;
-  } else if (id === 'devoirs') {
-    await loadDevoirs();
-    return;
-  } else if (id === 'perso') {
-    path = resolvePath(document.getElementById('custom-path').value.trim());
-    body = document.getElementById('custom-body').value.trim() || 'data={}';
-  }
-
-  if (!path) return;
-  const spinner = document.getElementById('spin-' + id);
-  if (spinner) spinner.style.display = 'inline';
-  const statusEl = document.getElementById('api-status');
-  showStatus(statusEl, 'Chargement…', 'info');
-  try {
-    const resp = await fetch(`${getProxy()}${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
-      body
-    });
-    const data = await resp.json();
-    lastResult = JSON.stringify(data, null, 2);
-    if (data.code !== 200) showStatus(statusEl, `Erreur code ${data.code ?? resp.status}`, 'error');
-    else statusEl.innerHTML = '';
-    const resultBox = document.getElementById('result-box');
-    if (data.code === 200) {
-      resultBox.innerHTML = renderData(path, data.data);
-      resultBox.style.fontFamily = 'inherit';
-      resultBox.style.fontSize = '13px';
-    } else {
-      resultBox.style.fontFamily = 'monospace';
-      resultBox.style.fontSize = '12px';
-      resultBox.textContent = lastResult;
-    }
-    document.getElementById('result-area').style.display = 'block';
-  } catch(e) {
-    showStatus(statusEl, `Erreur : ${e.message}`, 'error');
-  }
-  if (spinner) spinner.style.display = 'none';
 }
 
 function togglePwd() {
@@ -2129,10 +2248,12 @@ function renderMessages(data) {
   msgData = data;
   // Mettre à jour les labels avec les vrais counts
   document.querySelectorAll('.msg-tab').forEach(b => {
-    if (b.dataset.tab === 'received') b.textContent = `Reçus (${msgCounts.received})`;
-    if (b.dataset.tab === 'sent')     b.textContent = `Envoyés (${msgCounts.sent})`;
-    if (b.dataset.tab === 'draft')    b.textContent = `Brouillons (${msgCounts.draft})`;
-    if (b.dataset.tab === 'archived') b.textContent = `Archivés (${msgCounts.archived})`;
+    if (b.dataset.tab === 'received')      b.textContent = `Reçus (${msgCounts.received})`;
+    if (b.dataset.tab === 'sent')          b.textContent = `Envoyés (${msgCounts.sent})`;
+    if (b.dataset.tab === 'draft')         b.textContent = `Brouillons (${msgCounts.draft})`;
+    if (b.dataset.tab === 'archived')      b.textContent = `Archivés (${msgCounts.archived})`;
+    if (b.dataset.tab === 'correspondance' && _correspondancesCount > 0)
+      b.textContent = `Correspondances (${_correspondancesCount})`;
   });
   return `<div id="msg-list">${renderMsgList()}</div>`;
 }
@@ -2140,13 +2261,16 @@ function renderMessages(data) {
 function switchMsgTab(tab) {
   msgActiveTab = tab;
   document.querySelectorAll('.msg-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-  const detailEl = document.getElementById('message-detail-panel');
   if (tab === 'correspondance') {
-    if (detailEl) detailEl.style.display = 'none';
+    const detailEl = document.getElementById('message-detail-panel');
+    if (detailEl) {
+      detailEl.style.alignItems = 'center';
+      detailEl.style.justifyContent = 'center';
+      detailEl.innerHTML = `<span style="color:var(--text4);font-size:13px;text-align:center">Sélectionne une correspondance<br>pour voir le contenu ici</span>`;
+    }
     loadCorrespondance();
     return;
   }
-  if (detailEl) detailEl.style.display = '';
   const resultEl = document.getElementById('messages-result');
   if (resultEl) {
     let listEl = document.getElementById('msg-list');
@@ -2158,66 +2282,178 @@ function switchMsgTab(tab) {
   }
 }
 
+let _correspondancesCache = [];
+let _correspondancesCount = 0;
+
+async function fetchCorrespondanceCount() {
+  try {
+    const eleveId = getEleveId();
+    if (!eleveId || !token || sessionExpired) return;
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
+    if (twoFaToken) headers['2fa-token'] = twoFaToken;
+    const resp = await fetch(
+      `${getProxy()}/v3/eleves/${eleveId}/eleveCarnetCorrespondance.awp?verbe=get&v=4.97.2`,
+      { method: 'POST', headers, body: 'data={}' }
+    );
+    const data = await resp.json();
+    if (data.code !== 200) return;
+    const list = data.data?.correspondances || [];
+    _correspondancesCache = [...list].sort((a, b) => b.dateCreation.localeCompare(a.dateCreation));
+    _correspondancesCount = _correspondancesCache.length;
+    const corrTab = document.querySelector('.msg-tab[data-tab="correspondance"]');
+    if (corrTab && _correspondancesCount > 0) corrTab.textContent = `Correspondances (${_correspondancesCount})`;
+  } catch(e) { /* silencieux */ }
+}
+
 async function loadCorrespondance() {
   const resultEl = document.getElementById('messages-result');
   if (!resultEl) return;
-  resultEl.innerHTML = `<div style="padding:16px">${centeredSpinner()}</div>`;
+  selectedContactId = null;
+
+  // Si le cache est déjà peuplé (par fetchCorrespondanceCount), afficher directement
+  if (_correspondancesCache.length > 0) {
+    renderCorrespondanceList(resultEl);
+    return;
+  }
+
+  resultEl.innerHTML = `<div id="msg-list">${centeredSpinner()}</div>`;
 
   try {
-    const acc = accountData?.accounts ? accountData.accounts[0] : accountData;
-    const idClasse = acc?.profile?.classe?.id || acc?.classe?.id || acc?.idClasse || '';
+    const eleveId = getEleveId();
+    if (!eleveId) throw new Error('Pas de compte élève');
     const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
+    const resp = await fetch(
+      `${getProxy()}/v3/eleves/${eleveId}/eleveCarnetCorrespondance.awp?verbe=get&v=4.97.2`,
+      { method: 'POST', headers, body: 'data={}' }
+    );
+    const data = await resp.json();
+    if (data.code !== 200) throw new Error(data.message || `Code ${data.code}`);
 
-    const fetchGroup = async (key, url) => {
-      if (contactsCache[key]) return contactsCache[key];
-      const resp = await fetch(`${getProxy()}${url}`, { method: 'POST', headers, body: 'data={}' });
-      const data = await resp.json();
-      if (data.code !== 200) throw new Error(data.message || `Code ${data.code}`);
-      const raw = Array.isArray(data.data) ? data.data
-        : Array.isArray(data.data?.professeurs) ? data.data.professeurs
-        : Array.isArray(data.data?.personnels)   ? data.data.personnels
-        : Array.isArray(data.data?.contacts)     ? data.data.contacts
-        : Array.isArray(data.data?.eleves)        ? data.data.eleves
-        : Object.values(data.data || {}).find(Array.isArray) || [];
-      const strVal = v => typeof v === 'string' ? v : (v?.libelle || v?.nom || '');
-      const list = raw.map(c => ({
-        id: c.id,
-        nom: [c.civilite, c.prenom, c.nom].filter(Boolean).join(' ').trim() || c.login || String(c.id),
-        info: strVal(c.matiere) || strVal(c.fonction) || strVal(c.role) || '',
-      }));
-      contactsCache[key] = list;
-      return list;
-    };
-
-    const [teachers, staff, tutors] = await Promise.all([
-      fetchGroup('teachers', `/v3/messagerie/contacts/professeurs.awp?nom=&idClasse=${idClasse}&verbe=get&v=4.97.2`),
-      fetchGroup('staff',    `/v3/messagerie/contacts/personnels.awp?verbe=get&v=4.97.2`),
-      fetchGroup('tutors',   `/v3/messagerie/contacts/entreprises.awp?verbe=get&v=4.97.2`),
-    ]);
-
-    const renderGroup = (title, list, type) => {
-      if (!list.length) return '';
-      const rows = list.map(c => {
-        const nomEnc = encodeURIComponent(c.nom).replace(/'/g, '%27');
-        return `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid var(--border)">
-          <span style="flex:1;font-size:13px">${c.nom}${c.info ? `<span style="color:var(--text4);font-size:12px;margin-left:6px">${c.info}</span>` : ''}</span>
-          <button onclick="openMsgToContact(${c.id},'${nomEnc}','${type}')"
-            style="padding:3px 10px;border-radius:6px;border:1px solid #1d4ed8;background:transparent;color:#1d4ed8;font-size:12px;cursor:pointer;white-space:nowrap">✉ Écrire</button>
-        </div>`;
-      }).join('');
-      return `<div style="margin-bottom:16px">
-        <div style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;padding:8px 10px 4px;border-bottom:2px solid var(--border2)">${title} (${list.length})</div>
-        ${rows}
-      </div>`;
-    };
-
-    const html = renderGroup('Professeurs', teachers, 'teachers')
-      + renderGroup('Personnels', staff, 'staff')
-      + renderGroup('Autres contacts', tutors, 'tutors');
-    resultEl.innerHTML = html || `<p style="color:var(--text3);font-size:14px;padding:8px">Aucun contact.</p>`;
+    const list = data.data?.correspondances || [];
+    _correspondancesCache = [...list].sort((a, b) => b.dateCreation.localeCompare(a.dateCreation));
+    renderCorrespondanceList(resultEl);
   } catch(e) {
-    if (resultEl) resultEl.innerHTML = `<p style="color:#b91c1c;font-size:13px;padding:8px">Erreur : ${e.message}</p>`;
+    const listEl = document.getElementById('msg-list');
+    if (listEl) listEl.innerHTML = `<p style="color:#b91c1c;font-size:13px;padding:8px">Erreur : ${e.message}</p>`;
+  }
+}
+
+function renderCorrespondanceList(resultEl) {
+  resultEl.innerHTML = `<div id="msg-list"></div>`;
+  const listEl = document.getElementById('msg-list');
+  if (!listEl) return;
+
+  if (!_correspondancesCache.length) {
+    listEl.innerHTML = `<p style="color:var(--text3);font-size:14px;padding:8px 0">Aucune correspondance.</p>`;
+    return;
+  }
+
+  _correspondancesCount = _correspondancesCache.length;
+  const corrTab = document.querySelector('.msg-tab[data-tab="correspondance"]');
+  if (corrTab) corrTab.textContent = `Correspondances (${_correspondancesCount})`;
+
+  listEl.innerHTML = _correspondancesCache.map((c, i) => {
+    const auteur = [c.auteur.prenom, c.auteur.nom].filter(Boolean).join(' ');
+    const dateStr = c.dateCreation.substring(0, 10);
+    const subject = c.type || 'Communication';
+    const hasPdf = !!c.urlFichier;
+    const pjBadge = hasPdf
+      ? `<span class="pj-badge" style="font-size:11px;background:#eff6ff;color:#1d4ed8;padding:2px 8px;border-radius:10px;font-weight:500;margin-left:6px;white-space:nowrap">📎 PDF</span>`
+      : '';
+    const sigBadge = c.isSignatureDemandee
+      ? (c.signature
+        ? `<span style="font-size:11px;background:#dcfce7;color:#15803d;padding:1px 6px;border-radius:8px;margin-left:4px;white-space:nowrap">✓ Signé</span>`
+        : `<span style="font-size:11px;background:#fef9c3;color:#854d0e;padding:1px 6px;border-radius:8px;margin-left:4px;white-space:nowrap">✍ À signer</span>`)
+      : '';
+    return `<div data-corr-idx="${i}" onclick="selectCorrespondance(${i})"
+      style="display:flex;align-items:flex-start;padding:7px 4px;border-bottom:1px solid var(--border2);font-size:14px;cursor:pointer;border-radius:4px"
+      onmouseover="if(${i}!==selectedContactId)this.style.background='var(--bg3)'"
+      onmouseout="if(${i}!==selectedContactId)this.style.background='transparent'">
+      <span style="display:inline-block;width:6px;margin-right:6px;flex-shrink:0"></span>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <span style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${subject}${pjBadge}${sigBadge}</span>
+          <span style="color:var(--text4);flex-shrink:0;font-size:14px">${dateStr}</span>
+        </div>
+        <div style="color:var(--text3);margin-top:1px">De : ${auteur}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function selectCorrespondance(idx) {
+  selectedContactId = idx;
+  const dark = document.body.classList.contains('dark');
+  document.querySelectorAll('[data-corr-idx]').forEach(el => {
+    const isSelected = parseInt(el.dataset.corrIdx) === idx;
+    el.style.background = isSelected ? (dark ? 'var(--bg4)' : '#e0e7ff') : 'transparent';
+    el.style.boxShadow = isSelected ? 'inset 3px 0 0 #1d4ed8' : '';
+  });
+
+  const panel = document.getElementById('message-detail-panel');
+  if (!panel) return;
+  panel.style.alignItems = 'flex-start';
+  panel.style.justifyContent = 'flex-start';
+  const c = _correspondancesCache[idx];
+  if (!c) return;
+
+  const auteur = [c.auteur.prenom, c.auteur.nom].filter(Boolean).join(' ');
+  const dateStr = c.dateCreation.substring(0, 16).replace(' ', ' à ');
+  const body = c.contenu.replace(/\n/g, '<br>');
+
+  let pjHtml = '';
+  if (c.urlFichier) {
+    const filename = c.urlFichier.split('\\').pop() || 'document.pdf';
+    const urlEnc = encodeURIComponent(c.urlFichier).replace(/'/g, '%27');
+    const nameEnc = encodeURIComponent(filename).replace(/'/g, '%27');
+    pjHtml = `<div style="margin-top:14px">
+      <div style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Pièce jointe</div>
+      <button onclick="downloadCorrespondancePj('${urlEnc}','${nameEnc}')"
+        style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:7px;border:1px solid #1d4ed8;background:transparent;color:#1d4ed8;font-size:13px;cursor:pointer">
+        📄 ${filename}
+      </button>
+    </div>`;
+  }
+
+  let sigHtml = '';
+  if (c.isSignatureDemandee) {
+    if (c.signature) {
+      const sigNom = [c.signature.prenom, c.signature.nom].filter(Boolean).join(' ');
+      const sigDate = c.signature.dateValidation.substring(0, 10);
+      sigHtml = `<div style="margin-top:14px;padding:10px 12px;border-radius:8px;background:${dark?'#14532d':'#dcfce7'};border:1px solid ${dark?'#166534':'#bbf7d0'}">
+        <div style="font-size:12px;font-weight:600;color:${dark?'#86efac':'#15803d'};margin-bottom:4px">✓ Signé électroniquement</div>
+        <div style="font-size:13px;color:${dark?'#86efac':'#166534'}">Par : ${sigNom}</div>
+        <div style="font-size:12px;color:${dark?'#86efac':'#166534'}">Le : ${sigDate}</div>
+      </div>`;
+    } else {
+      sigHtml = `<div style="margin-top:14px;padding:10px 12px;border-radius:8px;background:${dark?'#422006':'#fef9c3'};border:1px solid ${dark?'#92400e':'#fef08a'}">
+        <div style="font-size:12px;font-weight:600;color:${dark?'#fcd34d':'#854d0e'}">✍ Signature électronique requise</div>
+      </div>`;
+    }
+  }
+
+  panel.innerHTML = `<div style="padding:0 12px;width:100%;box-sizing:border-box;overflow-y:auto">
+    <div style="padding-bottom:10px;border-bottom:1px solid var(--border);margin-bottom:12px">
+      <div style="font-weight:600;font-size:15px">${c.type || 'Communication'}</div>
+      <div style="font-size:13px;color:var(--text3);margin-top:3px">De : ${auteur} · ${dateStr}</div>
+    </div>
+    <div style="font-size:14px;line-height:1.7;color:var(--text)">${body}</div>
+    ${pjHtml}
+    ${sigHtml}
+  </div>`;
+}
+
+async function downloadCorrespondancePj(urlEnc, nameEnc) {
+  const urlFichier = decodeURIComponent(urlEnc);
+  const filename = decodeURIComponent(nameEnc);
+  try {
+    const dlUrl = `${getProxy()}/v3/telechargement.awp?verbe=get&fichierId=${encodeURIComponent(urlFichier)}&leTypeDeFichier=CORRESPONDANCE`;
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
+    if (twoFaToken) headers['2fa-token'] = twoFaToken;
+    await triggerDownload(dlUrl, { method: 'POST', headers, body: 'data={}' }, filename);
+  } catch(e) {
+    alert(`Téléchargement impossible : ${e.message}`);
   }
 }
 
@@ -2241,7 +2477,7 @@ function renderMsgList() {
       ? (m.from ? `${m.from.civilite} ${m.from.nom}`.trim() : '?')
       : (m.to?.[0] ? `${m.to[0].civilite} ${m.to[0].nom}`.trim() : '?');
     const contactLabel = direction === 'received' ? `De : ${contact}` : `À : ${contact}`;
-    const attach = m.files?.length ? `<span style="font-size:14px;color:#1d4ed8;margin-left:6px">📎${m.files.length}</span>` : '';
+    const attach = m.files?.length ? `<span class="pj-badge" style="font-size:11px;background:#eff6ff;color:#1d4ed8;padding:2px 8px;border-radius:10px;font-weight:500;margin-left:6px;white-space:nowrap">📎 ${m.files.length}</span>` : '';
     return `<div data-message-id="${m.id}" onclick="openMessageDialog(${m.id})" style="display:flex;align-items:flex-start;padding:7px 4px;border-bottom:1px solid var(--border2);font-size:14px;cursor:pointer;border-radius:4px" onmouseover="if(${m.id}!==selectedMessageId)this.style.background='var(--bg3)'" onmouseout="if(${m.id}!==selectedMessageId)this.style.background='transparent'">
       ${dot}
       <div style="flex:1;min-width:0">
@@ -2712,15 +2948,6 @@ function renderData(path, data) {
 
   // FALLBACK JSON formaté
   return `<pre style="font-family:monospace;font-size:14px;white-space:pre-wrap">${JSON.stringify(data, null, 2)}</pre>`;
-}
-
-function copyResult() {
-  if (!lastResult) return;
-  navigator.clipboard.writeText(lastResult).then(() => {
-    const btn = document.querySelector('.copy-btn');
-    btn.textContent = 'Copié !';
-    setTimeout(() => btn.textContent = 'Copier JSON', 2000);
-  });
 }
 
 // ── Gestion des paramètres de sécurité ──────────────────────────

@@ -65,8 +65,8 @@
 
   <div class="card" id="api-card">
     <div class="profile-bar">
-      <div class="avatar" id="user-avatar">?</div>
-      <div style="flex:1">
+      <div class="avatar" id="user-avatar" onclick="openProfile()" style="cursor:pointer" title="Mon profil">?</div>
+      <div style="flex:1;cursor:pointer" onclick="openProfile()" title="Mon profil">
         <p style="font-size:15px;font-weight:500;" id="user-name">—</p>
         <p style="font-size:12px;color:#888;" id="user-type">—</p>
       </div>
@@ -89,10 +89,10 @@
     <!-- Panel Notes -->
     <div class="tab-panel" id="panel-notes">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:0">
-        <div style="display:flex;gap:4px;flex:1;flex-wrap:wrap">
-          <button class="btn notes-period-btn" data-period="A001" onclick="selectNotesPeriod('A001')">1er trimestre</button>
-          <button class="btn notes-period-btn" data-period="A002" onclick="selectNotesPeriod('A002')">2ème trimestre</button>
-          <button class="btn notes-period-btn" data-period="A003" onclick="selectNotesPeriod('A003')">3ème trimestre</button>
+        <div style="display:flex;gap:4px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:3px;flex-wrap:wrap">
+          <button class="notes-period-btn" data-period="A001" onclick="selectNotesPeriod('A001')">1er trimestre</button>
+          <button class="notes-period-btn" data-period="A002" onclick="selectNotesPeriod('A002')">2ème trimestre</button>
+          <button class="notes-period-btn" data-period="A003" onclick="selectNotesPeriod('A003')">3ème trimestre</button>
         </div>
         <button id="notes-view-toggle" onclick="toggleNotesView()" title="Changer de vue" style="border:0.5px solid #ddd;border-radius:8px;width:34px;height:34px;background:#fff;cursor:pointer;font-size:16px;flex-shrink:0;user-select:none">📊</button>
         <span id="spin-notes" style="display:none"><span class="spinner"></span></span>
@@ -154,19 +154,18 @@
     <!-- Panel Messages -->
     <div class="tab-panel" id="panel-messages">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-        <label style="font-size:13px;color:var(--text3)">Année</label>
-        <select id="msg-annee" onchange="loadMessages()">
+        <select id="msg-annee" onchange="loadMessages()" style="height:34px">
           <option value="2025-2026" selected>2025-2026</option>
           <option value="2024-2025">2024-2025</option>
           <option value="2023-2024">2023-2024</option>
         </select>
-        <button onclick="openNewMessageDialog()" style="display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:8px;border:none;background:#1d4ed8;color:#fff;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap">✏ Nouveau</button>
-        <div class="msg-tabs" style="margin-bottom:0;border-bottom:none;flex:1">
+        <button onclick="openNewMessageDialog()" style="display:flex;align-items:center;gap:5px;height:34px;padding:0 12px;border-radius:8px;border:none;background:#1d4ed8;color:#fff;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap"><span style="display:inline-block;transform:rotate(45deg)">✏</span> Nouveau</button>
+        <div class="msg-tabs" style="flex-wrap:wrap">
           <button class="msg-tab active" data-tab="received" onclick="switchMsgTab('received')">Reçus</button>
           <button class="msg-tab" data-tab="sent" onclick="switchMsgTab('sent')">Envoyés</button>
           <button class="msg-tab" data-tab="draft" onclick="switchMsgTab('draft')">Brouillons</button>
           <button class="msg-tab" data-tab="archived" onclick="switchMsgTab('archived')">Archivés</button>
-          <button class="msg-tab" data-tab="correspondance" onclick="switchMsgTab('correspondance')">Correspondance</button>
+          <button class="msg-tab" data-tab="correspondance" onclick="switchMsgTab('correspondance')">Correspondances</button>
         </div>
         <span id="spin-messages" style="display:none"><span class="spinner"></span></span>
       </div>
@@ -188,21 +187,6 @@
         <span id="spin-absences" style="display:none"><span class="spinner"></span></span>
       </div>
       <div id="absences-result" style="flex:1;overflow-y:auto;min-height:0"></div>
-    </div>
-
-    <!-- Panel Perso -->
-    <div class="tab-panel" id="panel-perso">
-      <div class="form-row" style="margin-bottom:8px">
-        <label style="font-size:13px;color:#666;min-width:80px">Chemin</label>
-        <input type="text" id="custom-path" placeholder="/v3/eleves/{id}/..." style="flex:1;" />
-      </div>
-      <textarea id="custom-body" rows="2" placeholder="data={}"></textarea>
-      <div class="btn-row"><button class="btn btn-primary" onclick="runTab('perso')">Envoyer</button><span id="spin-perso" style="display:none"><span class="spinner"></span></span></div>
-    </div>
-
-    <div id="api-status"></div>
-    <div id="result-area" style="display:none;margin-top:12px;flex:1;overflow-y:auto;min-height:0;">
-      <div class="result-box" id="result-box"></div>
     </div>
   </div>
 </div>
