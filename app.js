@@ -292,7 +292,7 @@ function onLoggedIn(data) {
     { id: 'edt',      label: 'Emploi du temps' },
     { id: 'notes',    label: 'Notes' },
     { id: 'devoirs',  label: 'Devoirs' },
-    { id: 'seances',  label: 'Contenus de séances' },
+    { id: 'seances',  label: 'Cours' },
     { id: 'messages', label: 'Messages' },
     { id: 'absences', label: 'Vie scolaire' },
   ];
@@ -311,10 +311,32 @@ function onLoggedIn(data) {
   // EDT : géré par edtWeekOffset
 }
 
+function formatFrPhone(raw) {
+  if (!raw) return '';
+  const digits = raw.replace(/\D/g, '');
+  let nat;
+  if (raw.trim().startsWith('+33'))                    nat = digits.slice(2);
+  else if (digits.startsWith('33') && digits.length === 11) nat = digits.slice(2);
+  else if (digits.startsWith('0')  && digits.length === 10) nat = digits.slice(1);
+  else if (digits.length === 9)                        nat = digits;
+  else return raw;
+  if (nat.length !== 9) return raw;
+  return `(+33) ${nat[0]} ${nat.slice(1,3)} ${nat.slice(3,5)} ${nat.slice(5,7)} ${nat.slice(7,9)}`;
+}
+
+function normalizeFrPhone(display) {
+  if (!display) return '';
+  const digits = display.replace(/\D/g, '');
+  if (digits.startsWith('33') && digits.length === 11) return '+' + digits;
+  if (digits.length === 9)                             return '+33' + digits;
+  if (digits.startsWith('0')  && digits.length === 10) return '+33' + digits.slice(1);
+  return display;
+}
+
 async function openProfile() {
   const acc = accountData?.accounts ? accountData.accounts[0] : accountData;
   if (!acc) return;
-  const loginId = acc.id || '';
+  const loginId = acc.idLogin || acc.id || '';
   const dark = document.body.classList.contains('dark');
   const dlgBg   = dark ? '#242424' : '#fff';
   const dlgText = dark ? '#f0f0ee' : '#1a1a1a';
@@ -352,11 +374,13 @@ async function openProfile() {
       body: 'data={}'
     });
     const json = await resp.json();
-    profileData = json.data || {};
-  } catch(e) {
-    document.getElementById('profile-form-area').textContent = 'Erreur lors du chargement du profil.';
-    return;
-  }
+    if (json.code === 200) profileData = json.data || {};
+  } catch(e) { console.error('[profile] fetch error:', e); }
+
+  // Fallback sur les données déjà disponibles dans accountData
+  if (!profileData.identifiant) profileData.identifiant = acc.login || acc.identifiant || '';
+  if (!profileData.email)       profileData.email       = acc.email || '';
+  if (!profileData.portable)    profileData.portable    = acc.portable || acc.mobile || '';
 
   const fs = `width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid ${inputBorder};border-radius:8px;background:${inputBg};color:${dlgText};font-size:14px;outline:none`;
   const ls = `font-size:13px;font-weight:600;color:var(--text2);margin-bottom:4px;display:block`;
@@ -393,7 +417,7 @@ async function openProfile() {
       </div>
       <div>
         <label style="${ls}">Téléphone mobile <span style="font-weight:400;color:var(--text3)">(facultatif)</span></label>
-        <input id="pf-tel" type="tel" value="${(profileData.portable||'').replace(/"/g,'&quot;')}" style="${fs}" autocomplete="tel">
+        <input id="pf-tel" type="text" value="${formatFrPhone(profileData.portable||'').replace(/"/g,'&quot;')}" style="${fs}" autocomplete="tel" placeholder="(+33) 6 12 34 56 78">
       </div>
       <div id="pf-status-compte" style="font-size:13px;min-height:18px"></div>
       <div style="display:flex;gap:10px;justify-content:flex-end">
@@ -426,6 +450,24 @@ async function openProfile() {
         <button id="pf-save-securite" onclick="saveProfile(${loginId},'securite')" style="padding:8px 22px;border-radius:8px;border:none;background:#4f46e5;color:#fff;font-size:14px;cursor:pointer;font-weight:600">Valider</button>
       </div>
     </div>`;
+
+  // Formatage téléphone au blur
+  const telEl = document.getElementById('pf-tel');
+  telEl.addEventListener('blur', () => { telEl.value = formatFrPhone(telEl.value); });
+
+  // Champs MDP : étoiles placeholder qui s'effacent au clic
+  const FAKE_PW = '••••••••';
+  ['pf-mdp', 'pf-mdp2'].forEach(id => {
+    const el = document.getElementById(id);
+    el.value = FAKE_PW;
+    el.dataset.pfPlaceholder = '1';
+    el.addEventListener('focus', () => {
+      if (el.dataset.pfPlaceholder) { el.value = ''; delete el.dataset.pfPlaceholder; }
+    });
+    el.addEventListener('blur', () => {
+      if (!el.value) { el.value = FAKE_PW; el.dataset.pfPlaceholder = '1'; }
+    });
+  });
 }
 
 function switchProfileTab(section) {
@@ -447,11 +489,13 @@ async function saveProfile(loginId, section) {
     payload = {
       identifiant: document.getElementById('pf-login')?.value || '',
       email:       document.getElementById('pf-email')?.value || '',
-      portable:    document.getElementById('pf-tel')?.value   || '',
+      portable:    normalizeFrPhone(document.getElementById('pf-tel')?.value || ''),
     };
   } else {
-    const mdp  = document.getElementById('pf-mdp')?.value  || '';
-    const mdp2 = document.getElementById('pf-mdp2')?.value || '';
+    const mdpEl  = document.getElementById('pf-mdp');
+    const mdp2El = document.getElementById('pf-mdp2');
+    const mdp  = mdpEl?.dataset.pfPlaceholder  ? '' : (mdpEl?.value  || '');
+    const mdp2 = mdp2El?.dataset.pfPlaceholder ? '' : (mdp2El?.value || '');
     if (mdp && mdp !== mdp2) {
       status.style.color = '#dc2626';
       status.textContent = 'Les mots de passe ne correspondent pas.';
@@ -1204,6 +1248,185 @@ async function loadSeances() {
   updateFreshnessLabel('seances', Date.now());
 }
 
+let _coursActiveTab = 'seances';
+let _espacesCache = null;
+let _selectedEspaceId = null;
+
+function switchCoursTab(tab) {
+  _coursActiveTab = tab;
+  ['seances', 'espaces'].forEach(t => {
+    const btn = document.getElementById(`cours-tab-${t}`);
+    if (btn) btn.classList.toggle('active', t === tab);
+  });
+  document.getElementById('cours-panel-seances').style.display = tab === 'seances' ? 'flex' : 'none';
+  const espPanel = document.getElementById('cours-panel-espaces');
+  espPanel.style.display = tab === 'espaces' ? 'flex' : 'none';
+  if (tab === 'espaces') loadEspacesTravail();
+}
+
+async function loadEspacesTravail() {
+  const eleveId = getEleveId();
+  if (!eleveId) return;
+  const listEl = document.getElementById('espaces-list');
+  if (!listEl) return;
+
+  if (_espacesCache) {
+    renderEspacesList(_espacesCache);
+    return;
+  }
+
+  listEl.innerHTML = centeredSpinner();
+  try {
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
+    if (twoFaToken) headers['2fa-token'] = twoFaToken;
+    const resp = await fetch(
+      `${getProxy()}/v3/E/${eleveId}/espacestravail.awp?verbe=get&typeModule=espaceTravail&v=4.97.2`,
+      { method: 'POST', headers, body: 'data={}' }
+    );
+    const data = await resp.json();
+    if (data.code !== 200) throw new Error(`Code ${data.code}`);
+    _espacesCache = data.data || [];
+    renderEspacesList(_espacesCache);
+  } catch(e) {
+    listEl.innerHTML = `<span style="color:#b91c1c;font-size:13px">Erreur lors du chargement des espaces de travail.</span>`;
+  }
+}
+
+function renderEspacesList(espaces) {
+  const listEl = document.getElementById('espaces-list');
+  if (!listEl) return;
+  if (!espaces.length) {
+    listEl.innerHTML = '<span style="color:var(--text4);font-size:13px">Aucun espace de travail.</span>';
+    return;
+  }
+  const dark = document.body.classList.contains('dark');
+  listEl.innerHTML = espaces.map(e => {
+    const resume = e.resume ? b64d(e.resume.replace(/\n/g, '')) : '';
+    const isSelected = _selectedEspaceId === e.id;
+    const bg = isSelected ? (dark ? 'var(--bg4)' : '#e0e7ff') : 'transparent';
+    const shadow = isSelected ? 'inset 3px 0 0 #1d4ed8' : '';
+    return `<div data-espace-id="${e.id}" onclick="loadEspaceTravailContent(${e.id})"
+      onmouseover="if(${e.id}!==_selectedEspaceId)this.style.background='var(--bg3)'"
+      onmouseout="if(${e.id}!==_selectedEspaceId)this.style.background='transparent'"
+      style="padding:8px 10px;border-bottom:1px solid var(--border2);font-size:14px;cursor:pointer;border-radius:4px;background:${bg};box-shadow:${shadow}">
+      <div style="font-weight:600;font-size:13px;margin-bottom:${resume ? '2px' : '0'}">${e.titre}</div>
+      ${resume ? `<div style="font-size:12px;color:var(--text3);line-height:1.4">${resume}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+// État de l'explorateur d'espace de travail
+let _espaceNavPath = []; // pile de nœuds : [{libelle, children}, ...]
+
+async function loadEspaceTravailContent(espaceId) {
+  _selectedEspaceId = espaceId;
+  _espaceNavPath = [];
+  if (_espacesCache) renderEspacesList(_espacesCache);
+
+  const detailEl = document.getElementById('espaces-detail');
+  if (!detailEl) return;
+  detailEl.innerHTML = centeredSpinner();
+
+  try {
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
+    if (twoFaToken) headers['2fa-token'] = twoFaToken;
+    const resp = await fetch(
+      `${getProxy()}/v3/cloud/W/${espaceId}.awp?verbe=get&v=4.97.2`,
+      { method: 'POST', headers, body: 'data={}' }
+    );
+    const data = await resp.json();
+    if (data.code !== 200) throw new Error(`Code ${data.code}`);
+
+    const root = (data.data && data.data[0]) || {};
+    _espaceNavPath = [root];
+    renderEspaceExplorer();
+  } catch(e) {
+    detailEl.innerHTML = `<span style="color:#b91c1c;font-size:13px">Erreur lors du chargement du contenu.</span>`;
+  }
+}
+
+function renderEspaceExplorer() {
+  const detailEl = document.getElementById('espaces-detail');
+  if (!detailEl || !_espaceNavPath.length) return;
+
+  const currentNode = _espaceNavPath[_espaceNavPath.length - 1];
+  const children = currentNode.children || [];
+
+  // ── Breadcrumb ──────────────────────────────────────────────────
+  const crumbs = _espaceNavPath.map((node, i) => {
+    const label = i === 0 ? '📁 Racine' : node.libelle || 'Dossier';
+    if (i < _espaceNavPath.length - 1) {
+      return `<span onclick="navigateEspaceTo(${i})" style="cursor:pointer;color:#1d4ed8">${label}</span>`;
+    }
+    return `<span style="font-weight:600;color:var(--text)">${label}</span>`;
+  }).join('<span style="color:var(--text4);margin:0 5px">›</span>');
+
+  // ── Liste des enfants ────────────────────────────────────────────
+  const items = children.map((c, idx) => {
+    const isFolder = Array.isArray(c.children);
+    const label = c.libelle || c.titre || (isFolder ? 'Dossier' : 'Fichier');
+    const icon = isFolder ? '📁' : getFileIcon(label);
+    const meta = [c.date, c.depositaire ? `Par ${c.depositaire}` : ''].filter(Boolean).join(' · ');
+
+    if (isFolder) {
+      return `<div onclick="navigateEspaceInto(${idx})"
+        onmouseover="this.style.background='var(--bg3)'"
+        onmouseout="this.style.background='transparent'"
+        style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--border2);cursor:pointer;border-radius:4px;transition:background 0.1s">
+        <span style="font-size:18px;flex-shrink:0">${icon}</span>
+        <div style="min-width:0;flex:1">
+          <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${label}</div>
+          ${meta ? `<div style="font-size:11px;color:var(--text4);margin-top:1px">${meta}</div>` : ''}
+        </div>
+        <span style="color:var(--text4);font-size:14px">›</span>
+      </div>`;
+    } else {
+      const filenameEnc = encodeURIComponent(label).replace(/'/g, '%27');
+      return `<div onclick="downloadEspaceFile(${_selectedEspaceId},${c.id},'${filenameEnc}')"
+        onmouseover="this.style.background='var(--bg3)'"
+        onmouseout="this.style.background='transparent'"
+        style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--border2);cursor:pointer;border-radius:4px;transition:background 0.1s"
+        title="Télécharger ${label}">
+        <span style="font-size:18px;flex-shrink:0">${icon}</span>
+        <div style="min-width:0;flex:1">
+          <div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${label}</div>
+          ${meta ? `<div style="font-size:11px;color:var(--text4);margin-top:1px">${meta}</div>` : ''}
+        </div>
+        <span style="font-size:11px;color:var(--text4);white-space:nowrap">⬇</span>
+      </div>`;
+    }
+  }).join('');
+
+  const empty = !children.length
+    ? '<div style="padding:24px 0;text-align:center;color:var(--text4);font-size:13px">Dossier vide</div>'
+    : '';
+
+  detailEl.innerHTML = `
+    <div style="font-size:12px;color:var(--text3);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border2)">${crumbs}</div>
+    <div>${items}${empty}</div>`;
+}
+
+function navigateEspaceInto(childIdx) {
+  const currentNode = _espaceNavPath[_espaceNavPath.length - 1];
+  const child = (currentNode.children || [])[childIdx];
+  if (!child) return;
+  _espaceNavPath.push(child);
+  renderEspaceExplorer();
+}
+
+function navigateEspaceTo(depth) {
+  _espaceNavPath = _espaceNavPath.slice(0, depth + 1);
+  renderEspaceExplorer();
+}
+
+async function downloadEspaceFile(espaceId, fileId, filenameEnc) {
+  const filename = decodeURIComponent(filenameEnc);
+  const url = `${getProxy()}/v3/cloud/W/${espaceId}.awp?verbe=get&v=4.97.2&idFichier=${fileId}`;
+  const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
+  if (twoFaToken) headers['2fa-token'] = twoFaToken;
+  await triggerDownload(url, { method: 'POST', headers, body: 'data={}' }, filename);
+}
+
 async function loadDevoirs() {
   const eleveId = getEleveId();
   if (!eleveId) return;
@@ -1567,6 +1790,7 @@ function toggleNotesFilter(matiere) {
     notesFilter.delete(matiere);
   } else {
     notesFilter.set(matiere, matiere);
+    notesListOpen = true;
   }
 
   if (notesData) renderNotes();
@@ -1978,14 +2202,22 @@ async function forceRefresh(tab) {
     await edCache.delete(dateVal ? `devoirs:${eleveId}:${dateVal}` : `devoirs:${eleveId}`);
     await loadDevoirs();
   } else if (tab === 'seances') {
-    const debut = document.getElementById('seances-date-debut')?.value || '';
-    const fin   = document.getElementById('seances-date-fin')?.value || '';
-    if (debut && fin) {
-      for (const d of dateRange(debut, fin)) {
-        await edCache.delete(`seances:${eleveId}:${d}`);
+    if (_coursActiveTab === 'espaces') {
+      _espacesCache = null;
+      _selectedEspaceId = null;
+      const detailEl = document.getElementById('espaces-detail');
+      if (detailEl) detailEl.innerHTML = '<span style="color:var(--text4);font-size:14px">Sélectionne un espace de travail.</span>';
+      await loadEspacesTravail();
+    } else {
+      const debut = document.getElementById('seances-date-debut')?.value || '';
+      const fin   = document.getElementById('seances-date-fin')?.value || '';
+      if (debut && fin) {
+        for (const d of dateRange(debut, fin)) {
+          await edCache.delete(`seances:${eleveId}:${d}`);
+        }
       }
+      await loadSeances();
     }
-    await loadSeances();
   }
 
   const btn2 = document.getElementById('tab-refresh-btn');
@@ -2175,7 +2407,9 @@ function switchTab(id, fromPopstate = false) {
     const finInput   = document.getElementById('seances-date-fin');
     if (debutInput && !debutInput.value) debutInput.value = j14Str;
     if (finInput   && !finInput.value)   finInput.value   = todayStr;
-    loadSeances();
+    // Afficher le bon sous-panel
+    switchCoursTab(_coursActiveTab || 'seances');
+    if (_coursActiveTab === 'seances' || !_coursActiveTab) loadSeances();
   }
   else if (id === 'messages') loadMessages();
 }

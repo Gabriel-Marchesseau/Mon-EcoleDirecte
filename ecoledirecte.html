@@ -66,7 +66,7 @@
   <div class="card" id="api-card">
     <div class="profile-bar">
       <div class="avatar" id="user-avatar" onclick="openProfile()" style="cursor:pointer" title="Mon profil">?</div>
-      <div style="flex:1;cursor:pointer" onclick="openProfile()" title="Mon profil">
+      <div class="profile-info" style="flex:1;cursor:pointer" onclick="openProfile()" title="Mon profil">
         <p style="font-size:15px;font-weight:500;" id="user-name">—</p>
         <p style="font-size:12px;color:#888;" id="user-type">—</p>
       </div>
@@ -130,24 +130,43 @@
       </div>
     </div>
 
-    <!-- Panel Contenus de séances -->
+    <!-- Panel Cours -->
     <div class="tab-panel" id="panel-seances">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
-        <div class="seances-date-range">
-          <div class="seances-date-field" onclick="document.getElementById('seances-date-debut').showPicker?.()">
-            <span class="seances-date-label">Du</span>
-            <input type="date" id="seances-date-debut" onchange="loadSeances()" onmousedown="event.preventDefault();this.showPicker?.()">
-          </div>
-          <span class="seances-date-sep">→</span>
-          <div class="seances-date-field" onclick="document.getElementById('seances-date-fin').showPicker?.()">
-            <span class="seances-date-label">Au</span>
-            <input type="date" id="seances-date-fin" onchange="loadSeances()" onmousedown="event.preventDefault();this.showPicker?.()">
-          </div>
-        </div>
-        <span id="spin-seances" style="display:none"><span class="spinner"></span></span>
+      <!-- Sous-onglets -->
+      <div class="msg-tabs" style="margin-bottom:14px">
+        <button id="cours-tab-seances" class="msg-tab active" onclick="switchCoursTab('seances')">Contenus de séances</button>
+        <button id="cours-tab-espaces" class="msg-tab" onclick="switchCoursTab('espaces')">Espaces de travail</button>
       </div>
-      <div id="seances-result" style="flex:1;overflow-y:auto;min-height:0">
-        <span style="color:var(--text4);font-size:14px">Sélectionne une période pour voir les contenus de séances.</span>
+
+      <!-- Sous-panel Contenus de séances -->
+      <div id="cours-panel-seances" style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+          <div class="seances-date-range">
+            <div class="seances-date-field" onclick="document.getElementById('seances-date-debut').showPicker?.()">
+              <span class="seances-date-label">Du</span>
+              <input type="date" id="seances-date-debut" onchange="loadSeances()" onmousedown="event.preventDefault();this.showPicker?.()">
+            </div>
+            <span class="seances-date-sep">→</span>
+            <div class="seances-date-field" onclick="document.getElementById('seances-date-fin').showPicker?.()">
+              <span class="seances-date-label">Au</span>
+              <input type="date" id="seances-date-fin" onchange="loadSeances()" onmousedown="event.preventDefault();this.showPicker?.()">
+            </div>
+          </div>
+          <span id="spin-seances" style="display:none"><span class="spinner"></span></span>
+        </div>
+        <div id="seances-result" style="flex:1;overflow-y:auto;min-height:0">
+          <span style="color:var(--text4);font-size:14px">Sélectionne une période pour voir les contenus de séances.</span>
+        </div>
+      </div>
+
+      <!-- Sous-panel Espaces de travail -->
+      <div id="cours-panel-espaces" style="display:none;flex:1;min-height:0;gap:0" class="espaces-layout">
+        <div id="espaces-list" style="overflow-y:auto;border-right:1px solid var(--border2);padding-right:12px;min-width:200px;flex-shrink:0">
+          <span style="color:var(--text4);font-size:14px">Chargement…</span>
+        </div>
+        <div id="espaces-detail" style="flex:1;overflow-y:auto;padding-left:12px">
+          <span style="color:var(--text4);font-size:14px">Sélectionne un espace de travail.</span>
+        </div>
       </div>
     </div>
 
