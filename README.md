@@ -6,11 +6,12 @@
 
 ## Features
 
-- 📅 **Timetable** — Weekly view with day-by-day layout, color-coded courses, course details on click
+- 📅 **Timetable** — Weekly view with day-by-day layout, color-coded courses, week picker via calendar, course details on click
 - 📊 **Grades** — Per-trimester breakdown with sortable table, grade curves and color-coded zones
-- 📚 **Homework** — Upcoming assignments fetched from the *cahier de textes*
-- ✉️ **Messages** — Inbox and sent tabs with full content view
-- 🏫 **Attendance** — Absences and justifications
+- 📚 **Homework** — Upcoming assignments fetched from the *cahier de textes*, with "done/undone" toggle, filter by interros, and count badge
+- 📖 **Courses** — Three sub-tabs: **Lesson contents** (date range, subject filter) · **Workspaces** (file tree explorer, download) · **Textbooks** (digital manuals via CAS authentication)
+- ✉️ **Messages** — Inbox/sent/drafts/archived with full content view, unread filter, attachment download, compose with rich editor and contact picker
+- 🏫 **Attendance & School life** — Absences, sanctions/encouragements, QCM (quizzes), and surveys
 - ⚡ **Instant navigation** — IndexedDB cache with stale-while-revalidate (30 min TTL)
 - 🔴 **New content badges** — Tab badges when new notes or messages are detected
 - 📶 **Offline mode** — Displays cached data with a banner when the proxy is unreachable
@@ -145,7 +146,8 @@ EcoleDirecte's API does not allow direct browser requests from external origins 
 1. Manages the session (GTK token, cookies) on the server side
 2. Handles double authentication (security question with base64-encoded answers)
 3. Forwards API requests from the browser to `api.ecoledirecte.com`
-4. Serves the static files (`ecoledirecte.html`, `app.js`, `style.css`)
+4. Follows CAS authentication redirects for digital textbooks (`/cas-redirect` endpoint)
+5. Serves the static files (`ecoledirecte.html`, `app.js`, `style.css`)
 
 ---
 
