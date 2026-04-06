@@ -104,7 +104,11 @@
     <div class="tab-panel" id="panel-edt">
       <div class="edt-week-nav">
         <button class="btn" onclick="edtNav(-1)">&#8592;</button>
-        <span class="edt-week-label" id="edt-week-label">—</span>
+        <div class="seances-date-range edt-week-label-btn" onclick="edtOpenCalendar(event)" title="Choisir une date">
+          <span class="seances-date-label">&#128197;</span>
+          <span id="edt-week-label">—</span>
+          <input type="date" id="edt-date-picker" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0">
+        </div>
         <button class="btn" onclick="edtNav(1)">&#8594;</button>
       </div>
       <span id="spin-edt" style="display:none"><span class="spinner"></span></span>
@@ -115,10 +119,10 @@
     <div class="tab-panel" id="panel-devoirs">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;color:var(--text2)">
-          <button id="devoirs-hide-done" onclick="toggleDevoirsHide(this)" style="display:flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;padding:0;color:var(--text3)" aria-pressed="false">
-            <span style="font-size:20px">👁</span>
-            <span id="devoirs-hide-label" style="font-size:14px">Voir les devoirs faits</span>
-          </button>
+          <button id="devoirs-hide-done" onclick="toggleDevoirsHide(this)" style="border:none;cursor:pointer;" aria-pressed="false">Faits</button>
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;color:var(--text2)">
+          <button id="devoirs-interro-only" onclick="toggleDevoirsInterro(this)" style="border:none;cursor:pointer;" aria-pressed="false">Interros</button>
         </label>
         <span id="spin-devoirs" style="display:none;margin-left:auto"><span class="spinner"></span></span>
       </div>
@@ -133,23 +137,36 @@
     <!-- Panel Cours -->
     <div class="tab-panel" id="panel-seances">
       <!-- Sous-onglets -->
-      <div class="msg-tabs" style="margin-bottom:14px">
-        <button id="cours-tab-seances" class="msg-tab active" onclick="switchCoursTab('seances')">Contenus de séances</button>
-        <button id="cours-tab-espaces" class="msg-tab" onclick="switchCoursTab('espaces')">Espaces de travail</button>
+      <div class="sub-tabs" style="margin-bottom:14px">
+        <button id="cours-tab-seances" class="sub-tab active" onclick="switchCoursTab('seances')">Contenus de séances</button>
+        <button id="cours-tab-espaces" class="sub-tab" onclick="switchCoursTab('espaces')">Espaces de travail</button>
+        <button id="cours-tab-manuels" class="sub-tab" onclick="switchCoursTab('manuels')">Manuels</button>
       </div>
 
       <!-- Sous-panel Contenus de séances -->
       <div id="cours-panel-seances" style="display:flex;flex-direction:column;flex:1;min-height:0">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
           <div class="seances-date-range">
-            <div class="seances-date-field" onclick="document.getElementById('seances-date-debut').showPicker?.()">
+            <label class="seances-date-field" for="seances-date-debut" onclick="var i=document.getElementById('seances-date-debut');i.showPicker?i.showPicker():i.click()">
               <span class="seances-date-label">Du</span>
-              <input type="date" id="seances-date-debut" onchange="loadSeances()" onmousedown="event.preventDefault();this.showPicker?.()">
-            </div>
+              <input type="date" id="seances-date-debut" onchange="loadSeances()">
+            </label>
             <span class="seances-date-sep">→</span>
-            <div class="seances-date-field" onclick="document.getElementById('seances-date-fin').showPicker?.()">
+            <label class="seances-date-field" for="seances-date-fin" onclick="var i=document.getElementById('seances-date-fin');i.showPicker?i.showPicker():i.click()">
               <span class="seances-date-label">Au</span>
-              <input type="date" id="seances-date-fin" onchange="loadSeances()" onmousedown="event.preventDefault();this.showPicker?.()">
+              <input type="date" id="seances-date-fin" onchange="loadSeances()">
+            </label>
+          </div>
+          <div id="seances-matiere-filter" style="display:none;position:relative">
+            <button id="seances-matiere-btn" class="btn" onclick="toggleSeancesMatiereMenu(event)" style="font-size:13px;padding:5px 10px;display:flex;align-items:center;gap:5px">
+              Matières <span id="seances-matiere-badge" style="display:none;background:#1d4ed8;color:#fff;border-radius:9px;font-size:11px;padding:1px 6px;font-weight:600"></span> <span style="font-size:10px;opacity:.6">▾</span>
+            </button>
+            <div id="seances-matiere-menu" style="display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:100;background:var(--bg2);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);min-width:200px;max-height:300px;overflow-y:auto;padding:6px 0">
+              <div style="padding:4px 10px 6px;border-bottom:1px solid var(--border2);display:flex;gap:8px">
+                <button class="btn" onclick="setAllSeancesMatieresChecked(true)" style="font-size:11px;padding:2px 8px">Tout</button>
+                <button class="btn" onclick="setAllSeancesMatieresChecked(false)" style="font-size:11px;padding:2px 8px">Aucun</button>
+              </div>
+              <div id="seances-matiere-list"></div>
             </div>
           </div>
           <span id="spin-seances" style="display:none"><span class="spinner"></span></span>
@@ -168,6 +185,13 @@
           <span style="color:var(--text4);font-size:14px">Sélectionne un espace de travail.</span>
         </div>
       </div>
+
+      <!-- Sous-panel Manuels -->
+      <div id="cours-panel-manuels" style="display:none;flex:1;min-height:0;overflow-y:auto">
+        <div id="manuels-result">
+          <span style="color:var(--text4);font-size:14px">Chargement…</span>
+        </div>
+      </div>
     </div>
 
     <!-- Panel Messages -->
@@ -178,13 +202,14 @@
           <option value="2024-2025">2024-2025</option>
           <option value="2023-2024">2023-2024</option>
         </select>
+        <button id="msg-unread-only" onclick="toggleMsgUnread(this)" style="border:none;cursor:pointer;" aria-pressed="false">Non lus</button>
         <button onclick="openNewMessageDialog()" style="display:flex;align-items:center;gap:5px;height:34px;padding:0 12px;border-radius:8px;border:none;background:#1d4ed8;color:#fff;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap"><span style="display:inline-block;transform:rotate(45deg)">✏</span> Nouveau</button>
-        <div class="msg-tabs" style="flex-wrap:wrap">
-          <button class="msg-tab active" data-tab="received" onclick="switchMsgTab('received')">Reçus</button>
-          <button class="msg-tab" data-tab="sent" onclick="switchMsgTab('sent')">Envoyés</button>
-          <button class="msg-tab" data-tab="draft" onclick="switchMsgTab('draft')">Brouillons</button>
-          <button class="msg-tab" data-tab="archived" onclick="switchMsgTab('archived')">Archivés</button>
-          <button class="msg-tab" data-tab="correspondance" onclick="switchMsgTab('correspondance')">Correspondances</button>
+        <div class="sub-tabs" style="flex-wrap:wrap">
+          <button class="sub-tab active" data-tab="received" onclick="switchMsgTab('received')">Reçus</button>
+          <button class="sub-tab" data-tab="sent" onclick="switchMsgTab('sent')">Envoyés</button>
+          <button class="sub-tab" data-tab="draft" onclick="switchMsgTab('draft')">Brouillons</button>
+          <button class="sub-tab" data-tab="archived" onclick="switchMsgTab('archived')">Archivés</button>
+          <button class="sub-tab" data-tab="correspondance" onclick="switchMsgTab('correspondance')">Correspondances</button>
         </div>
         <span id="spin-messages" style="display:none"><span class="spinner"></span></span>
       </div>
@@ -199,9 +224,11 @@
     <!-- Panel Absences -->
     <div class="tab-panel" id="panel-absences">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
-        <div id="viescolaire-tabs" style="display:flex;gap:4px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:3px">
-          <button id="vs-tab-absences" class="vs-subtab active" onclick="switchVieScolaireTab('absences')">Absences</button>
-          <button id="vs-tab-sanctions" class="vs-subtab" onclick="switchVieScolaireTab('sanctions')">Sanctions</button>
+        <div id="viescolaire-tabs" class="sub-tabs">
+          <button id="vs-tab-absences" class="sub-tab active" onclick="switchVieScolaireTab('absences')">Absences</button>
+          <button id="vs-tab-sanctions" class="sub-tab" onclick="switchVieScolaireTab('sanctions')">Sanctions</button>
+          <button id="vs-tab-qcm" class="sub-tab" onclick="switchVieScolaireTab('qcm')">QCM</button>
+          <button id="vs-tab-sondages" class="sub-tab" onclick="switchVieScolaireTab('sondages')">Sondages</button>
         </div>
         <span id="spin-absences" style="display:none"><span class="spinner"></span></span>
       </div>

@@ -42,7 +42,8 @@
   .badge.ko      { background: #fee2e2; color: #b91c1c; }
   .badge.pending { background: #dbeafe; color: #1d4ed8; }
   .tab-bar { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 14px; flex-wrap: wrap; }
-  .tab { font-size: 16px; padding: 7px 14px; cursor: pointer; border: none; background: none; color: var(--text3); border-bottom: 2px solid transparent; margin-bottom: -1px; font-family: inherit; }
+  .tab { font-size: 16px; padding: 7px 14px; cursor: pointer; border: none; background: none; color: var(--text3); border-bottom: 2px solid transparent; margin-bottom: -1px; font-family: inherit; display: inline-flex; flex-direction: column; align-items: center; white-space: nowrap; }
+  .tab::before { content: attr(data-label); font-weight: 500; height: 0; overflow: hidden; visibility: hidden; pointer-events: none; white-space: nowrap; }
   .tab:hover { color: var(--text); background: var(--bg4); border-radius: 6px 6px 0 0; }
   .tab.active { color: var(--text); font-weight: 500; border-bottom-color: var(--text); }
   .notes-period-btn { font-size: 13px; padding: 0 12px; height: 28px; border: none; background: transparent; border-radius: 6px; color: var(--text3); font-weight: 500; cursor: pointer; transition: background 0.15s, color 0.15s; }
@@ -59,7 +60,7 @@
   body.dark #security-toggle-btn { color: var(--text3); border-color: var(--border2); }
   #notes-sort-table tbody tr { transition: background 0.1s; cursor: default; }
   #notes-sort-table td:first-child,
-  #notes-sort-table th:first-child { width: 100%; }
+  #notes-sort-table th:first-child { width: 1%; }
   #notes-sort-table td:not(:first-child),
   #notes-sort-table th:not(:first-child) { white-space: nowrap; width: 1%; }
   #notes-list-body, #notes-list-body * { font-size: 12px !important; }
@@ -128,22 +129,19 @@
   /* Eviter le saut de layout quand la scrollbar apparait */
   html { overflow-y: scroll; scrollbar-gutter: stable; }
   #notes-result, #edt-result, #absences-result, #messages-result, #devoirs-result, #result-area { scrollbar-gutter: stable; }
-  .msg-tabs { display: flex; gap: 4px; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 3px; margin-bottom: 0; }
-  .msg-tab { font-size: 12px; padding: 0 12px; height: 28px; cursor: pointer; border: none; background: transparent; color: var(--text3); border-radius: 6px; font-family: inherit; font-weight: 500; transition: background 0.15s, color 0.15s; }
-  .msg-tab:hover { background: var(--bg3); color: var(--text); }
-  .msg-tab.active { background: var(--bg); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  .sub-tabs { display: flex; gap: 4px; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 3px; margin-bottom: 0; }
+  .sub-tab { font-size: 13px; padding: 0 12px; height: 28px; cursor: pointer; border: none; background: transparent; color: var(--text3); border-radius: 6px; font-family: inherit; font-weight: 500; transition: background 0.15s, color 0.15s; }
+  .sub-tab:hover { background: var(--bg3); color: var(--text); }
+  .sub-tab.active { background: var(--bg); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
   .refresh-btn { background: none; border: none; cursor: pointer; font-size: 14px; color: var(--text4); padding: 2px 4px; border-radius: 6px; transition: color 0.15s, transform 0.3s; user-select: none; line-height: 1; }
   .refresh-btn:hover { color: var(--text3); }
   .refresh-btn.spinning { animation: spin 0.7s linear infinite; }
   .freshness-label { font-size: 13px; color: var(--text4); white-space: nowrap; }
-  #devoirs-hide-done { color: var(--text3); transition: color 0.15s; }
-  #devoirs-hide-done:hover { color: var(--text); }
-  #devoirs-hide-done[aria-pressed="true"] { color: var(--text); }
+  #devoirs-hide-done, #devoirs-interro-only, #msg-unread-only { color: var(--text4); background: transparent; transition: color 0.15s, background 0.15s; padding: 4px 10px; border-radius: 6px; height: 34px; font-size: 13px; font-weight: 500; }
+  #devoirs-hide-done:hover, #devoirs-interro-only:hover, #msg-unread-only:hover { color: var(--text2); background: var(--bg3); }
+  #devoirs-hide-done[aria-pressed="true"], #devoirs-interro-only[aria-pressed="true"], #msg-unread-only[aria-pressed="true"] { color: var(--text); background: var(--bg3); }
   .tab-freshness-row { display: flex; align-items: center; gap: 6px; margin-left: auto; padding-right: 2px; }
   .tab-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: #1d4ed8; color: #fff; font-size: 10px; font-weight: 700; margin-left: 4px; vertical-align: middle; }
-  .vs-subtab { background: transparent; border: none; border-radius: 6px; padding: 0 12px; height: 28px; font-size: 13px; font-weight: 500; color: var(--text3); cursor: pointer; transition: background 0.15s, color 0.15s; }
-  .vs-subtab:hover { background: var(--bg3); color: var(--text); }
-  .vs-subtab.active { background: var(--bg); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
   .espaces-layout { display: flex; flex-direction: row; }
   .offline-banner { display: none; position: sticky; top: 0; z-index: 100; background: #92400e; color: #fef3c7; font-size: 12px; font-weight: 500; padding: 6px 12px; text-align: center; border-radius: 6px; margin-bottom: 8px; }
   .offline-banner.visible { display: block; }
@@ -186,9 +184,12 @@
   .edt-event-name { font-weight: 500; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .edt-event-detail { font-size: 9px; opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .edt-event.annule { text-decoration: line-through; filter: grayscale(60%) opacity(0.4); }
+  .edt-has-modifie { padding-right: 27px; }
   .edt-week-nav { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
   .edt-week-nav .btn { height: 34px; }
-  .edt-week-label { font-size: 13px; color: var(--text2); font-weight: 500; flex: 1; text-align: center; }
+  #edt-week-label { font-size: 13px; color: var(--text2); font-weight: 500; }
+  .edt-week-label-btn { flex: 1; justify-content: center; transition: background 0.15s, border-color 0.15s; }
+  .edt-week-label-btn:hover { background: var(--bg3); border-color: var(--text4); }
 
 /* ── Séances date range picker ───────────────────────────────────────────── */
 .seances-date-range {

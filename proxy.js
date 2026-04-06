@@ -7,6 +7,7 @@
 const https  = require('https');
 const fs     = require('fs');
 const path   = require('path');
+const crypto = require('crypto');
 
 const DEBUG  = process.env.DEBUG === '1';
 const CYAN   = s => DEBUG ? `[36m${s}[0m` : s;
@@ -84,7 +85,7 @@ function apiRequest(method, path, body, extraHeaders) {
         const buffer = Buffer.concat(chunks);
         const contentType = res.headers['content-type'] || '';
         // Pour les pièces jointes ou réponses non-JSON, transmettre le buffer brut
-        const isBinary = path.includes('/pj/') || path.includes('telechargement') || (!contentType.includes('json') && !contentType.includes('text'));
+        const isBinary = path.includes('/pj/') || path.includes('telechargement') || path.includes('/wopi/') || (!contentType.includes('json') && !contentType.includes('text'));
         resolve({ status: res.statusCode, headers: res.headers, body: isBinary ? buffer : buffer.toString('utf8'), isBinary });
       });
     });
@@ -112,6 +113,90 @@ const server = https.createServer(sslOptions, async (req, res) => {
 
   const parsedUrl = new URL(req.url, 'https://localhost');
   const targetPath = parsedUrl.pathname + (parsedUrl.search || '');
+
+  // Endpoint CAS redirect — suit la redirection authentifiée et renvoie l'URL finale
+  if (parsedUrl.pathname === '/cas-redirect' && req.method === 'GET') {
+    const casUrl = parsedUrl.searchParams.get('url');
+    if (!casUrl) { res.writeHead(400); res.end(JSON.stringify({ error: 'missing url' })); return; }
+    try {
+      const parsed = new URL(casUrl);
+      const extraHeaders = {};
+      if (req.headers['x-token'])   extraHeaders['X-Token']   = req.headers['x-token'];
+      if (req.headers['2fa-token']) extraHeaders['2fa-token'] = req.headers['2fa-token'];
+      if (req.headers['x-gtk'])     extraHeaders['X-Gtk']     = req.headers['x-gtk'];
+      const casResult = await new Promise((resolve, reject) => {
+        const cookieStr = cookieHeader(session.cookies);
+        const headers = {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
+          'Accept': 'text/html,*/*',
+          'Referer': 'https://www.ecoledirecte.com/',
+          'Origin':  'https://www.ecoledirecte.com',
+          'X-ApisVer': '4.97.2',
+          ...(session.gtk  ? { 'X-Gtk': session.gtk } : {}),
+          ...(cookieStr    ? { 'Cookie': cookieStr }  : {}),
+          ...extraHeaders,
+        };
+        // Ajouter le token comme paramètre URL (certains endpoints CAS ignorent le header)
+        const tokenVal = extraHeaders['X-Token'] || '';
+        const sep = parsed.search ? '&' : '?';
+        const casPath = parsed.pathname + parsed.search + (tokenVal ? `${sep}token=${encodeURIComponent(tokenVal)}` : '');
+        const casBody = 'data={}';
+        headers['Content-Type'] = 'application/x-www-form-urlencoded';
+        headers['Content-Length'] = Buffer.byteLength(casBody);
+        logAlways(`[CAS] POST ${parsed.hostname}${casPath}`);
+        logAlways(`[CAS] Headers envoyés: X-Token=${(extraHeaders['X-Token']||'').substring(0,20)}... X-Gtk=${(headers['X-Gtk']||'').substring(0,20)}... Cookie=${cookieStr.substring(0,60)}...`);
+        const r = https.request({ hostname: parsed.hostname, port: parsed.port || 443, path: casPath, method: 'POST', headers }, res2 => {
+          const newCookies = parseCookies(res2.headers['set-cookie']);
+          Object.assign(session.cookies, newCookies);
+          const location = res2.headers['location'] || '';
+          const chunks = [];
+          res2.on('data', c => chunks.push(c));
+          res2.on('end', () => {
+            const body = Buffer.concat(chunks).toString('utf8');
+            logAlways(`[CAS] Status: ${res2.statusCode} | Location: ${location || '(aucune)'}`);
+            logAlways(`[CAS] Body: ${body.substring(0, 500)}`);
+            // Page HTML de redirection → extraire l'URL cible
+            let htmlRedirect = '';
+            if (!location && body.includes('<html')) {
+              // <meta http-equiv="refresh" content="0;url=...">
+              const metaMatch = body.match(/meta[^>]+refresh[^>]+content=["'][^;]*;url=([^"']+)/i);
+              if (metaMatch) { htmlRedirect = metaMatch[1]; logAlways(`[CAS] meta refresh → ${htmlRedirect}`); }
+              // window.location = "..." ou window.location.href = "..."
+              if (!htmlRedirect) {
+                const jsMatch = body.match(/window\.location(?:\.href)?\s*=\s*["']([^"']+)/i);
+                if (jsMatch) { htmlRedirect = jsMatch[1]; logAlways(`[CAS] window.location → ${htmlRedirect}`); }
+              }
+              // <a href="..."> (fallback)
+              if (!htmlRedirect) {
+                const aMatch = body.match(/<a[^>]+href=["']([^"']+)/i);
+                if (aMatch) { htmlRedirect = aMatch[1]; logAlways(`[CAS] <a href> → ${htmlRedirect}`); }
+              }
+            }
+            resolve({ status: res2.statusCode, location: location || htmlRedirect });
+          });
+        });
+        r.on('error', reject);
+        r.write(casBody);
+        r.end();
+      });
+      // 302 → renvoyer l'URL de redirection (URL finale avec ticket CAS)
+      const finalUrl = casResult.location || casUrl;
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ url: finalUrl }));
+    } catch(e) {
+      res.writeHead(500); res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  // Endpoint MD5 local (pour construire les WOPI file IDs)
+  if (parsedUrl.pathname === '/md5' && req.method === 'GET') {
+    const s = parsedUrl.searchParams.get('s') || '';
+    const hash = crypto.createHash('md5').update(s, 'utf8').digest('hex');
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({ hash }));
+    return;
+  }
 
   // Endpoint d'arrêt propre
   if (targetPath === '/shutdown' && req.method === 'POST') {
@@ -177,6 +262,7 @@ const server = https.createServer(sslOptions, async (req, res) => {
       if (req.headers['x-token'])    extraHeaders['X-Token']    = req.headers['x-token'];
       if (req.headers['2fa-token'])  extraHeaders['2fa-token']  = req.headers['2fa-token'];
       if (req.headers['x-gtk'])      extraHeaders['X-Gtk']      = req.headers['x-gtk'];
+      if (req.headers['x-apisver'])  extraHeaders['X-ApisVer']  = req.headers['x-apisver'];
       // Pour les PJ en GET, récupérer le token depuis le query string si absent du header
       if (targetPath.includes('/pj/')) {
         const qs = new URLSearchParams(parsedUrl.search || '');

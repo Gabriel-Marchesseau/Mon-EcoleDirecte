@@ -302,10 +302,12 @@ function onLoggedIn(data) {
     const btn = document.createElement('button');
     btn.className = 'tab' + (i === 0 ? ' active' : '');
     btn.textContent = t.label;
+    btn.dataset.label = t.label;
     btn.dataset.tab = t.id;
     btn.onclick = () => switchTab(t.id);
     bar.appendChild(btn);
   });
+  updateDevoirsTabCount();
   switchTab(getTabFromPath() || localStorage.getItem('ed_last_tab') || 'edt');
 
   // EDT : géré par edtWeekOffset
@@ -396,33 +398,33 @@ async function openProfile() {
     </div>`;
   }
 
-  const tabBarStyle = `display:flex;gap:4px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:3px;margin-bottom:16px`;
-
-  document.getElementById('profile-form-area').innerHTML = `
-    <div style="${tabBarStyle}">
-      <button id="pf-tab-compte"   class="vs-subtab active"  onclick="switchProfileTab('compte')">Compte</button>
-      <button id="pf-tab-securite" class="vs-subtab"         onclick="switchProfileTab('securite')">Sécurité</button>
+  const profileFormArea = document.getElementById('profile-form-area');
+  profileFormArea.style.textAlign = 'left';
+  profileFormArea.style.padding = '0';
+  profileFormArea.innerHTML = `
+    <div class="sub-tabs" style="margin-bottom:16px">
+      <button id="pf-tab-compte"   class="sub-tab active"  onclick="switchProfileTab('compte')">Compte</button>
+      <button id="pf-tab-securite" class="sub-tab"         onclick="switchProfileTab('securite')">Sécurité</button>
     </div>
 
     <!-- Section Compte -->
+    <div id="pf-sections-wrapper">
     <div id="pf-section-compte" style="display:grid;gap:14px">
       <div>
         <label style="${ls}">Nom d'utilisateur</label>
         <input id="pf-login" type="text" value="${(profileData.identifiant||'').replace(/"/g,'&quot;')}" style="${fs}" autocomplete="username">
         <p style="${hs}">Attention aux Majuscules/Minuscules</p>
+        <div id="pf-err-pf-login" style="font-size:12px;color:#dc2626;margin-top:3px;display:none"></div>
       </div>
       <div>
         <label style="${ls}">Adresse Email</label>
         <input id="pf-email" type="email" value="${(profileData.email||'').replace(/"/g,'&quot;')}" style="${fs}" autocomplete="email">
+        <div id="pf-err-pf-email" style="font-size:12px;color:#dc2626;margin-top:3px;display:none"></div>
       </div>
       <div>
         <label style="${ls}">Téléphone mobile <span style="font-weight:400;color:var(--text3)">(facultatif)</span></label>
         <input id="pf-tel" type="text" value="${formatFrPhone(profileData.portable||'').replace(/"/g,'&quot;')}" style="${fs}" autocomplete="tel" placeholder="(+33) 6 12 34 56 78">
-      </div>
-      <div id="pf-status-compte" style="font-size:13px;min-height:18px"></div>
-      <div style="display:flex;gap:10px;justify-content:flex-end">
-        <button onclick="this.closest('[style*=fixed]').remove()" style="padding:8px 22px;border-radius:8px;border:1px solid ${inputBorder};background:${inputBg};color:${dlgText};font-size:14px;cursor:pointer;font-weight:500">Annuler</button>
-        <button id="pf-save-compte" onclick="saveProfile(${loginId},'compte')" style="padding:8px 22px;border-radius:8px;border:none;background:#4f46e5;color:#fff;font-size:14px;cursor:pointer;font-weight:600">Valider</button>
+        <div id="pf-err-pf-tel" style="font-size:12px;color:#dc2626;margin-top:3px;display:none"></div>
       </div>
     </div>
 
@@ -431,25 +433,51 @@ async function openProfile() {
       <div>
         <label style="${ls}">Mot de passe</label>
         ${pwField('pf-mdp')}
+        <div id="pf-err-pf-mdp" style="font-size:12px;color:#dc2626;margin-top:3px;display:none"></div>
       </div>
       <div>
         <label style="${ls}">Confirmation du mot de passe</label>
         ${pwField('pf-mdp2')}
+        <div id="pf-err-pf-mdp2" style="font-size:12px;color:#dc2626;margin-top:3px;display:none"></div>
       </div>
       <div>
         <label style="${ls}">Question secrète</label>
-        <select id="pf-question" style="${fs}">${qOptions}</select>
+        <select id="pf-question" style="${fs}" onchange="const c=document.getElementById('pf-question-custom-wrap');c.style.display=this.value==='Autre'?'block':'none'">${qOptions}</select>
+      </div>
+      <div id="pf-question-custom-wrap" style="display:${profileData.questionSecrete==='Autre'?'block':'none'}">
+        <label style="${ls}">Question personnalisée</label>
+        <input id="pf-question-custom" type="text" value="${(profileData.questionSecretePerso||'').replace(/"/g,'&quot;')}" style="${fs}" placeholder="Votre question…">
+        <div id="pf-err-pf-question-custom" style="font-size:12px;color:#dc2626;margin-top:3px;display:none"></div>
       </div>
       <div>
         <label style="${ls}">Réponse</label>
         <input id="pf-reponse" type="text" value="${(profileData.reponse||'').replace(/"/g,'&quot;')}" style="${fs}">
+        <div id="pf-err-pf-reponse" style="font-size:12px;color:#dc2626;margin-top:3px;display:none"></div>
       </div>
-      <div id="pf-status-securite" style="font-size:13px;min-height:18px"></div>
-      <div style="display:flex;gap:10px;justify-content:flex-end">
-        <button onclick="this.closest('[style*=fixed]').remove()" style="padding:8px 22px;border-radius:8px;border:1px solid ${inputBorder};background:${inputBg};color:${dlgText};font-size:14px;cursor:pointer;font-weight:500">Annuler</button>
-        <button id="pf-save-securite" onclick="saveProfile(${loginId},'securite')" style="padding:8px 22px;border-radius:8px;border:none;background:#4f46e5;color:#fff;font-size:14px;cursor:pointer;font-weight:600">Valider</button>
-      </div>
+    </div>
+    </div>
+
+    <!-- Statut + boutons communs, toujours en bas -->
+    <div id="pf-status-compte"   style="font-size:13px;min-height:18px;margin-top:14px"></div>
+    <div id="pf-status-securite" style="font-size:13px;min-height:18px;margin-top:14px;display:none"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
+      <button onclick="this.closest('[style*=fixed]').remove()" style="padding:8px 22px;border-radius:8px;border:1px solid ${inputBorder};background:${inputBg};color:${dlgText};font-size:14px;cursor:pointer;font-weight:500">Annuler</button>
+      <button id="pf-save-btn" onclick="saveProfile(${loginId}, document.getElementById('pf-tab-compte').classList.contains('active')?'compte':'securite')" style="padding:8px 22px;border-radius:8px;border:none;background:#4f46e5;color:#fff;font-size:14px;cursor:pointer;font-weight:600">Valider</button>
     </div>`;
+
+  // Fixer la hauteur du wrapper à la plus grande section pour éviter le saut
+  const _sec = document.getElementById('pf-section-securite');
+  _sec.style.display = 'grid';
+  const _customWrap = document.getElementById('pf-question-custom-wrap');
+  const _customWasHidden = _customWrap.style.display === 'none';
+  _customWrap.style.display = 'block'; // mesure avec le champ perso visible (cas max)
+  const _maxH = Math.max(
+    document.getElementById('pf-section-compte').offsetHeight,
+    _sec.offsetHeight
+  );
+  if (_customWasHidden) _customWrap.style.display = 'none';
+  _sec.style.display = 'none';
+  document.getElementById('pf-sections-wrapper').style.minHeight = _maxH + 'px';
 
   // Formatage téléphone au blur
   const telEl = document.getElementById('pf-tel');
@@ -468,20 +496,155 @@ async function openProfile() {
       if (!el.value) { el.value = FAKE_PW; el.dataset.pfPlaceholder = '1'; }
     });
   });
+
+  // ── Validation & dirty ────────────────────────────────────────────────
+  const pfBtn     = document.getElementById('pf-save-btn');
+  const pfErrors  = new Set(); // IDs des champs en erreur
+  const pfTouched = new Set(); // IDs des champs ayant perdu le focus au moins une fois
+
+  const pfInitCompte = {
+    login: document.getElementById('pf-login').value,
+    email: document.getElementById('pf-email').value,
+    tel:   document.getElementById('pf-tel').value,
+  };
+  const pfInitSecurite = {
+    question: document.getElementById('pf-question').value,
+    custom:   document.getElementById('pf-question-custom').value,
+    reponse:  document.getElementById('pf-reponse').value,
+  };
+
+  function pfShowError(id, msg) {
+    const el = document.getElementById('pf-err-' + id);
+    if (!el) return;
+    if (msg) { el.textContent = msg; el.style.display = ''; }
+    else     { el.textContent = ''; el.style.display = 'none'; }
+  }
+
+  function pfValidateField(id, show) {
+    let error = '';
+    const val = (document.getElementById(id)?.value || '').trim();
+    switch (id) {
+      case 'pf-login':
+        if (!val) error = "Le nom d'utilisateur ne doit pas être vide.";
+        break;
+      case 'pf-email':
+        if (!val) error = "L'adresse email ne doit pas être vide.";
+        else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) error = "Adresse email invalide.";
+        break;
+      case 'pf-tel': {
+        const raw = document.getElementById('pf-tel')?.value || '';
+        if (raw.trim()) {
+          const norm = normalizeFrPhone(raw);
+          if (!norm.startsWith('+33') || norm.replace(/\D/g,'').length !== 11)
+            error = "Numéro de téléphone invalide.";
+        }
+        break;
+      }
+      case 'pf-mdp': {
+        const el = document.getElementById('pf-mdp');
+        if (!el?.dataset.pfPlaceholder) {
+          const pw = el?.value || '';
+          if (pw.length < 12)       error = "Minimum 12 caractères.";
+          else if (!/[A-Z]/.test(pw)) error = "Au moins une majuscule requise.";
+          else if (!/[a-z]/.test(pw)) error = "Au moins une minuscule requise.";
+          else if (!/[0-9]/.test(pw)) error = "Au moins un chiffre requis.";
+        }
+        break;
+      }
+      case 'pf-mdp2': {
+        const mdpEl  = document.getElementById('pf-mdp');
+        const mdp2El = document.getElementById('pf-mdp2');
+        if (!mdpEl?.dataset.pfPlaceholder) {
+          const mdp  = mdpEl?.value || '';
+          const mdp2 = mdp2El?.dataset.pfPlaceholder ? '' : (mdp2El?.value || '');
+          if (mdp !== mdp2) error = "La confirmation ne correspond pas au mot de passe.";
+        }
+        break;
+      }
+      case 'pf-question-custom': {
+        const wrap = document.getElementById('pf-question-custom-wrap');
+        if (wrap?.style.display !== 'none' && !val)
+          error = "La question personnalisée ne doit pas être vide.";
+        break;
+      }
+      case 'pf-reponse':
+        if (!val) error = "La réponse ne doit pas être vide.";
+        break;
+    }
+    if (error) pfErrors.add(id); else pfErrors.delete(id);
+    if (show) pfShowError(id, error);
+    return !error;
+  }
+
+  const pfCompteFields   = ['pf-login', 'pf-email', 'pf-tel'];
+  const pfSecuriteFields = ['pf-mdp', 'pf-mdp2', 'pf-question-custom', 'pf-reponse'];
+
+  function pfCheckDirty() {
+    const isCompte = document.getElementById('pf-tab-compte').classList.contains('active');
+    let dirty = false;
+    if (isCompte) {
+      dirty = document.getElementById('pf-login').value !== pfInitCompte.login ||
+              document.getElementById('pf-email').value !== pfInitCompte.email ||
+              document.getElementById('pf-tel').value   !== pfInitCompte.tel;
+    } else {
+      dirty = !document.getElementById('pf-mdp').dataset.pfPlaceholder  ||
+              !document.getElementById('pf-mdp2').dataset.pfPlaceholder ||
+              document.getElementById('pf-question').value        !== pfInitSecurite.question ||
+              document.getElementById('pf-question-custom').value !== pfInitSecurite.custom   ||
+              document.getElementById('pf-reponse').value         !== pfInitSecurite.reponse;
+    }
+    const currentFields = isCompte ? pfCompteFields : pfSecuriteFields;
+    const hasErrors = currentFields.some(id => pfErrors.has(id));
+    const enabled = dirty && !hasErrors;
+    pfBtn.disabled = !enabled;
+    pfBtn.style.opacity = enabled ? '1' : '0.45';
+    pfBtn.style.cursor  = enabled ? 'pointer' : 'not-allowed';
+  }
+
+  // Initialisation : bouton désactivé
+  pfBtn.disabled = true;
+  pfBtn.style.opacity = '0.45';
+  pfBtn.style.cursor = 'not-allowed';
+
+  // Listeners sur chaque champ
+  pfCompteFields.concat(pfSecuriteFields).forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('blur', () => {
+      pfTouched.add(id);
+      pfValidateField(id, true);
+      pfCheckDirty();
+    });
+    el.addEventListener('input', () => {
+      if (pfTouched.has(id)) pfValidateField(id, true); // MAJ erreur en live si déjà touchée
+      pfCheckDirty();
+    });
+  });
+  // Le select question peut invalider/valider le champ perso
+  document.getElementById('pf-question').addEventListener('change', () => {
+    if (pfTouched.has('pf-question-custom')) pfValidateField('pf-question-custom', true);
+    pfCheckDirty();
+  });
+
+  // Exposé pour switchProfileTab (réajuste le bouton à chaque changement d'onglet)
+  window._pfCheckDirty = pfCheckDirty;
+  overlay.addEventListener('remove', () => { delete window._pfCheckDirty; });
 }
 
 function switchProfileTab(section) {
   document.getElementById('pf-section-compte').style.display   = section === 'compte'   ? 'grid' : 'none';
   document.getElementById('pf-section-securite').style.display = section === 'securite' ? 'grid' : 'none';
+  document.getElementById('pf-status-compte').style.display    = section === 'compte'   ? ''     : 'none';
+  document.getElementById('pf-status-securite').style.display  = section === 'securite' ? ''     : 'none';
   document.getElementById('pf-tab-compte').classList.toggle('active',   section === 'compte');
   document.getElementById('pf-tab-securite').classList.toggle('active', section === 'securite');
+  window._pfCheckDirty?.();
 }
 
 async function saveProfile(loginId, section) {
   const statusId = `pf-status-${section}`;
-  const btnId    = `pf-save-${section}`;
   const status = document.getElementById(statusId);
-  const btn    = document.getElementById(btnId);
+  const btn    = document.getElementById('pf-save-btn');
 
   let payload = {};
 
@@ -501,8 +664,9 @@ async function saveProfile(loginId, section) {
       status.textContent = 'Les mots de passe ne correspondent pas.';
       return;
     }
+    const qVal = document.getElementById('pf-question')?.value || '';
     payload = {
-      questionSecrete: document.getElementById('pf-question')?.value || '',
+      questionSecrete: qVal === 'Autre' ? (document.getElementById('pf-question-custom')?.value || '') : qVal,
       reponse:         document.getElementById('pf-reponse')?.value  || '',
     };
     if (mdp) { payload.motDePasse = mdp; payload.motDePasseConf = mdp2; }
@@ -522,15 +686,18 @@ async function saveProfile(loginId, section) {
     if (json.code === 200) {
       status.style.color = '#16a34a';
       status.textContent = 'Modifications enregistrées.';
+      // Réinitialiser l'état dirty : le bouton repasse désactivé
+      if (btn) { btn.disabled = true; btn.style.opacity = '0.45'; btn.style.cursor = 'not-allowed'; btn.textContent = 'Valider'; }
     } else {
       status.style.color = '#dc2626';
       status.textContent = json.message || `Erreur ${json.code}`;
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer'; btn.textContent = 'Valider'; }
     }
   } catch(e) {
     status.style.color = '#dc2626';
     status.textContent = 'Erreur réseau.';
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer'; btn.textContent = 'Valider'; }
   }
-  if (btn) { btn.disabled = false; btn.textContent = 'Valider'; }
 }
 
 async function shutdownApp() {
@@ -800,7 +967,6 @@ async function openDevoirDialog(encodedData, triggerEl) {
           onmouseover="this.style.background='var(--bg4)'" onmouseout="this.style.background='transparent'">
           <span>${getFileIcon(doc.libelle||doc.name||'')}</span>
           <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${doc.libelle||doc.name||'Document'}</span>
-          <span style="font-size:12px;color:var(--text4)">↓</span>
         </div>`).join('')}
     </div>`;
   };
@@ -902,6 +1068,28 @@ function edtNav(dir) {
   runEdt();
 }
 
+function edtOpenCalendar(e) {
+  if (e) e.preventDefault(); // empêche le label de déclencher un second clic natif
+  const picker = document.getElementById('edt-date-picker');
+  const mon = getMondayOfWeek(edtWeekOffset);
+  const pad = n => String(n).padStart(2, '0');
+  picker.value = `${mon.getFullYear()}-${pad(mon.getMonth()+1)}-${pad(mon.getDate())}`;
+  picker.onchange = () => {
+    if (!picker.value) return;
+    const picked = new Date(picker.value + 'T00:00:00');
+    const todayMon = getMondayOfWeek(0);
+    const pickedDay = picked.getDay();
+    const diffToMon = pickedDay === 0 ? -6 : 1 - pickedDay;
+    const pickedMon = new Date(picked);
+    pickedMon.setDate(picked.getDate() + diffToMon);
+    pickedMon.setHours(0, 0, 0, 0);
+    edtWeekOffset = Math.round((pickedMon - todayMon) / (7 * 24 * 60 * 60 * 1000));
+    picker.onchange = null;
+    runEdt();
+  };
+  try { picker.showPicker(); } catch { picker.click(); }
+}
+
 // Jours fériés France (mois 1-indexé)
 const FERIES = ['01-01','05-01','05-08','07-14','08-15','11-01','11-11','12-25'];
 function isFerie(date) {
@@ -998,11 +1186,13 @@ let vieScolaireSection = 'absences';
 
 function switchVieScolaireTab(section) {
   vieScolaireSection = section;
-  document.querySelectorAll('.vs-subtab').forEach(b => b.classList.remove('active'));
+  document.getElementById('viescolaire-tabs').querySelectorAll('.sub-tab').forEach(b => b.classList.remove('active'));
   document.getElementById(`vs-tab-${section}`).classList.add('active');
-  // Re-render depuis le cache sans refetch
   const eleveId = getEleveId();
   if (!eleveId) return;
+  if (section === 'qcm') { loadQcm(); return; }
+  if (section === 'sondages') { loadSondages(); return; }
+  // Absences / sanctions : re-render depuis le cache sans refetch
   edCache.get(`absences:${eleveId}`).then(entry => {
     if (entry) document.getElementById('absences-result').innerHTML = renderVieScolaireSection(entry.data, section);
   });
@@ -1040,23 +1230,147 @@ async function loadAbsences() {
   });
 }
 
+async function loadQcm() {
+  const eleveId = getEleveId();
+  if (!eleveId) return;
+  const resultEl = document.getElementById('absences-result');
+  const spinEl = document.getElementById('spin-absences');
+  spinEl.style.display = 'inline';
+  resultEl.innerHTML = centeredSpinner();
+  try {
+    const resp = await fetch(`${getProxy()}/v3/eleves/${eleveId}/qcms/0/associations.awp?verbe=get&v=4.97.2`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' },
+      body: 'data={}'
+    });
+    const d = await resp.json();
+    if (d.code !== 200) throw new Error(`Code ${d.code}`);
+    resultEl.innerHTML = renderQcm(d.data);
+  } catch (e) {
+    resultEl.innerHTML = `<p style="color:#b91c1c;font-size:14px">Erreur : ${e.message}</p>`;
+  } finally {
+    spinEl.style.display = 'none';
+  }
+}
+
+async function loadSondages() {
+  const eleveId = getEleveId();
+  if (!eleveId) return;
+  const resultEl = document.getElementById('absences-result');
+  const spinEl = document.getElementById('spin-absences');
+  spinEl.style.display = 'inline';
+  resultEl.innerHTML = centeredSpinner();
+  try {
+    const resp = await fetch(`${getProxy()}/v3/edforms.awp?verbe=getlist&v=4.97.2`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' },
+      body: `data=${encodeURIComponent(JSON.stringify({ eleveId }))}`
+    });
+    const d = await resp.json();
+    if (d.code !== 200) throw new Error(`Code ${d.code}`);
+    resultEl.innerHTML = renderSondages(d.data);
+  } catch (e) {
+    resultEl.innerHTML = `<p style="color:#b91c1c;font-size:14px">Erreur : ${e.message}</p>`;
+  } finally {
+    spinEl.style.display = 'none';
+  }
+}
+
+function renderQcm(data) {
+  const items = Array.isArray(data) ? data : (data?.qcms || data?.associations || []);
+  if (!items.length) return '<p style="color:var(--text3);font-size:14px">Aucun QCM disponible.</p>';
+  let html = `<div style="font-weight:500;font-size:14px;margin-bottom:8px">${items.length} QCM</div>`;
+  items.forEach(q => {
+    const titre = (q.titre || q.title || q.libelle || '').trim();
+    const matiere = (q.matiere || q.matiereLibelle || '').trim();
+    const date = (q.date || q.dateDebut || '').trim();
+    const statut = (q.statut || q.status || '').trim();
+    const done = statut && statut.toLowerCase() !== 'non_effectue' && statut.toLowerCase() !== 'non effectué';
+    html += `<div style="padding:8px 10px;border-radius:8px;background:var(--bg3);margin-bottom:6px;font-size:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+        <span style="font-weight:500">${titre || 'QCM sans titre'}</span>
+        ${done
+          ? '<span style="color:#15803d;font-weight:500;font-size:13px">Effectué</span>'
+          : '<span style="color:#b45309;font-weight:500;font-size:13px">À faire</span>'}
+      </div>
+      ${matiere ? `<div style="color:var(--text2)">${matiere}</div>` : ''}
+      ${date ? `<div style="color:var(--text3);font-size:13px">${date}</div>` : ''}
+    </div>`;
+  });
+  return html;
+}
+
+function renderSondages(data) {
+  const items = Array.isArray(data) ? data : (data?.forms || data?.sondages || []);
+  if (!items.length) return '<p style="color:var(--text3);font-size:14px">Aucun sondage disponible.</p>';
+  let html = `<div style="font-weight:500;font-size:14px;margin-bottom:8px">${items.length} sondage(s)</div>`;
+  items.forEach(s => {
+    const titre = (s.titre || s.title || s.libelle || '').trim();
+    const date = (s.date || s.dateDebut || s.dateFin || '').trim();
+    const statut = (s.statut || s.status || '').trim();
+    const done = statut && statut.toLowerCase() !== 'non_effectue' && statut.toLowerCase() !== 'non effectué';
+    const description = (s.description || '').trim();
+    html += `<div style="padding:8px 10px;border-radius:8px;background:var(--bg3);margin-bottom:6px;font-size:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+        <span style="font-weight:500">${titre || 'Sondage sans titre'}</span>
+        ${done
+          ? '<span style="color:#15803d;font-weight:500;font-size:13px">Répondu</span>'
+          : '<span style="color:#b45309;font-weight:500;font-size:13px">En attente</span>'}
+      </div>
+      ${description ? `<div style="color:var(--text2)">${description}</div>` : ''}
+      ${date ? `<div style="color:var(--text3);font-size:13px">${date}</div>` : ''}
+    </div>`;
+  });
+  return html;
+}
+
 let devoirsCache = null;
 let selectedDevoirKey = null;
+let devoirsInterroOnly = false;
+
+function toggleDevoirsInterro(btn) {
+  devoirsInterroOnly = !devoirsInterroOnly;
+  btn.setAttribute('aria-pressed', devoirsInterroOnly ? 'true' : 'false');
+  renderDevoirsFromCache();
+}
 
 function toggleDevoirsHide(btn) {
   const active = btn.getAttribute('aria-pressed') !== 'true';
   btn.setAttribute('aria-pressed', active ? 'true' : 'false');
-  const label = document.getElementById('devoirs-hide-label');
-  if (label) label.textContent = active ? 'Voir les devoirs faits' : 'Cacher les devoirs faits';
   renderDevoirsFromCache();
+}
+
+function updateDevoirsTabCount() {
+  const btn = document.querySelector('.tab[data-tab="devoirs"]');
+  if (!btn) return;
+  let label = '-/-';
+  if (devoirsCache) {
+    let total = 0, done = 0;
+    for (const devoirs of Object.values(devoirsCache)) {
+      for (const d of devoirs) { total++; if (d.effectue) done++; }
+    }
+    label = `${done}/${total}`;
+  }
+  btn.dataset.label = `Devoirs (${label})`;
+  btn.innerHTML = `<span>Devoirs <span style="font-size:0.75em;opacity:0.8">(${label})</span></span>`;
 }
 
 function renderDevoirsFromCache() {
   if (!devoirsCache) return;
   const path = `/v3/Eleves/${getEleveId()}/cahierdetexte.awp?verbe=get`;
   const container = document.getElementById('devoirs-result');
-  if (container) container.innerHTML = renderData(path, devoirsCache);
+  let data = devoirsCache;
+  if (devoirsInterroOnly) {
+    const filtered = {};
+    for (const [date, devoirs] of Object.entries(devoirsCache)) {
+      const kept = devoirs.filter(d => d.interrogation);
+      if (kept.length) filtered[date] = kept;
+    }
+    data = filtered;
+  }
+  if (container) container.innerHTML = renderData(path, data);
   applyDevoirSelection();
+  updateDevoirsTabCount();
 }
 
 async function toggleDevoirEffectue(devoirId, date, currentState) {
@@ -1173,30 +1487,14 @@ async function loadSeances() {
     return;
   }
 
+  // Réinitialiser le filtre matières pour la nouvelle plage
+  _seancesMatieresChecked = null;
+  _seancesData = null;
+  const filterEl = document.getElementById('seances-matiere-filter');
+  if (filterEl) filterEl.style.display = 'none';
+
   if (spinner) spinner.style.display = 'inline';
   container.innerHTML = centeredSpinner();
-
-  // Formater une date YYYY-MM-DD en affichage court "Lun. 14 jan."
-  function fmtDate(dateStr) {
-    const d = new Date(dateStr + 'T12:00:00');
-    return d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
-  }
-
-  // Rendu d'un bloc matière
-  function renderMatiere(m) {
-    const contenuSrc = m.contenuDeSeance?.contenu || '';
-    const contenuRaw = contenuSrc ? cleanHtml(b64d(contenuSrc)).trim() : '';
-    const contenu = contenuRaw.replace(/<[^>]*>/g, '').trim() ? contenuRaw : '';
-    if (!contenu) return '';
-    return `<div style="margin-bottom:10px;padding:10px 12px;border-radius:8px;background:var(--bg3);border:1px solid var(--border)">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-        <span style="font-weight:600;font-size:14px">${m.matiere}</span>
-        ${m.interrogation ? '<span class="devoir-badge badge-interro">Interro</span>' : ''}
-        ${m.nomProf ? `<span style="font-size:12px;color:var(--text4);margin-left:auto">${m.nomProf}</span>` : ''}
-      </div>
-      <div style="font-size:14px;line-height:1.6">${contenu}</div>
-    </div>`;
-  }
 
   // Charger toutes les dates en parallèle via cache
   let allResults = [];
@@ -1224,13 +1522,139 @@ async function loadSeances() {
     if (data) allResults.push({ dateVal, data });
   }));
 
-  // Trier par date
-  allResults.sort((a, b) => a.dateVal.localeCompare(b.dateVal));
+  // Trier par date desc
+  allResults.sort((a, b) => b.dateVal.localeCompare(a.dateVal));
+  _seancesData = allResults;
 
-  // Construire le HTML global, groupé par date (plus récent en premier)
+  // Peupler le sélecteur de matières
+  _populateSeancesMatieresFilter();
+
+  if (spinner) spinner.style.display = 'none';
+  _renderSeancesFiltered();
+  updateFreshnessLabel('seances', Date.now());
+}
+
+function _populateSeancesMatieresFilter() {
+  const allMatieres = new Set();
+  for (const { data } of (_seancesData || [])) {
+    for (const m of (data?.matieres || [])) {
+      if (m.matiere) allMatieres.add(m.matiere);
+    }
+  }
+
+  const filterEl = document.getElementById('seances-matiere-filter');
+  const listEl   = document.getElementById('seances-matiere-list');
+  if (!filterEl || !listEl) return;
+
+  if (allMatieres.size === 0) {
+    filterEl.style.display = 'none';
+    _seancesMatieresChecked = null;
+    return;
+  }
+
+  filterEl.style.display = '';
+
+  // Par défaut : toutes les matières cochées
+  _seancesMatieresChecked = new Set(allMatieres);
+
+  const sorted = [...allMatieres].sort((a, b) => a.localeCompare(b, 'fr'));
+  listEl.innerHTML = sorted.map(m => {
+    const checked = _seancesMatieresChecked.has(m);
+    const enc = encodeURIComponent(m).replace(/'/g, '%27');
+    return `<label style="display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:13px" onmouseenter="this.style.background='var(--bg3)'" onmouseleave="this.style.background=''">
+      <input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleSeancesMatiereCheck('${enc}', this.checked)" style="cursor:pointer">
+      <span>${m}</span>
+    </label>`;
+  }).join('');
+
+  _updateSeancesMatiereBadge(allMatieres.size);
+}
+
+function _updateSeancesMatiereBadge(total) {
+  const badge = document.getElementById('seances-matiere-badge');
+  if (!badge || !_seancesMatieresChecked) return;
+  const checked = _seancesMatieresChecked.size;
+  if (checked < total) {
+    badge.style.display = '';
+    badge.textContent = checked;
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function toggleSeancesMatiereMenu(e) {
+  e.stopPropagation();
+  const menu = document.getElementById('seances-matiere-menu');
+  if (!menu) return;
+  const open = menu.style.display !== 'none';
+  menu.style.display = open ? 'none' : '';
+  if (!open) {
+    // Fermer au prochain clic dehors
+    setTimeout(() => {
+      document.addEventListener('click', function _close(ev) {
+        if (!document.getElementById('seances-matiere-filter')?.contains(ev.target)) {
+          menu.style.display = 'none';
+          document.removeEventListener('click', _close);
+        }
+      });
+    }, 0);
+  }
+}
+
+function toggleSeancesMatiereCheck(enc, checked) {
+  const matiere = decodeURIComponent(enc);
+  if (!_seancesMatieresChecked) return;
+  if (checked) _seancesMatieresChecked.add(matiere);
+  else         _seancesMatieresChecked.delete(matiere);
+  const allMatieres = new Set();
+  for (const { data } of (_seancesData || [])) {
+    for (const m of (data?.matieres || [])) { if (m.matiere) allMatieres.add(m.matiere); }
+  }
+  _updateSeancesMatiereBadge(allMatieres.size);
+  _renderSeancesFiltered();
+}
+
+function setAllSeancesMatieresChecked(checked) {
+  const allMatieres = new Set();
+  for (const { data } of (_seancesData || [])) {
+    for (const m of (data?.matieres || [])) { if (m.matiere) allMatieres.add(m.matiere); }
+  }
+  _seancesMatieresChecked = checked ? new Set(allMatieres) : new Set();
+  // Mettre à jour les checkboxes dans le menu
+  document.querySelectorAll('#seances-matiere-list input[type=checkbox]').forEach(cb => { cb.checked = checked; });
+  _updateSeancesMatiereBadge(allMatieres.size);
+  _renderSeancesFiltered();
+}
+
+function _renderSeancesFiltered() {
+  const container = document.getElementById('seances-result');
+  if (!container || !_seancesData) return;
+
+  function fmtDate(dateStr) {
+    const d = new Date(dateStr + 'T12:00:00');
+    return d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+  }
+
+  function renderMatiere(m) {
+    const contenuSrc = m.contenuDeSeance?.contenu || '';
+    const contenuRaw = contenuSrc ? cleanHtml(b64d(contenuSrc)).trim() : '';
+    const contenu = contenuRaw.replace(/<[^>]*>/g, '').trim() ? contenuRaw : '';
+    if (!contenu) return '';
+    return `<div style="margin-bottom:10px;padding:10px 12px;border-radius:8px;background:var(--bg3);border:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="font-weight:600;font-size:14px">${m.matiere}</span>
+        ${m.interrogation ? '<span class="devoir-badge badge-interro">Interro</span>' : ''}
+        ${m.nomProf ? `<span style="font-size:12px;color:var(--text4);margin-left:auto">${m.nomProf}</span>` : ''}
+      </div>
+      <div style="font-size:14px;line-height:1.6">${contenu}</div>
+    </div>`;
+  }
+
   let html = '';
-  for (const { dateVal, data } of allResults.reverse()) {
-    const matieres = data?.matieres || [];
+  for (const { dateVal, data } of _seancesData) {
+    const matieres = (data?.matieres || []).filter(m =>
+      !_seancesMatieresChecked || _seancesMatieresChecked.size === 0 || _seancesMatieresChecked.has(m.matiere)
+    );
     const items = matieres.map(m => renderMatiere(m)).filter(Boolean).join('');
     if (!items) continue;
     html += `<div style="margin-bottom:18px">
@@ -1244,24 +1668,98 @@ async function loadSeances() {
   } else {
     container.innerHTML = html;
   }
-  if (spinner) spinner.style.display = 'none';
-  updateFreshnessLabel('seances', Date.now());
 }
 
 let _coursActiveTab = 'seances';
+let _seancesData = null;       // [{dateVal, data}] résultats bruts de la dernière plage chargée
+let _seancesMatieresChecked = null; // Set<string> des matières affichées (null = toutes)
 let _espacesCache = null;
 let _selectedEspaceId = null;
+let _manuelsCache = null;
 
 function switchCoursTab(tab) {
   _coursActiveTab = tab;
-  ['seances', 'espaces'].forEach(t => {
+  ['seances', 'espaces', 'manuels'].forEach(t => {
     const btn = document.getElementById(`cours-tab-${t}`);
     if (btn) btn.classList.toggle('active', t === tab);
   });
   document.getElementById('cours-panel-seances').style.display = tab === 'seances' ? 'flex' : 'none';
   const espPanel = document.getElementById('cours-panel-espaces');
   espPanel.style.display = tab === 'espaces' ? 'flex' : 'none';
+  const manuelsPanel = document.getElementById('cours-panel-manuels');
+  if (manuelsPanel) manuelsPanel.style.display = tab === 'manuels' ? 'flex' : 'none';
   if (tab === 'espaces') loadEspacesTravail();
+  if (tab === 'manuels') loadManuels();
+}
+
+async function openManuel(urlEncoded) {
+  const url = decodeURIComponent(urlEncoded);
+  // URL CAS → passer par le proxy pour obtenir l'URL finale avec ticket CAS
+  if (url.includes('/cas/') || url.includes('cas/goToService')) {
+    try {
+      const headers = { 'X-Token': token };
+      if (twoFaToken) headers['2fa-token'] = twoFaToken;
+      const resp = await fetch(`${getProxy()}/cas-redirect?url=${encodeURIComponent(url)}`, { headers });
+      const data = await resp.json();
+      if (data.url) { window.open(data.url, '_blank'); return; }
+    } catch(e) {}
+  }
+  window.open(url, '_blank');
+}
+
+async function loadManuels() {
+  const eleveId = getEleveId();
+  if (!eleveId) return;
+  const resultEl = document.getElementById('manuels-result');
+  if (!resultEl) return;
+
+  if (_manuelsCache) {
+    renderManuels(_manuelsCache);
+    return;
+  }
+
+  resultEl.innerHTML = centeredSpinner();
+  try {
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
+    if (twoFaToken) headers['2fa-token'] = twoFaToken;
+    const resp = await fetch(
+      `${getProxy()}/v3/Eleves/${eleveId}/manuelsNumeriques.awp?verbe=get&v=4.97.2`,
+      { method: 'POST', headers, body: 'data={}' }
+    );
+    const data = await resp.json();
+    if (data.code !== 200) throw new Error(`Code ${data.code}`);
+    _manuelsCache = data.data || [];
+    renderManuels(_manuelsCache);
+  } catch(e) {
+    console.error('[loadManuels]', e);
+    resultEl.innerHTML = `<span style="color:#b91c1c;font-size:13px">Erreur lors du chargement des manuels.</span>`;
+  }
+}
+
+function renderManuels(manuels) {
+  const resultEl = document.getElementById('manuels-result');
+  if (!resultEl) return;
+  if (!manuels.length) {
+    resultEl.innerHTML = '<span style="color:var(--text4);font-size:14px">Aucun manuel numérique.</span>';
+    return;
+  }
+  resultEl.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:16px;padding:4px 0">${
+    manuels.map(m => {
+      const url = m.url || m.lienEleve || '';
+      const couverture = m.urlCouverture || m.couverture || m.vignette || '';
+      const titre = m.libelle || m.titre || m.nom || 'Manuel';
+      const urlEncoded = encodeURIComponent(url).replace(/'/g, '%27');
+      const handler = url ? `onclick="openManuel('${urlEncoded}')" style="cursor:pointer"` : '';
+      const hoverStyle = url ? `onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 6px 20px rgba(0,0,0,0.15)'" onmouseout="this.style.transform='';this.style.boxShadow='0 2px 8px rgba(0,0,0,0.08)'"` : '';
+      return `<div ${handler} ${hoverStyle}
+        style="transition:transform .15s,box-shadow .15s;box-shadow:0 2px 8px rgba(0,0,0,0.08);border-radius:6px;display:inline-flex">
+        ${couverture
+          ? `<img src="${couverture}" alt="${titre}" title="${titre}" style="width:180px;height:120px;object-fit:contain;border-radius:6px;box-shadow:0 2px 6px rgba(0,0,0,0.18);display:block">`
+          : `<div title="${titre}" style="width:180px;height:120px;background:var(--bg3);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:40px">📖</div>`
+        }
+      </div>`;
+    }).join('')
+  }</div>`;
 }
 
 async function loadEspacesTravail() {
@@ -1341,6 +1839,7 @@ async function loadEspaceTravailContent(espaceId) {
     _espaceNavPath = [root];
     renderEspaceExplorer();
   } catch(e) {
+    console.error('[loadEspaceTravailContent]', e);
     detailEl.innerHTML = `<span style="color:#b91c1c;font-size:13px">Erreur lors du chargement du contenu.</span>`;
   }
 }
@@ -1354,7 +1853,7 @@ function renderEspaceExplorer() {
 
   // ── Breadcrumb ──────────────────────────────────────────────────
   const crumbs = _espaceNavPath.map((node, i) => {
-    const label = i === 0 ? '📁 Racine' : node.libelle || 'Dossier';
+    const label = i === 0 ? '<span style="font-size:18px;line-height:1;vertical-align:middle">⌂</span>' : node.libelle || 'Dossier';
     if (i < _espaceNavPath.length - 1) {
       return `<span onclick="navigateEspaceTo(${i})" style="cursor:pointer;color:#1d4ed8">${label}</span>`;
     }
@@ -1378,21 +1877,22 @@ function renderEspaceExplorer() {
           <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${label}</div>
           ${meta ? `<div style="font-size:11px;color:var(--text4);margin-top:1px">${meta}</div>` : ''}
         </div>
-        <span style="color:var(--text4);font-size:14px">›</span>
       </div>`;
     } else {
       const filenameEnc = encodeURIComponent(label).replace(/'/g, '%27');
-      return `<div onclick="downloadEspaceFile(${_selectedEspaceId},${c.id},'${filenameEnc}')"
+      const espaceIdEnc = encodeURIComponent(_selectedEspaceId).replace(/'/g, '%27');
+      const fileIdEnc = encodeURIComponent(c.id).replace(/'/g, '%27');
+      const titleEsc = label.replace(/"/g, '&quot;');
+      return `<div onclick="downloadEspaceFile('${espaceIdEnc}','${fileIdEnc}','${filenameEnc}')"
         onmouseover="this.style.background='var(--bg3)'"
         onmouseout="this.style.background='transparent'"
         style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--border2);cursor:pointer;border-radius:4px;transition:background 0.1s"
-        title="Télécharger ${label}">
+        title="Télécharger ${titleEsc}">
         <span style="font-size:18px;flex-shrink:0">${icon}</span>
         <div style="min-width:0;flex:1">
           <div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${label}</div>
           ${meta ? `<div style="font-size:11px;color:var(--text4);margin-top:1px">${meta}</div>` : ''}
         </div>
-        <span style="font-size:11px;color:var(--text4);white-space:nowrap">⬇</span>
       </div>`;
     }
   }).join('');
@@ -1419,12 +1919,35 @@ function navigateEspaceTo(depth) {
   renderEspaceExplorer();
 }
 
-async function downloadEspaceFile(espaceId, fileId, filenameEnc) {
+async function downloadEspaceFile(espaceIdEnc, fileIdEnc, filenameEnc) {
+  const espaceId = decodeURIComponent(espaceIdEnc);
+  const fileId = decodeURIComponent(fileIdEnc);
   const filename = decodeURIComponent(filenameEnc);
-  const url = `${getProxy()}/v3/cloud/W/${espaceId}.awp?verbe=get&v=4.97.2&idFichier=${fileId}`;
+  const eleveId = getEleveId();
   const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
   if (twoFaToken) headers['2fa-token'] = twoFaToken;
-  await triggerDownload(url, { method: 'POST', headers, body: 'data={}' }, filename);
+
+  // Étape 1 — grant WOPI
+  const grantResp = await fetch(
+    `${getProxy()}/v3/E/${eleveId}/grant/WOPI.awp?verbe=get&v=4.97.2`,
+    { method: 'POST', headers, body: 'data={}' }
+  );
+  const grant = await grantResp.json();
+  if (grant.code !== 200) throw new Error(`Grant WOPI échoué: ${grant.code}`);
+
+  // Construire le WOPI file ID : eleveCode¤CLOUD¤filename (sans hash)
+  const folderPath = fileId.substring(0, fileId.lastIndexOf('\\') + 1);
+  const toB64 = str => btoa(String.fromCharCode(...new TextEncoder().encode(str)));
+  const fp = toB64(folderPath).replace(/=+$/, '');
+  const parts = fileId.replace(/^\\\\/, '').split('\\');
+  const eleveCode = parts[2];
+
+  const wopiFileId = toB64(`${eleveCode}\xA4CLOUD\xA4${filename}`).replace(/=+$/, '');
+
+  const wopiUrl = `${getProxy()}/restv3/ws/wopi/files/${wopiFileId}/contents?fp=${encodeURIComponent(fp)}`;
+  const dlHeaders = { 'X-Token': token, 'X-ApisVer': '4.97.2' };
+  if (twoFaToken) dlHeaders['2fa-token'] = twoFaToken;
+  await triggerDownload(wopiUrl, { method: 'GET', headers: dlHeaders }, filename);
 }
 
 async function loadDevoirs() {
@@ -1441,6 +1964,7 @@ async function loadDevoirs() {
     if (spinner) spinner.style.display = 'none';
     updateFreshnessLabel('devoirs', Date.now());
     if (isFresh && oldData && edCache.defaultDiff(oldData, data)) setBadge('devoirs', 1);
+    updateDevoirsTabCount();
     // Enrichir les badges PJ en arrière-plan sans bloquer l'affichage
     enrichDevoirsWithDocs(eleveId, data);
   };
@@ -1601,7 +2125,7 @@ function renderNotes() {
   }
 }
 
-let notesSortCol = 'moyenne';
+let notesSortCol = 'groupe';
 let notesSortDir = 1;
 let notesFilter = new Map(); // code -> nom de la discipline
 let notesListOpen = false; // état expand/collapse de la liste des notes
@@ -1625,11 +2149,28 @@ function calcMoyenne(disciplines) {
 
 function renderNotesTable(periode, allNotes) {
   const em = periode.ensembleMatieres || {};
-  let disciplines = (em.disciplines || []).filter(d => !d.groupeMatiere && d.moyenne !== '' && d.moyenne !== undefined && !d.sousMatiere);
+  const allDisc = em.disciplines || [];
+
+  // Mapping idMatiere → nom du groupe parent (tous les items, pas seulement groupeMatiere:true)
+  const groupeMap = {};
+  allDisc.forEach(d => { if (d.id) groupeMap[String(d.id)] = d.discipline; });
+
+  let disciplines = allDisc.filter(d => !d.groupeMatiere && d.moyenne !== '' && d.moyenne !== undefined && !d.sousMatiere);
+
+  // Enrichir chaque discipline avec son label de groupe
+  disciplines = disciplines.map(d => ({
+    ...d,
+    groupeLabel: d.idGroupeMatiere ? (groupeMap[String(d.idGroupeMatiere)] || '') : ''
+  }));
 
   // Tri
   disciplines = [...disciplines].sort((a, b) => {
     let va, vb;
+    if (notesSortCol === 'groupe') {
+      const cmp = (a.groupeLabel||'').localeCompare(b.groupeLabel||'');
+      if (cmp !== 0) return notesSortDir * cmp;
+      return a.discipline.localeCompare(b.discipline);
+    }
     if (notesSortCol === 'matiere') { va = a.discipline; vb = b.discipline; return notesSortDir * va.localeCompare(vb); }
     if (notesSortCol === 'moyenne') { va = parseFloat((a.moyenne||'0').replace(',','.')); vb = parseFloat((b.moyenne||'0').replace(',','.')); }
     if (notesSortCol === 'classe')  { va = parseFloat((a.moyenneClasse||'0').replace(',','.')); vb = parseFloat((b.moyenneClasse||'0').replace(',','.')); }
@@ -1656,6 +2197,7 @@ function renderNotesTable(periode, allNotes) {
     html += '<table id="notes-sort-table" style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:16px">'
          + '<thead><tr style="border-bottom:1px solid var(--border)">'
          + `<th style="${thStyle}" onclick="sortNotes('matiere')">Matière${arrow('matiere')}</th>`
+         + `<th style="${thStyle}" onclick="sortNotes('groupe')">Discipline${arrow('groupe')}</th>`
          + `<th style="${thStyleC}">Min</th>`
          + `<th style="${thStyleC}" onclick="sortNotes('classe')">Moy. classe${arrow('classe')}</th>`
          + `<th style="${thStyleC}">Max</th>`
@@ -1677,8 +2219,12 @@ function renderNotesTable(periode, allNotes) {
       const minC = d.moyenneMin  ? fmt1(parseFloat((d.moyenneMin||'').replace(',','.')))  : '—';
       const maxC = d.moyenneMax  ? fmt1(parseFloat((d.moyenneMax||'').replace(',','.')))  : '—';
       const coef = d.coef !== undefined ? d.coef : '—';
+      const hideGroupe = notesSortCol === 'groupe' && idx > 0 && disciplines[idx - 1].groupeLabel === d.groupeLabel;
+      const groupeCell = hideGroupe ? `<td style="padding:5px 6px"></td>`
+                                    : `<td style="padding:5px 6px;white-space:nowrap;color:var(--text3);font-size:13px;vertical-align:top">${d.groupeLabel||'—'}</td>`;
       html += `<tr class="notes-filter-row" data-code="${d.codeMatiere||''}" data-disc="${d.discipline.replace(/"/g,'&quot;')}" style="border-top:1px solid #f5f5f0;cursor:pointer;${rowHighlight}">
         <td style="padding:5px 6px">${d.discipline}</td>
+        ${groupeCell}
         <td style="padding:5px 6px;text-align:center;color:var(--text3)">${minC}</td>
         <td style="padding:5px 6px;text-align:center;color:var(--text3)">${d.moyenneClasse||'—'}</td>
         <td style="padding:5px 6px;text-align:center;color:var(--text3)">${maxC}</td>
@@ -2195,6 +2741,8 @@ async function forceRefresh(tab) {
     await edCache.delete(`messages:${eleveId}:${annee}`);
     await loadMessages();
   } else if (tab === 'absences') {
+    if (vieScolaireSection === 'qcm') { await loadQcm(); return; }
+    if (vieScolaireSection === 'sondages') { await loadSondages(); return; }
     await edCache.delete(`absences:${eleveId}`);
     await loadAbsences();
   } else if (tab === 'devoirs') {
@@ -2208,6 +2756,9 @@ async function forceRefresh(tab) {
       const detailEl = document.getElementById('espaces-detail');
       if (detailEl) detailEl.innerHTML = '<span style="color:var(--text4);font-size:14px">Sélectionne un espace de travail.</span>';
       await loadEspacesTravail();
+    } else if (_coursActiveTab === 'manuels') {
+      _manuelsCache = null;
+      await loadManuels();
     } else {
       const debut = document.getElementById('seances-date-debut')?.value || '';
       const fin   = document.getElementById('seances-date-fin')?.value || '';
@@ -2363,7 +2914,8 @@ function renderEdtGrid(cours, monday) {
         annule: c.isAnnule, modifie: c.isModifie,
         color: c.color, type: c.typeCours || ''
       })).replace(/'/g, '%27');
-      dayCols += `<div class="edt-event${c.isAnnule?' annule':''}" onclick="openEdtDialog('${cData}')" style="top:${topPx}px;height:${hPx}px;background:${bg};border-left:3px solid ${c.isAnnule?'var(--border)':c.color};cursor:pointer">
+      dayCols += `<div class="edt-event${c.isAnnule?' annule':''}${c.isModifie?' edt-has-modifie':''}" onclick="openEdtDialog('${cData}')" style="top:${topPx}px;height:${hPx}px;background:${bg};border-left:3px solid ${c.isAnnule?'var(--border)':c.color};cursor:pointer">
+        ${c.isModifie ? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 18" width="23" height="20" style="position:absolute;top:2px;right:2px;" title="Cours modifié"><polygon points="10,1 19,17 1,17" fill="#f59e0b" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/><text x="10" y="15.5" text-anchor="middle" font-size="11" font-weight="900" fill="#000">!</text></svg>` : ''}
         <div class="edt-event-name" style="color:${fg}">${c.text}</div>
         ${hPx > 28 ? `<div class="edt-event-detail" style="color:${fg}">${c.salle || ''}</div>` : ''}
       </div>`;
@@ -2392,7 +2944,7 @@ function switchTab(id, fromPopstate = false) {
   else if (id === 'notes') loadNotes();
   else if (id === 'absences') {
     vieScolaireSection = 'absences';
-    document.querySelectorAll('.vs-subtab').forEach(b => b.classList.remove('active'));
+    document.getElementById('viescolaire-tabs').querySelectorAll('.sub-tab').forEach(b => b.classList.remove('active'));
     const defaultTab = document.getElementById('vs-tab-absences');
     if (defaultTab) defaultTab.classList.add('active');
     loadAbsences();
@@ -2410,6 +2962,7 @@ function switchTab(id, fromPopstate = false) {
     // Afficher le bon sous-panel
     switchCoursTab(_coursActiveTab || 'seances');
     if (_coursActiveTab === 'seances' || !_coursActiveTab) loadSeances();
+    else if (_coursActiveTab === 'manuels') loadManuels();
   }
   else if (id === 'messages') loadMessages();
 }
@@ -2477,11 +3030,12 @@ function setBadge(tabId, count) {
 
 function clearBadge(tabId) { setBadge(tabId, 0); }
 let msgData = null;
+let msgUnreadOnly = false;
 
 function renderMessages(data) {
   msgData = data;
   // Mettre à jour les labels avec les vrais counts
-  document.querySelectorAll('.msg-tab').forEach(b => {
+  document.querySelectorAll('#panel-messages .sub-tab').forEach(b => {
     if (b.dataset.tab === 'received')      b.textContent = `Reçus (${msgCounts.received})`;
     if (b.dataset.tab === 'sent')          b.textContent = `Envoyés (${msgCounts.sent})`;
     if (b.dataset.tab === 'draft')         b.textContent = `Brouillons (${msgCounts.draft})`;
@@ -2494,7 +3048,7 @@ function renderMessages(data) {
 
 function switchMsgTab(tab) {
   msgActiveTab = tab;
-  document.querySelectorAll('.msg-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('#panel-messages .sub-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   if (tab === 'correspondance') {
     const detailEl = document.getElementById('message-detail-panel');
     if (detailEl) {
@@ -2534,7 +3088,7 @@ async function fetchCorrespondanceCount() {
     const list = data.data?.correspondances || [];
     _correspondancesCache = [...list].sort((a, b) => b.dateCreation.localeCompare(a.dateCreation));
     _correspondancesCount = _correspondancesCache.length;
-    const corrTab = document.querySelector('.msg-tab[data-tab="correspondance"]');
+    const corrTab = document.querySelector('#panel-messages .sub-tab[data-tab="correspondance"]');
     if (corrTab && _correspondancesCount > 0) corrTab.textContent = `Correspondances (${_correspondancesCount})`;
   } catch(e) { /* silencieux */ }
 }
@@ -2584,7 +3138,7 @@ function renderCorrespondanceList(resultEl) {
   }
 
   _correspondancesCount = _correspondancesCache.length;
-  const corrTab = document.querySelector('.msg-tab[data-tab="correspondance"]');
+  const corrTab = document.querySelector('#panel-messages .sub-tab[data-tab="correspondance"]');
   if (corrTab) corrTab.textContent = `Correspondances (${_correspondancesCount})`;
 
   listEl.innerHTML = _correspondancesCache.map((c, i) => {
@@ -2691,9 +3245,19 @@ async function downloadCorrespondancePj(urlEnc, nameEnc) {
   }
 }
 
+function toggleMsgUnread(btn) {
+  msgUnreadOnly = !msgUnreadOnly;
+  btn.setAttribute('aria-pressed', msgUnreadOnly ? 'true' : 'false');
+  const result = document.getElementById('messages-result');
+  if (result) result.innerHTML = renderMsgList();
+  applyMessageSelection();
+}
+
 function renderMsgList() {
   if (!msgData) return '';
-  const list = msgData.messages?.[msgActiveTab] || [];
+  let list = msgData.messages?.[msgActiveTab] || [];
+
+  if (msgUnreadOnly) list = list.filter(m => !m.read);
 
   // Tri du plus récent au plus ancien
   const sorted = [...list].sort((a, b) => b.date.localeCompare(a.date));
@@ -2784,7 +3348,6 @@ async function openMessageDialog(msgId) {
                onmouseover="this.style.background='var(--bg4)'" onmouseout="this.style.background='transparent'">
             <span>${getFileIcon(f.libelle)}</span>
             <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.libelle}</span>
-            <span style="font-size:14px;color:var(--text4)">↓</span>
           </div>`).join('')}
       </div>` : ''}
       <div style="border-top:1px solid var(--border);padding-top:10px">
@@ -2894,9 +3457,9 @@ async function triggerDownload(url, fetchOptions, filename) {
     }
     if (json.code !== 200) throw new Error(`Erreur API ${json.code} : ${json.message || ''}`);
     const b64 = json.data;
-    if (!b64) throw new Error('Données vides dans la réponse');
+    if (!b64 || typeof b64 !== 'string') throw new Error('Données vides dans la réponse');
     // Décoder le base64 → binaire
-    const binaryStr = atob(b64);
+    const binaryStr = atob(b64.replace(/\s/g, ''));
     const fileBytes = new Uint8Array(binaryStr.length);
     for (let i = 0; i < binaryStr.length; i++) fileBytes[i] = binaryStr.charCodeAt(i);
     blob = new Blob([fileBytes.buffer], { type: mime });
