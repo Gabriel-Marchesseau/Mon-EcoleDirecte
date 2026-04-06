@@ -3,3 +3,4 @@ package-lock.json
 key.pem
 cert.pem
 CLAUDE.md
+.claude/

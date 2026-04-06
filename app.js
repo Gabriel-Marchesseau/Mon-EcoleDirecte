@@ -103,7 +103,9 @@ async function doLogin() {
     });
     const data = await resp.json();
     if (data.code === 200) {
-      token = data.token; accountData = data.data; onLoggedIn(data.data);
+      token = data.token; accountData = data.data;
+      localStorage.setItem('ed_session', JSON.stringify({ token: data.token, twoFaToken: '', accountData: data.data, fa: [], u, p }));
+      onLoggedIn(data.data);
     } else if (data.code === 250) {
       // Double auth requise — récupérer le QCM
       twoFaToken = data.token;
@@ -204,14 +206,14 @@ function showQcm(data, twoFaTokenValue) {
     const btn = document.createElement('button');
     btn.className = 'qcm-btn';
     btn.textContent = label;
-    btn.onclick = () => submitDoubleAuth(raw, twoFaTokenValue);
+    btn.onclick = () => submitDoubleAuth(raw, twoFaTokenValue, question, label);
     grid.appendChild(btn);
   });
   el.appendChild(grid);
   document.getElementById('login-status').innerHTML = '<div class="status info">Réponds à la question de sécurité.</div>';
 }
 
-async function submitDoubleAuth(choice, twoFaTokenValue) {
+async function submitDoubleAuth(choice, twoFaTokenValue, question = null, choiceLabel = null) {
   const statusEl = document.getElementById('login-status');
   showStatus(statusEl, 'Vérification…', 'info');
   try {
@@ -227,6 +229,8 @@ async function submitDoubleAuth(choice, twoFaTokenValue) {
     });
     const data = await resp.json();
     if (data.code === 200 && data.data && data.data.cn) {
+      // Réponse valide — sauvegarder automatiquement la règle si clic manuel
+      if (question && choiceLabel) maybeAutoSaveSecRule(question, choiceLabel);
       // On a le token FA, on relance le login avec fa rempli
       const fa = [{ cn: data.data.cn, cv: data.data.cv }];
       await loginWithFa(fa);
@@ -235,6 +239,17 @@ async function submitDoubleAuth(choice, twoFaTokenValue) {
     }
   } catch(e) {
     showStatus(statusEl, `Erreur : ${e.message}`, 'error');
+  }
+}
+
+function maybeAutoSaveSecRule(question, label) {
+  const rules = loadSecuritySettings();
+  const qLow = question.toLowerCase();
+  // Ne pas ajouter si une règle couvre déjà cette question
+  const alreadyCovered = rules.some(r => r.keyword && qLow.includes(r.keyword.toLowerCase()));
+  if (!alreadyCovered) {
+    rules.push({ keyword: question, value: label });
+    localStorage.setItem(SEC_KEY, JSON.stringify(rules));
   }
 }
 
@@ -259,13 +274,118 @@ async function loginWithFa(fa) {
     const data = await resp.json();
     if (data.code === 200) {
       token = data.token; accountData = data.data;
-      localStorage.setItem('ed_session', JSON.stringify({ token: data.token, accountData: data.data, fa: loginFa }));
+      localStorage.setItem('ed_session', JSON.stringify({ token: data.token, twoFaToken, accountData: data.data, fa: loginFa, u, p }));
       onLoggedIn(data.data);
     } else {
       showStatus(statusEl, `Erreur login final (${data.code}) : ${data.message}`, 'error');
     }
   } catch(e) {
     showStatus(statusEl, `Erreur : ${e.message}`, 'error');
+  }
+}
+
+// ── Reconnexion silencieuse (session expirée) ──────────────────────────────
+async function silentReauth(savedSession) {
+  if (!savedSession.u || !savedSession.p) { enterExpiredMode(); return; }
+  try {
+    const gtk = await getGtk();
+    const fa = savedSession.fa || [];
+    const payload = { identifiant: savedSession.u, motdepasse: savedSession.p, isReLogin: false, uuid: '', fa };
+    const body = `data=${encodeURIComponent(JSON.stringify(payload))}`;
+    const resp = await fetch(`${getProxy()}/v3/login.awp?v=4.75.0`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-ApisVer': '4.75.0', 'X-Gtk': gtk },
+      body
+    });
+    const data = await resp.json();
+    if (data.code === 200) {
+      token = data.token; twoFaToken = '';
+      localStorage.setItem('ed_session', JSON.stringify({ ...savedSession, token: data.token, twoFaToken: '', accountData: data.data }));
+    } else if (data.code === 250) {
+      await silentDoubleAuth(data.token, savedSession);
+    } else {
+      enterExpiredMode();
+    }
+  } catch(e) {
+    enterExpiredMode();
+  }
+}
+
+async function silentDoubleAuth(twoFaTokenValue, savedSession) {
+  try {
+    const resp = await fetch(`${getProxy()}/v3/connexion/doubleauth.awp?verbe=get&v=4.75.0`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', '2fa-token': twoFaTokenValue, 'X-Token': twoFaTokenValue },
+      body: 'data={}'
+    });
+    const data = await resp.json();
+    if (data.code !== 200 || !data.data) { enterExpiredMode(); return; }
+    const b64 = s => {
+      try {
+        const bin = atob(s);
+        try { return decodeURIComponent(bin.split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')); }
+        catch { return bin; }
+      } catch { return s; }
+    };
+    const question = b64(data.data.question || data.data.libelle || '');
+    const propositions = data.data.propositions || data.data.choices || data.data.reponses || [];
+    const secRules = loadSecuritySettings();
+    const qLow = question.toLowerCase();
+    const matchingValues = secRules.filter(r => r.keyword && qLow.includes(r.keyword.toLowerCase())).map(r => r.value);
+    const candidates = [];
+    matchingValues.forEach(v => { candidates.push(v, v.toLowerCase(), v.toUpperCase(), v.charAt(0).toUpperCase() + v.slice(1), 'fÃ©vrier', 'FÃ©vrier'); });
+    const match = candidates.length > 0 && propositions.find(pr => {
+      const label = b64(pr.label || pr.libelle || pr.valeur || pr).trim();
+      return candidates.some(k => label === k || label.toLowerCase() === k.toLowerCase());
+    });
+    if (match) {
+      await silentSubmitDoubleAuth(match.id || match.valeur || match, twoFaTokenValue, savedSession);
+    } else {
+      enterExpiredMode();
+    }
+  } catch(e) {
+    enterExpiredMode();
+  }
+}
+
+async function silentSubmitDoubleAuth(choice, twoFaTokenValue, savedSession) {
+  try {
+    const body = `data=${encodeURIComponent(JSON.stringify({ choix: choice }))}`;
+    const resp = await fetch(`${getProxy()}/v3/connexion/doubleauth.awp?verbe=post&v=4.75.0`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', '2fa-token': twoFaTokenValue, 'X-Token': twoFaTokenValue },
+      body
+    });
+    const data = await resp.json();
+    if (data.code === 200 && data.data && data.data.cn) {
+      await silentLoginWithFa([{ cn: data.data.cn, cv: data.data.cv }], twoFaTokenValue, savedSession);
+    } else {
+      enterExpiredMode();
+    }
+  } catch(e) {
+    enterExpiredMode();
+  }
+}
+
+async function silentLoginWithFa(fa, twoFaTokenValue, savedSession) {
+  try {
+    const gtk = await getGtk();
+    const payload = { identifiant: savedSession.u, motdepasse: savedSession.p, isReLogin: false, uuid: '', fa };
+    const body = `data=${encodeURIComponent(JSON.stringify(payload))}`;
+    const resp = await fetch(`${getProxy()}/v3/login.awp?v=4.75.0`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-ApisVer': '4.75.0', 'X-Gtk': gtk },
+      body
+    });
+    const data = await resp.json();
+    if (data.code === 200) {
+      token = data.token; twoFaToken = twoFaTokenValue;
+      localStorage.setItem('ed_session', JSON.stringify({ ...savedSession, token: data.token, twoFaToken: twoFaTokenValue, accountData: data.data, fa }));
+    } else {
+      enterExpiredMode();
+    }
+  } catch(e) {
+    enterExpiredMode();
   }
 }
 
@@ -1233,11 +1353,11 @@ async function loadAbsences() {
 async function loadQcm() {
   const eleveId = getEleveId();
   if (!eleveId) return;
+  const cacheKey = `qcm:${eleveId}`;
   const resultEl = document.getElementById('absences-result');
   const spinEl = document.getElementById('spin-absences');
-  spinEl.style.display = 'inline';
-  resultEl.innerHTML = centeredSpinner();
-  try {
+
+  await edCache.load(cacheKey, async () => {
     const resp = await fetch(`${getProxy()}/v3/eleves/${eleveId}/qcms/0/associations.awp?verbe=get&v=4.97.2`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' },
@@ -1245,22 +1365,26 @@ async function loadQcm() {
     });
     const d = await resp.json();
     if (d.code !== 200) throw new Error(`Code ${d.code}`);
-    resultEl.innerHTML = renderQcm(d.data);
-  } catch (e) {
+    return d.data;
+  }, {
+    onSpinner: () => { spinEl.style.display = 'inline'; resultEl.innerHTML = centeredSpinner(); },
+    onCached:  (data) => { resultEl.innerHTML = renderQcm(data); spinEl.style.display = 'none'; },
+    onFresh:   (data) => { resultEl.innerHTML = renderQcm(data); spinEl.style.display = 'none'; },
+    diffFn:    edCache.defaultDiff,
+  }).catch(e => {
     resultEl.innerHTML = `<p style="color:#b91c1c;font-size:14px">Erreur : ${e.message}</p>`;
-  } finally {
     spinEl.style.display = 'none';
-  }
+  });
 }
 
 async function loadSondages() {
   const eleveId = getEleveId();
   if (!eleveId) return;
+  const cacheKey = `sondages:${eleveId}`;
   const resultEl = document.getElementById('absences-result');
   const spinEl = document.getElementById('spin-absences');
-  spinEl.style.display = 'inline';
-  resultEl.innerHTML = centeredSpinner();
-  try {
+
+  await edCache.load(cacheKey, async () => {
     const resp = await fetch(`${getProxy()}/v3/edforms.awp?verbe=getlist&v=4.97.2`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' },
@@ -1268,12 +1392,16 @@ async function loadSondages() {
     });
     const d = await resp.json();
     if (d.code !== 200) throw new Error(`Code ${d.code}`);
-    resultEl.innerHTML = renderSondages(d.data);
-  } catch (e) {
+    return d.data;
+  }, {
+    onSpinner: () => { spinEl.style.display = 'inline'; resultEl.innerHTML = centeredSpinner(); },
+    onCached:  (data) => { resultEl.innerHTML = renderSondages(data); spinEl.style.display = 'none'; },
+    onFresh:   (data) => { resultEl.innerHTML = renderSondages(data); spinEl.style.display = 'none'; },
+    diffFn:    edCache.defaultDiff,
+  }).catch(e => {
     resultEl.innerHTML = `<p style="color:#b91c1c;font-size:14px">Erreur : ${e.message}</p>`;
-  } finally {
     spinEl.style.display = 'none';
-  }
+  });
 }
 
 function renderQcm(data) {
@@ -1712,14 +1840,9 @@ async function loadManuels() {
   if (!eleveId) return;
   const resultEl = document.getElementById('manuels-result');
   if (!resultEl) return;
+  const cacheKey = `manuels:${eleveId}`;
 
-  if (_manuelsCache) {
-    renderManuels(_manuelsCache);
-    return;
-  }
-
-  resultEl.innerHTML = centeredSpinner();
-  try {
+  await edCache.load(cacheKey, async () => {
     const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
     const resp = await fetch(
@@ -1728,12 +1851,16 @@ async function loadManuels() {
     );
     const data = await resp.json();
     if (data.code !== 200) throw new Error(`Code ${data.code}`);
-    _manuelsCache = data.data || [];
-    renderManuels(_manuelsCache);
-  } catch(e) {
+    return data.data || [];
+  }, {
+    onSpinner: () => { resultEl.innerHTML = centeredSpinner(); },
+    onCached:  (data) => { _manuelsCache = data; renderManuels(data); },
+    onFresh:   (data) => { _manuelsCache = data; renderManuels(data); },
+    diffFn:    edCache.defaultDiff,
+  }).catch(e => {
     console.error('[loadManuels]', e);
     resultEl.innerHTML = `<span style="color:#b91c1c;font-size:13px">Erreur lors du chargement des manuels.</span>`;
-  }
+  });
 }
 
 function renderManuels(manuels) {
@@ -1767,14 +1894,9 @@ async function loadEspacesTravail() {
   if (!eleveId) return;
   const listEl = document.getElementById('espaces-list');
   if (!listEl) return;
+  const cacheKey = `espaces:${eleveId}`;
 
-  if (_espacesCache) {
-    renderEspacesList(_espacesCache);
-    return;
-  }
-
-  listEl.innerHTML = centeredSpinner();
-  try {
+  await edCache.load(cacheKey, async () => {
     const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
     const resp = await fetch(
@@ -1783,11 +1905,15 @@ async function loadEspacesTravail() {
     );
     const data = await resp.json();
     if (data.code !== 200) throw new Error(`Code ${data.code}`);
-    _espacesCache = data.data || [];
-    renderEspacesList(_espacesCache);
-  } catch(e) {
+    return data.data || [];
+  }, {
+    onSpinner: () => { listEl.innerHTML = centeredSpinner(); },
+    onCached:  (data) => { _espacesCache = data; renderEspacesList(data); },
+    onFresh:   (data) => { _espacesCache = data; renderEspacesList(data); },
+    diffFn:    edCache.defaultDiff,
+  }).catch(e => {
     listEl.innerHTML = `<span style="color:#b91c1c;font-size:13px">Erreur lors du chargement des espaces de travail.</span>`;
-  }
+  });
 }
 
 function renderEspacesList(espaces) {
@@ -1823,9 +1949,9 @@ async function loadEspaceTravailContent(espaceId) {
 
   const detailEl = document.getElementById('espaces-detail');
   if (!detailEl) return;
-  detailEl.innerHTML = centeredSpinner();
+  const cacheKey = `espace-content:${espaceId}`;
 
-  try {
+  await edCache.load(cacheKey, async () => {
     const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
     const resp = await fetch(
@@ -1834,14 +1960,16 @@ async function loadEspaceTravailContent(espaceId) {
     );
     const data = await resp.json();
     if (data.code !== 200) throw new Error(`Code ${data.code}`);
-
-    const root = (data.data && data.data[0]) || {};
-    _espaceNavPath = [root];
-    renderEspaceExplorer();
-  } catch(e) {
+    return (data.data && data.data[0]) || {};
+  }, {
+    onSpinner: () => { detailEl.innerHTML = centeredSpinner(); },
+    onCached:  (root) => { _espaceNavPath = [root]; renderEspaceExplorer(); },
+    onFresh:   (root) => { _espaceNavPath = [root]; renderEspaceExplorer(); },
+    diffFn:    edCache.defaultDiff,
+  }).catch(e => {
     console.error('[loadEspaceTravailContent]', e);
     detailEl.innerHTML = `<span style="color:#b91c1c;font-size:13px">Erreur lors du chargement du contenu.</span>`;
-  }
+  });
 }
 
 function renderEspaceExplorer() {
@@ -2739,10 +2867,14 @@ async function forceRefresh(tab) {
   } else if (tab === 'messages') {
     const annee = document.getElementById('msg-annee').value;
     await edCache.delete(`messages:${eleveId}:${annee}`);
+    if (msgActiveTab === 'correspondance') {
+      await edCache.delete(`correspondances:${eleveId}`);
+      _correspondancesCache = [];
+    }
     await loadMessages();
   } else if (tab === 'absences') {
-    if (vieScolaireSection === 'qcm') { await loadQcm(); return; }
-    if (vieScolaireSection === 'sondages') { await loadSondages(); return; }
+    if (vieScolaireSection === 'qcm') { await edCache.delete(`qcm:${eleveId}`); await loadQcm(); return; }
+    if (vieScolaireSection === 'sondages') { await edCache.delete(`sondages:${eleveId}`); await loadSondages(); return; }
     await edCache.delete(`absences:${eleveId}`);
     await loadAbsences();
   } else if (tab === 'devoirs') {
@@ -2751,12 +2883,15 @@ async function forceRefresh(tab) {
     await loadDevoirs();
   } else if (tab === 'seances') {
     if (_coursActiveTab === 'espaces') {
+      await edCache.delete(`espaces:${eleveId}`);
+      if (_selectedEspaceId) await edCache.delete(`espace-content:${_selectedEspaceId}`);
       _espacesCache = null;
       _selectedEspaceId = null;
       const detailEl = document.getElementById('espaces-detail');
       if (detailEl) detailEl.innerHTML = '<span style="color:var(--text4);font-size:14px">Sélectionne un espace de travail.</span>';
       await loadEspacesTravail();
     } else if (_coursActiveTab === 'manuels') {
+      await edCache.delete(`manuels:${eleveId}`);
       _manuelsCache = null;
       await loadManuels();
     } else {
@@ -3077,6 +3212,18 @@ async function fetchCorrespondanceCount() {
   try {
     const eleveId = getEleveId();
     if (!eleveId || !token || sessionExpired) return;
+    const cacheKey = `correspondances:${eleveId}`;
+    // Charger depuis le cache IndexedDB d'abord pour afficher le badge immédiatement
+    const cached = await edCache.get(cacheKey).catch(() => null);
+    if (cached?.data) {
+      const list = cached.data;
+      _correspondancesCache = list;
+      _correspondancesCount = list.length;
+      const corrTab = document.querySelector('#panel-messages .sub-tab[data-tab="correspondance"]');
+      if (corrTab && _correspondancesCount > 0) corrTab.textContent = `Correspondances (${_correspondancesCount})`;
+      // Si le cache est frais, pas besoin de refetch
+      if (!edCache.isStale(cached)) return;
+    }
     const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
     const resp = await fetch(
@@ -3085,9 +3232,10 @@ async function fetchCorrespondanceCount() {
     );
     const data = await resp.json();
     if (data.code !== 200) return;
-    const list = data.data?.correspondances || [];
-    _correspondancesCache = [...list].sort((a, b) => b.dateCreation.localeCompare(a.dateCreation));
-    _correspondancesCount = _correspondancesCache.length;
+    const list = [...(data.data?.correspondances || [])].sort((a, b) => b.dateCreation.localeCompare(a.dateCreation));
+    await edCache.set(cacheKey, list);
+    _correspondancesCache = list;
+    _correspondancesCount = list.length;
     const corrTab = document.querySelector('#panel-messages .sub-tab[data-tab="correspondance"]');
     if (corrTab && _correspondancesCount > 0) corrTab.textContent = `Correspondances (${_correspondancesCount})`;
   } catch(e) { /* silencieux */ }
@@ -3098,17 +3246,17 @@ async function loadCorrespondance() {
   if (!resultEl) return;
   selectedContactId = null;
 
-  // Si le cache est déjà peuplé (par fetchCorrespondanceCount), afficher directement
-  if (_correspondancesCache.length > 0) {
+  const eleveId = getEleveId();
+  if (!eleveId) return;
+  const cacheKey = `correspondances:${eleveId}`;
+
+  const applyList = (list) => {
+    _correspondancesCache = list;
+    _correspondancesCount = list.length;
     renderCorrespondanceList(resultEl);
-    return;
-  }
+  };
 
-  resultEl.innerHTML = `<div id="msg-list">${centeredSpinner()}</div>`;
-
-  try {
-    const eleveId = getEleveId();
-    if (!eleveId) throw new Error('Pas de compte élève');
+  await edCache.load(cacheKey, async () => {
     const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
     const resp = await fetch(
@@ -3117,14 +3265,16 @@ async function loadCorrespondance() {
     );
     const data = await resp.json();
     if (data.code !== 200) throw new Error(data.message || `Code ${data.code}`);
-
-    const list = data.data?.correspondances || [];
-    _correspondancesCache = [...list].sort((a, b) => b.dateCreation.localeCompare(a.dateCreation));
-    renderCorrespondanceList(resultEl);
-  } catch(e) {
+    return [...(data.data?.correspondances || [])].sort((a, b) => b.dateCreation.localeCompare(a.dateCreation));
+  }, {
+    onSpinner: () => { resultEl.innerHTML = `<div id="msg-list">${centeredSpinner()}</div>`; },
+    onCached:  (list) => applyList(list),
+    onFresh:   (list) => applyList(list),
+    diffFn:    edCache.defaultDiff,
+  }).catch(e => {
     const listEl = document.getElementById('msg-list');
     if (listEl) listEl.innerHTML = `<p style="color:#b91c1c;font-size:13px;padding:8px">Erreur : ${e.message}</p>`;
-  }
+  });
 }
 
 function renderCorrespondanceList(resultEl) {
@@ -4002,7 +4152,6 @@ async function openContactPicker() {
   overlay.appendChild(dlg);
   document.body.appendChild(overlay);
   contactPickerTab = 'teachers';
-  resetContactsCache();
   await loadContactsTab('teachers');
 }
 
@@ -4021,11 +4170,10 @@ async function loadContactsTab(tab) {
   const listEl = document.getElementById('contact-list');
   if (!listEl) return;
 
-  if (contactsCache[tab]) { renderContactList(contactsCache[tab]); return; }
+  const eleveId = getEleveId();
+  const cacheKey = `contacts:${tab}:${eleveId}`;
 
-  listEl.innerHTML = `<span style="color:var(--text4);font-size:13px;text-align:center;padding:16px">${centeredSpinner()}</span>`;
-
-  try {
+  await edCache.load(cacheKey, async () => {
     const acc = accountData?.accounts ? accountData.accounts[0] : accountData;
     const idClasse = acc?.profile?.classe?.id || acc?.classe?.id || acc?.idClasse || '';
     const endpoints = {
@@ -4038,7 +4186,6 @@ async function loadContactsTab(tab) {
     const resp = await fetch(`${getProxy()}${endpoints[tab]}`, { method: 'POST', headers, body: 'data={}' });
     const data = await resp.json();
     if (data.code !== 200) throw new Error(data.message || `Code ${data.code}`);
-    // Normaliser : extraire le tableau selon la structure retournée
     const raw = Array.isArray(data.data) ? data.data
       : Array.isArray(data.data?.professeurs) ? data.data.professeurs
       : Array.isArray(data.data?.personnels)   ? data.data.personnels
@@ -4046,16 +4193,19 @@ async function loadContactsTab(tab) {
       : Array.isArray(data.data?.eleves)        ? data.data.eleves
       : Object.values(data.data || {}).find(Array.isArray) || [];
     const strVal = v => typeof v === 'string' ? v : (v?.libelle || v?.nom || '');
-    const list = raw.map(c => ({
+    return raw.map(c => ({
       id:  c.id,
       nom: [c.civilite, c.prenom, c.nom].filter(Boolean).join(' ').trim() || c.login || String(c.id),
       info: strVal(c.matiere) || strVal(c.fonction) || strVal(c.role) || '',
     }));
-    contactsCache[tab] = list;
-    renderContactList(list);
-  } catch(e) {
+  }, {
+    onSpinner: () => { listEl.innerHTML = `<span style="color:var(--text4);font-size:13px;text-align:center;padding:16px">${centeredSpinner()}</span>`; },
+    onCached:  (list) => { contactsCache[tab] = list; renderContactList(list); },
+    onFresh:   (list) => { contactsCache[tab] = list; renderContactList(list); },
+    diffFn:    edCache.defaultDiff,
+  }).catch(e => {
     if (listEl) listEl.innerHTML = `<span style="color:#b91c1c;font-size:13px;padding:8px">Erreur : ${e.message}</span>`;
-  }
+  });
 }
 
 function filterContacts() {
@@ -4151,18 +4301,22 @@ window.addEventListener('DOMContentLoaded', function restoreSession() {
     const s = JSON.parse(saved);
     if (!s.token || !s.accountData) return;
     token = s.token;
+    twoFaToken = s.twoFaToken || '';
     accountData = s.accountData;
     onLoggedIn(s.accountData);
     // Vérification silencieuse après 1s — le proxy a eu le temps de démarrer
-    setTimeout(() => {
+    // Si le cache absences est encore frais (< 30 min), le token était valide récemment → on saute la vérification réseau
+    setTimeout(async () => {
       const eleveId = s.accountData.accounts ? s.accountData.accounts[0].id : (s.accountData.id || '');
       if (!eleveId) return;
+      const cached = await edCache.get(`absences:${eleveId}`).catch(() => null);
+      if (cached && !edCache.isStale(cached)) return;
       fetch(`${getProxy()}/v3/eleves/${eleveId}/viescolaire.awp?verbe=get`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': s.token, 'X-ApisVer': '4.75.0' },
         body: 'data={}'
       }).then(r => r.json()).then(data => {
-        if (data.code !== 200) { enterExpiredMode(); }
+        if (data.code !== 200) { silentReauth(s); }
       }).catch(() => { /* proxy pas dispo, on garde la session */ });
     }, 1500);
   } catch(e) { localStorage.removeItem('ed_session'); }

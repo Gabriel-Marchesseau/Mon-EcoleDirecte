@@ -47,7 +47,7 @@ CLAUDE.md                   # Ce fichier
 | Vie scolaire | Quatre onglets : Absences (liste avec justificatifs) + Sanctions/Encouragements + QCM + Sondages |
 | Onglet ··· | Appel API manuel libre |
 
-Fonctionnalités transversales : dark mode, cache IndexedDB stale-while-revalidate (TTL 30 min), badges nouveautés, mode hors-ligne (session expirée → cache conservé + bannière reconnexion), routeur SPA (URL par onglet), label fraîcheur, refresh forcé, arrêt proxy, double auth 2FA avec QCM et réponses automatiques configurables.
+Fonctionnalités transversales : dark mode, cache IndexedDB stale-while-revalidate (TTL 30 min), badges nouveautés, mode hors-ligne (session expirée → reconnexion silencieuse automatique ou cache conservé + bannière reconnexion), routeur SPA (URL par onglet), label fraîcheur, refresh forcé, arrêt proxy, double auth 2FA avec QCM et réponses automatiques configurables + sauvegarde auto des réponses manuelles.
 
 ---
 
@@ -189,6 +189,11 @@ renderSondages(data)          // render les sondages
 // Profil
 formatFrPhone(raw)            // formate un N° FR → (+33) 6 12 34 56 78
 normalizeFrPhone(display)     // normalise pour l'API → +33XXXXXXXXX
+
+// Reconnexion silencieuse
+silentReauth(savedSession)           // tente re-login avec identifiants sauvegardés (u/p)
+silentDoubleAuth(twoFaToken, saved)  // résout automatiquement le 2FA via règles SEC_KEY
+maybeAutoSaveSecRule(question, label) // mémorise la réponse 2FA après clic manuel
 ```
 
 ---
@@ -217,6 +222,13 @@ absences:{eleveId}            ← données vie scolaire (absences + sanctions)
 devoirs:{eleveId}
 devoirs-detail:{eleveId}:{date}
 seances:{eleveId}:{YYYY-MM-DD}    ← une entrée par jour
+qcm:{eleveId}
+sondages:{eleveId}
+correspondances:{eleveId}
+espaces:{eleveId}
+espace-content:{espaceId}
+manuels:{eleveId}
+contacts:{tab}:{eleveId}      ← tab = teachers | staff | tutors
 ```
 
 ---
@@ -371,8 +383,11 @@ Dark mode : `color-scheme: dark` + `filter: invert(1)` sur l'icône calendrier
 
 ### Mode hors-ligne / session expirée
 - `sessionExpired = true` quand le token est révoqué
-- Bannière `#offline-banner` avec bouton "Se reconnecter" → `logout()`
+- Avant d'entrer en mode hors-ligne, `silentReauth(savedSession)` tente un re-login automatique (identifiants sauvegardés dans `localStorage`)
+- Si le re-login réussit (y compris avec double auth automatique via règles 2FA), la session reprend sans interruption
+- Si la reconnexion échoue : bannière `#offline-banner` avec bouton "Se reconnecter" → `logout()`
 - Le cache IndexedDB est conservé — navigation dans les données en cache possible sans token
+- `maybeAutoSaveSecRule(question, label)` — sauvegarde automatiquement la réponse 2FA après un clic manuel (si pas déjà couverte par une règle existante)
 
 ### Routeur SPA
 - `switchTab(id, fromPopstate)` → `history.pushState` si `!fromPopstate`
@@ -452,3 +467,9 @@ Tous ces éléments sont intégrés dans les fichiers actuels :
 - Hover states sur avatar, `.profile-info`, onglets principaux, boutons période notes, date fields séances
 - `forceRefresh` gère les trois sous-panels de l'onglet Cours (espaces : vide cache + recharge ; séances : invalidation IndexedDB ; manuels : rechargement)
 - `.tab::before` avec `data-label` — empêche le saut de largeur lors du bold de l'onglet actif (CSS `height:0; overflow:hidden`)
+- Reconnexion silencieuse — `silentReauth()` / `silentDoubleAuth()` / `silentSubmitDoubleAuth()` / `silentLoginWithFa()` relancent la session auto si token expiré
+- `maybeAutoSaveSecRule()` — sauvegarde auto de la réponse 2FA après clic manuel (évite de re-répondre manuellement)
+- Session `localStorage` — sauvegarde désormais `u`, `p`, `twoFaToken` pour la reconnexion silencieuse
+- Cache étendu — QCM, Sondages, Manuels, Espaces de travail, contenu espace, Correspondances, Contacts migrent vers `edCache.load()` (stale-while-revalidate)
+- Contact picker — ne vide plus le cache à l'ouverture (suppression du `resetContactsCache()` dans `openContactPicker()`)
+- `forceRefresh` — invalide proprement les nouvelles clés cache IndexedDB (qcm, sondages, espaces, espace-content, manuels, correspondances)
