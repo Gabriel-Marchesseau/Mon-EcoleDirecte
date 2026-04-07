@@ -34,7 +34,7 @@ if (-not (Test-Path "$DIR\style.css"))         { Write-Err "style.css manquant";
 
 if (-not $ready) {
     Write-Host ""
-    Write-Warn "Lancez d'abord 'Installer Mon EcoleDirecte.bat'"
+    Write-Warn "Lancez d'abord 'Install_Mon_EcoleDirecte.bat'"
     Write-Host ""
     Read-Host "Appuyez sur Entree pour fermer"
     exit 1

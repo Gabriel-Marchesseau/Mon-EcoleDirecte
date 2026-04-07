@@ -40,7 +40,7 @@ cd Mon-EcoleDirecte
 
 **2. Run the installer**
 
-Double-click **`Installer Mon EcoleDirecte.bat`**, or from a terminal:
+Double-click **`Install_Mon_EcoleDirecte.bat`**, or from a terminal:
 
 ```powershell
 PowerShell -ExecutionPolicy Bypass -File install.ps1
@@ -63,7 +63,7 @@ Open **`https://localhost:3131`** in your browser and click *"Advanced → Proce
 
 ### Normal mode
 
-Double-click **`Lancer Mon EcoleDirecte.bat`**, or:
+Double-click **`Start_Mon_EcoleDirecte.bat`**, or:
 
 ```powershell
 PowerShell -ExecutionPolicy Bypass -File run.ps1
@@ -77,7 +77,7 @@ This will:
 ### Debug mode
 
 ```powershell
-"Lancer Mon EcoleDirecte.bat" --debug
+"Start_Mon_EcoleDirecte.bat" --debug
 ```
 
 Or directly:
@@ -133,8 +133,8 @@ mon-ecoledirecte/
 ├── package.json                  # Dependencies (node-forge, nodemon)
 ├── install.ps1                   # Installation script (PowerShell)
 ├── run.ps1                       # Launch script (PowerShell)
-├── Installer Mon EcoleDirecte.bat  # One-click installer
-└── Lancer Mon EcoleDirecte.bat     # One-click launcher
+├── Install_Mon_EcoleDirecte.bat    # One-click installer
+└── Start_Mon_EcoleDirecte.bat      # One-click launcher
 ```
 
 ---
