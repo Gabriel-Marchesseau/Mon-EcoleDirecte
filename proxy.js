@@ -219,7 +219,7 @@ const server = https.createServer(sslOptions, async (req, res) => {
   const parsedPathOnly = new URL(req.url, 'https://localhost').pathname;
   const staticFiles2 = { '/': 'ecoledirecte.html', '/app.js': 'app.js', '/style.css': 'style.css', '/cache.js': 'cache.js', '/ecoledirecte.html': 'ecoledirecte.html', '/favicon.ico': 'favicon.ico' };
   // Routes SPA — toute URL non-API non-statique sert l'app HTML (routeur côté client)
-  const SPA_ROUTES = ['/edt', '/notes', '/devoirs', '/seances', '/messages', '/vie-scolaire', '/perso'];
+  const SPA_ROUTES = ['/edt', '/notes', '/devoirs', '/seances', '/messages', '/vie-scolaire', '/perso', '/memos'];
   const isSpaRoute = SPA_ROUTES.includes(parsedPathOnly);
   const fileKey = isSpaRoute ? '/' : parsedPathOnly;
   if ((staticFiles2[fileKey] || isSpaRoute) && req.method === 'GET') {

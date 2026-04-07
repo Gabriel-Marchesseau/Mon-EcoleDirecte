@@ -45,6 +45,7 @@ CLAUDE.md                   # Ce fichier
 | Messages — Contacts | Liste contacts (Professeurs / Personnels / Autres), bouton "Écrire" → ouvre composition avec destinataire pré-rempli |
 | Nouveau message | Dialog composition : éditeur enrichi (contenteditable), PJ drop zone, sélecteur destinataires (contact picker tabulé) |
 | Vie scolaire | Quatre onglets : Absences (liste avec justificatifs) + Sanctions/Encouragements + QCM + Sondages |
+| Mémos | Notes locales (IndexedDB), éditeur rich-text, date d'échéance, tri colonnes, filtres "Faits"/"Expirés", export/import CSV, résolution de conflits d'import |
 | Onglet ··· | Appel API manuel libre |
 
 Fonctionnalités transversales : dark mode, cache IndexedDB stale-while-revalidate (TTL 30 min), badges nouveautés, mode hors-ligne (session expirée → reconnexion silencieuse automatique ou cache conservé + bannière reconnexion), routeur SPA (URL par onglet), label fraîcheur, refresh forcé, arrêt proxy, double auth 2FA avec QCM et réponses automatiques configurables + sauvegarde auto des réponses manuelles.
@@ -108,10 +109,19 @@ let _espaceNavPath = [];           // pile de navigation dans l'arborescence [{l
 let _seancesMatieresFilter = null; // Set des matières cochées (null = toutes)
 let _seancesAllData = null;        // données séances brutes pour le filtre matière
 
+// Onglet Mémos (stockage local, pas d'API)
+let memosCache     = [];      // tableau en mémoire des mémos de l'élève actif
+let selectedMemoId = null;   // UUID du mémo sélectionné
+let memosFaitsOnly   = false; // filtre "Faits" actif
+let memosExpiresOnly = false; // filtre "Expirés" actif
+let memosSortBy  = 'dateCreation'; // 'titre' | 'dateEcheance' | 'dateCreation'
+let memosSortDir = 'desc';         // 'asc' | 'desc'
+
 // Routeur SPA
 const ROUTE_TO_TAB = { '/edt': 'edt', '/notes': 'notes', '/devoirs': 'devoirs',
-  '/seances': 'seances', '/messages': 'messages', '/vie-scolaire': 'absences', '/perso': 'perso' };
-const TAB_TO_ROUTE = { 'edt': '/edt', ... , 'absences': '/vie-scolaire' };
+  '/seances': 'seances', '/messages': 'messages', '/vie-scolaire': 'absences',
+  '/perso': 'perso', '/memos': 'memos' };
+const TAB_TO_ROUTE = { 'edt': '/edt', ... , 'absences': '/vie-scolaire', 'memos': '/memos' };
 ```
 
 ---
@@ -194,6 +204,29 @@ normalizeFrPhone(display)     // normalise pour l'API → +33XXXXXXXXX
 silentReauth(savedSession)           // tente re-login avec identifiants sauvegardés (u/p)
 silentDoubleAuth(twoFaToken, saved)  // résout automatiquement le 2FA via règles SEC_KEY
 maybeAutoSaveSecRule(question, label) // mémorise la réponse 2FA après clic manuel
+
+// Mémos (stockage local IndexedDB, aucun appel API EcoleDirecte)
+loadMemos()                   // charge depuis IndexedDB → memosCache
+saveMemos()                   // persiste memosCache → IndexedDB
+renderMemosFromCache()        // render la liste avec tri/filtres actifs
+applyMemoSelection()          // applique la sélection visuelle (selectedMemoId)
+openMemoDetail(idEnc)         // affiche le détail dans #memo-detail-panel
+openNewMemoDialog()           // dialog création mémo (rich-text editor)
+openEditMemoDialog(idEnc)     // dialog édition mémo existant
+saveMemoFromDialog(existingIdEnc) // crée ou met à jour selon existingIdEnc
+toggleMemoFait(idEnc)         // toggle fait/non-fait + save
+deleteMemo(idEnc)             // supprime avec confirm + save
+toggleMemosFaits(btn)         // filtre "Faits" (mémos non faits)
+toggleMemosExpires(btn)       // filtre "Expirés" (dateEcheance < today)
+sortMemosBy(col)              // tri colonnes titre/dateEcheance/dateCreation
+exportMemosCsv()              // export CSV UTF-8 BOM
+importMemosCsv(input)         // import CSV avec résolution de conflits
+_parseCsvLine(line)           // parser CSV minimal (guillemets doublés)
+_processMemoImportQueue(list, i) // traite les conflits un par un (récursif async)
+_showMemoConflictDialog(imp, existing, callback) // dialog 3 boutons (Ignorer/Mettre à jour/Ajouter comme nouveau)
+
+// Notes — boutons période dynamiques
+buildNotesPeriodButtons()     // construit les boutons depuis notesData.periodes (remplace les boutons statiques HTML, s'adapte trimestres/semestres)
 ```
 
 ---
@@ -229,6 +262,7 @@ espaces:{eleveId}
 espace-content:{espaceId}
 manuels:{eleveId}
 contacts:{tab}:{eleveId}      ← tab = teachers | staff | tutors
+memos:{eleveId}               ← mémos locaux (pas d'API EcoleDirecte, stockage pur IndexedDB)
 ```
 
 ---
@@ -473,3 +507,7 @@ Tous ces éléments sont intégrés dans les fichiers actuels :
 - Cache étendu — QCM, Sondages, Manuels, Espaces de travail, contenu espace, Correspondances, Contacts migrent vers `edCache.load()` (stale-while-revalidate)
 - Contact picker — ne vide plus le cache à l'ouverture (suppression du `resetContactsCache()` dans `openContactPicker()`)
 - `forceRefresh` — invalide proprement les nouvelles clés cache IndexedDB (qcm, sondages, espaces, espace-content, manuels, correspondances)
+- Onglet "Mémos" — notes locales (`panel-memos`, route `/memos`), stockage IndexedDB pur (aucune API), éditeur contenteditable, date d'échéance, filtres Faits/Expirés, tri colonnes, export/import CSV avec résolution de conflits
+- `buildNotesPeriodButtons()` — boutons période Notes construits dynamiquement depuis l'API (adapte le label trimestre/semestre, remplace les boutons statiques dans le HTML)
+- `logout()` — vide aussi `notesData` et `notesPeriod` (+ efface `#notes-period-btns`) pour éviter les boutons fantômes après reconnexion
+- Icône filtre SVG (entonnoir) ajoutée dans les toolbars Devoirs, Séances, Messages (cohérence visuelle)

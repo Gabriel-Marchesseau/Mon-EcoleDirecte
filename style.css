@@ -137,9 +137,9 @@
   .refresh-btn:hover { color: var(--text3); }
   .refresh-btn.spinning { animation: spin 0.7s linear infinite; }
   .freshness-label { font-size: 13px; color: var(--text4); white-space: nowrap; }
-  #devoirs-hide-done, #devoirs-interro-only, #msg-unread-only { color: var(--text4); background: transparent; transition: color 0.15s, background 0.15s; padding: 4px 10px; border-radius: 6px; height: 34px; font-size: 13px; font-weight: 500; }
-  #devoirs-hide-done:hover, #devoirs-interro-only:hover, #msg-unread-only:hover { color: var(--text2); background: var(--bg3); }
-  #devoirs-hide-done[aria-pressed="true"], #devoirs-interro-only[aria-pressed="true"], #msg-unread-only[aria-pressed="true"] { color: var(--text); background: var(--bg3); }
+  #devoirs-hide-done, #devoirs-interro-only, #msg-unread-only, #memos-hide-done, #memos-hide-expires { color: var(--text4); background: transparent; transition: color 0.15s, background 0.15s; padding: 4px 10px; border-radius: 6px; height: 34px; font-size: 13px; font-weight: 500; }
+  #devoirs-hide-done:hover, #devoirs-interro-only:hover, #msg-unread-only:hover, #memos-hide-done:hover, #memos-hide-expires:hover { color: var(--text2); background: var(--bg3); }
+  #devoirs-hide-done[aria-pressed="true"], #devoirs-interro-only[aria-pressed="true"], #msg-unread-only[aria-pressed="true"], #memos-hide-done[aria-pressed="true"], #memos-hide-expires[aria-pressed="true"] { color: var(--text); background: var(--bg3); }
   .tab-freshness-row { display: flex; align-items: center; gap: 6px; margin-left: auto; padding-right: 2px; }
   .tab-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: #1d4ed8; color: #fff; font-size: 10px; font-weight: 700; margin-left: 4px; vertical-align: middle; }
   .espaces-layout { display: flex; flex-direction: row; }

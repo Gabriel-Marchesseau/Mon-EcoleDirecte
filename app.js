@@ -50,8 +50,8 @@ let sessionExpired = false;
 function getProxy() { return window.location.origin; }
 
 // ── Routeur ────────────────────────────────────────────────
-const ROUTE_TO_TAB = { '/edt': 'edt', '/notes': 'notes', '/devoirs': 'devoirs', '/seances': 'seances', '/messages': 'messages', '/vie-scolaire': 'absences' };
-const TAB_TO_ROUTE = { 'edt': '/edt', 'notes': '/notes', 'devoirs': '/devoirs', 'seances': '/seances', 'messages': '/messages', 'absences': '/vie-scolaire' };
+const ROUTE_TO_TAB = { '/edt': 'edt', '/notes': 'notes', '/devoirs': 'devoirs', '/seances': 'seances', '/messages': 'messages', '/vie-scolaire': 'absences', '/memos': 'memos' };
+const TAB_TO_ROUTE = { 'edt': '/edt', 'notes': '/notes', 'devoirs': '/devoirs', 'seances': '/seances', 'messages': '/messages', 'absences': '/vie-scolaire', 'memos': '/memos' };
 function getTabFromPath() { return ROUTE_TO_TAB[location.pathname] || null; }
 window.addEventListener('popstate', () => { const t = getTabFromPath(); if (t) switchTab(t, true); });
 function getEleveId() {
@@ -415,6 +415,7 @@ function onLoggedIn(data) {
     { id: 'seances',  label: 'Cours' },
     { id: 'messages', label: 'Messages' },
     { id: 'absences', label: 'Vie scolaire' },
+    { id: 'memos',    label: 'Mémos' },
   ];
   const bar = document.getElementById('tab-bar');
   bar.innerHTML = '';
@@ -832,6 +833,9 @@ function logout() {
   edCache.clear();
   sessionExpired = false;
   token = ''; accountData = null;
+  notesData = null; notesPeriod = null;
+  const pbc = document.getElementById('notes-period-btns');
+  if (pbc) pbc.innerHTML = '';
   localStorage.removeItem('ed_session');
   document.getElementById('login-card').style.display = 'block';
   document.getElementById('api-card').classList.remove('active-card');
@@ -2177,7 +2181,7 @@ async function loadNotes() {
   const applyNotes = (data, isFresh, oldData) => {
     notesData = data;
     if (!notesPeriod) notesPeriod = detectCurrentPeriod(notesData.periodes || []);
-    updateNotesPeriodButtons();
+    buildNotesPeriodButtons();
     renderNotes();
     document.getElementById('spin-notes').style.display = 'none';
     updateFreshnessLabel('notes', Date.now());
@@ -2212,6 +2216,16 @@ function selectNotesPeriod(period) {
   updateNotesPeriodButtons();
   if (notesData) renderNotes();
   else loadNotes();
+}
+
+function buildNotesPeriodButtons() {
+  const container = document.getElementById('notes-period-btns');
+  if (!container || !notesData) return;
+  const periodes = (notesData.periodes || []).filter(p => p.codePeriode !== 'A000');
+  container.innerHTML = periodes.map(p =>
+    `<button class="notes-period-btn" data-period="${p.codePeriode}" onclick="selectNotesPeriod('${p.codePeriode}')">${p.periode}</button>`
+  ).join('');
+  updateNotesPeriodButtons();
 }
 
 function updateNotesPeriodButtons() {
@@ -2401,7 +2415,7 @@ function renderNotesTable(periode, allNotes) {
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
         <button onclick="toggleNotesList(this)" style="display:flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;font-size:14px;font-weight:500;color:var(--text);padding:4px 0;text-align:left;flex-shrink:0">
           <span id="notes-list-arrow" style="font-size:14px;color:var(--text3);transition:transform .2s">▶</span>
-          Notes du trimestre
+          Notes ${(periode.periode||'').toLowerCase().includes('semestre') ? 'du semestre' : 'du trimestre'}
           <span style="font-weight:400;color:var(--text3);font-size:14px">(${filteredNotes.length}${notesFilter.size > 0 ? ' / ' + periodNotes.length : ''})</span>
         </button>
         ${filterBadges}
@@ -2904,6 +2918,8 @@ async function forceRefresh(tab) {
       }
       await loadSeances();
     }
+  } else if (tab === 'memos') {
+    renderMemosFromCache();
   }
 
   const btn2 = document.getElementById('tab-refresh-btn');
@@ -3100,6 +3116,7 @@ function switchTab(id, fromPopstate = false) {
     else if (_coursActiveTab === 'manuels') loadManuels();
   }
   else if (id === 'messages') loadMessages();
+  else if (id === 'memos') loadMemos();
 }
 
 function togglePwd() {
@@ -4321,3 +4338,494 @@ window.addEventListener('DOMContentLoaded', function restoreSession() {
     }, 1500);
   } catch(e) { localStorage.removeItem('ed_session'); }
 });
+
+// ══════════════════════════════════════════════════════════════════
+//  MÉMOS — stockage local IndexedDB, lié à l'eleveId
+// ══════════════════════════════════════════════════════════════════
+
+let memosCache     = [];      // tableau en mémoire des mémos de l'élève actif
+let selectedMemoId = null;   // UUID du mémo sélectionné
+let memosFaitsOnly   = false; // filtre "Faits" actif
+let memosExpiresOnly = false; // filtre "Expirés" actif
+let memosSortBy  = 'dateCreation'; // colonne de tri : 'titre' | 'dateEcheance' | 'dateCreation'
+let memosSortDir = 'desc';         // 'asc' | 'desc'
+
+async function loadMemos() {
+  const eleveId = getEleveId();
+  if (!eleveId) return;
+  const cacheKey = `memos:${eleveId}`;
+  document.getElementById('spin-memos').style.display = 'inline';
+  const entry = await edCache.get(cacheKey).catch(() => null);
+  memosCache = entry ? (entry.data || []) : [];
+  renderMemosFromCache();
+  updateFreshnessLabel('memos', entry?.ts || Date.now());
+  document.getElementById('spin-memos').style.display = 'none';
+}
+
+async function saveMemos() {
+  const eleveId = getEleveId();
+  if (!eleveId) return;
+  await edCache.set(`memos:${eleveId}`, memosCache);
+}
+
+function renderMemosFromCache() {
+  const container = document.getElementById('memos-result');
+  if (!container) return;
+
+  const today = new Date().toISOString().substring(0, 10);
+
+  let list = [...memosCache];
+  if (memosFaitsOnly)   list = list.filter(m => !m.fait);
+  if (memosExpiresOnly) list = list.filter(m => m.dateEcheance && m.dateEcheance < today);
+
+  // Tri
+  list.sort((a, b) => {
+    let va, vb;
+    if (memosSortBy === 'titre') {
+      va = (a.titre || '').toLowerCase();
+      vb = (b.titre || '').toLowerCase();
+    } else if (memosSortBy === 'dateEcheance') {
+      va = a.dateEcheance || '';
+      vb = b.dateEcheance || '';
+    } else {
+      va = a.dateCreation || '';
+      vb = b.dateCreation || '';
+    }
+    const cmp = va < vb ? -1 : va > vb ? 1 : 0;
+    return memosSortDir === 'asc' ? cmp : -cmp;
+  });
+
+  if (!list.length) {
+    const msg = memosExpiresOnly ? 'Aucun mémo expiré.' : memosFaitsOnly ? 'Aucun mémo non fait.' : 'Aucun mémo. Créez-en un !';
+    container.innerHTML = `<p style="color:var(--text3);font-size:14px;padding:8px 0">${msg}</p>`;
+    return;
+  }
+
+  // En-têtes colonnes
+  const arrow = col => memosSortBy === col ? (memosSortDir === 'asc' ? ' ↑' : ' ↓') : '';
+  const hSt = 'font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;cursor:pointer;user-select:none;white-space:nowrap;padding:2px 0';
+  const headers = `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border)">
+    <div style="width:34px;flex-shrink:0"></div>
+    <div style="flex:1;min-width:0">
+      <span onclick="sortMemosBy('titre')" style="${hSt}">Titre${arrow('titre')}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:20px;flex-shrink:0">
+      <span onclick="sortMemosBy('dateEcheance')" style="${hSt};width:80px;display:inline-block;text-align:center">Échéance${arrow('dateEcheance')}</span>
+      <span onclick="sortMemosBy('dateCreation')" style="${hSt};width:62px;display:inline-block;text-align:right">Créé le${arrow('dateCreation')}</span>
+      <div style="width:28px"></div>
+    </div>
+  </div>`;
+
+  container.innerHTML = headers + list.map(m => {
+    const fait      = m.fait;
+    const idEnc     = encodeURIComponent(m.id).replace(/'/g, '%27');
+    const titreH    = (m.titre || '(Sans titre)').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const dateCreeLbl  = (m.dateCreation || '').substring(0, 10);
+    const dateEchLbl   = m.dateEcheance || '';
+    const isExpired = m.dateEcheance && m.dateEcheance < today;
+    const expiredSvg = isExpired
+      ? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 18" width="18" height="16" style="flex-shrink:0;vertical-align:middle" title="Mémo expiré"><polygon points="10,1 19,17 1,17" fill="#f59e0b" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/><text x="10" y="15.5" text-anchor="middle" font-size="11" font-weight="900" fill="#000">!</text></svg>`
+      : '';
+    return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+      <button onclick="event.stopPropagation();toggleMemoFait('${idEnc}')"
+              title="${fait ? 'Marquer comme non fait' : 'Marquer comme fait'}"
+              style="flex-shrink:0;width:28px;height:28px;border-radius:50%;border:1px solid var(--border);background:transparent;color:${fait ? '#15803d' : 'var(--text4)'};font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:opacity .15s"
+              onmouseover="this.style.opacity='0.6'" onmouseout="this.style.opacity='1'">${fait ? '✅' : '○'}</button>
+      <div data-memo-id="${m.id}" onclick="openMemoDetail('${idEnc}')"
+           style="flex:1;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px;border-radius:6px;background:var(--bg3);border:1px solid var(--border);font-size:14px;cursor:pointer;transition:background .1s,box-shadow .1s"
+           onmouseover="if(this.dataset.memoId!==selectedMemoId)this.style.background='var(--bg4)'"
+           onmouseout="if(this.dataset.memoId!==selectedMemoId)this.style.background='var(--bg3)'">
+        <div style="flex:1;min-width:0;display:flex;align-items:center;gap:6px;overflow:hidden">
+          ${expiredSvg}
+          <span style="font-weight:500;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap${fait ? ';text-decoration:line-through;color:var(--text3)' : ''}">${titreH}</span>
+          ${fait ? '<span style="flex-shrink:0;font-size:11px;background:#f0fdf4;color:#15803d;padding:2px 7px;border-radius:10px;font-weight:500">Fait</span>' : ''}
+        </div>
+        <div style="display:flex;align-items:center;gap:20px;flex-shrink:0">
+          <span style="color:${isExpired ? '#b45309' : 'var(--text4)'};font-size:13px;width:80px;text-align:center;white-space:nowrap">${dateEchLbl}</span>
+          <span style="color:var(--text4);font-size:13px;width:62px;text-align:right;white-space:nowrap">${dateCreeLbl}</span>
+          <button onclick="event.stopPropagation();deleteMemo('${idEnc}')"
+                  title="Supprimer"
+                  style="background:none;border:none;cursor:pointer;color:var(--text4);font-size:16px;line-height:1;padding:2px 4px;border-radius:4px;width:28px"
+                  onmouseover="this.style.color='#b91c1c'" onmouseout="this.style.color='var(--text4)'">✕</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  applyMemoSelection();
+}
+
+function applyMemoSelection() {
+  const dark = document.body.classList.contains('dark');
+  document.querySelectorAll('[data-memo-id]').forEach(el => {
+    const sel = el.dataset.memoId === selectedMemoId;
+    el.style.background = sel ? (dark ? 'var(--bg4)' : '#e0e7ff') : 'var(--bg3)';
+    el.style.boxShadow  = sel ? 'inset 3px 0 0 #1d4ed8' : '';
+  });
+}
+
+function openMemoDetail(idEnc) {
+  const id = decodeURIComponent(idEnc);
+  selectedMemoId = id;
+  applyMemoSelection();
+  const m = memosCache.find(x => x.id === id);
+  if (!m) return;
+  const panel = document.getElementById('memo-detail-panel');
+  if (!panel) return;
+  panel.style.alignItems = 'flex-start';
+  panel.style.justifyContent = 'flex-start';
+  const enc = encodeURIComponent(id).replace(/'/g, '%27');
+  const titreH = (m.titre || '(Sans titre)').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const today = new Date().toISOString().substring(0, 10);
+  const isExpired = m.dateEcheance && m.dateEcheance < today;
+  const expiredSvgDetail = isExpired
+    ? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 18" width="16" height="14" style="vertical-align:middle;margin-right:4px" title="Mémo expiré"><polygon points="10,1 19,17 1,17" fill="#f59e0b" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/><text x="10" y="15.5" text-anchor="middle" font-size="11" font-weight="900" fill="#000">!</text></svg>`
+    : '';
+  panel.innerHTML = `<div style="width:100%">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">
+      <div style="font-weight:600;font-size:15px;line-height:1.4;flex:1">${titreH}</div>
+      <button onclick="openEditMemoDialog('${enc}')"
+              style="flex-shrink:0;height:34px;padding:0 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:13px;cursor:pointer;display:flex;align-items:center;gap:5px"><span style="display:inline-block;transform:rotate(45deg)">✏</span> Modifier</button>
+    </div>
+    <div style="font-size:13px;color:var(--text4);margin-bottom:${m.dateEcheance ? '6px' : '12px'}">
+      Créé le ${(m.dateCreation||'').substring(0,10)}${m.fait ? ' · <span style="color:#15803d;font-weight:500">Fait ✅</span>' : ''}
+    </div>
+    ${m.dateEcheance ? `<div style="font-size:13px;margin-bottom:12px;color:${isExpired ? '#b45309' : 'var(--text3)'}">
+      ${expiredSvgDetail}Échéance : ${m.dateEcheance}${isExpired ? ' <span style="font-size:11px;background:#fef3c7;color:#92400e;padding:1px 7px;border-radius:10px;font-weight:500">Expiré</span>' : ''}
+    </div>` : ''}
+    <div style="font-size:14px;line-height:1.7;color:var(--text)">${m.contenu || '<em style="color:var(--text4)">Contenu vide</em>'}</div>
+  </div>`;
+}
+
+function _resetMemoDetailPanel() {
+  selectedMemoId = null;
+  const panel = document.getElementById('memo-detail-panel');
+  if (!panel) return;
+  panel.style.alignItems = 'center';
+  panel.style.justifyContent = 'center';
+  panel.innerHTML = '<span style="color:var(--text4);font-size:13px;text-align:center">Sélectionne un mémo<br>pour voir le détail ici</span>';
+}
+
+function toggleMemosFaits(btn) {
+  memosFaitsOnly = !memosFaitsOnly;
+  btn.setAttribute('aria-pressed', memosFaitsOnly ? 'true' : 'false');
+  renderMemosFromCache();
+}
+
+function toggleMemosExpires(btn) {
+  memosExpiresOnly = !memosExpiresOnly;
+  btn.setAttribute('aria-pressed', memosExpiresOnly ? 'true' : 'false');
+  renderMemosFromCache();
+}
+
+function sortMemosBy(col) {
+  if (memosSortBy === col) {
+    memosSortDir = memosSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    memosSortBy  = col;
+    memosSortDir = col === 'titre' ? 'asc' : 'desc';
+  }
+  renderMemosFromCache();
+}
+
+async function toggleMemoFait(idEnc) {
+  const id = decodeURIComponent(idEnc);
+  const m = memosCache.find(x => x.id === id);
+  if (!m) return;
+  m.fait = !m.fait;
+  renderMemosFromCache();
+  if (selectedMemoId === id) openMemoDetail(encodeURIComponent(id).replace(/'/g,'%27'));
+  await saveMemos();
+}
+
+async function deleteMemo(idEnc) {
+  const id = decodeURIComponent(idEnc);
+  const m = memosCache.find(x => x.id === id);
+  if (!m) return;
+  const titre = m.titre || '(Sans titre)';
+  if (!window.confirm(`Supprimer le mémo "${titre}" ? Cette action est irréversible.`)) return;
+  memosCache = memosCache.filter(x => x.id !== id);
+  if (selectedMemoId === id) _resetMemoDetailPanel();
+  renderMemosFromCache();
+  await saveMemos();
+}
+
+function _memoDialogToolbar() {
+  return `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:4px">
+    ${['bold','italic','underline'].map(cmd =>
+      `<button onmousedown="event.preventDefault();document.execCommand('${cmd}')" title="${cmd}"
+        style="padding:3px 8px;border:1px solid var(--border);border-radius:5px;background:var(--bg2);color:var(--text);cursor:pointer;font-size:13px">
+        ${cmd==='bold'?'<b>G</b>':cmd==='italic'?'<i>I</i>':'<u>S</u>'}
+      </button>`).join('')}
+    ${[1,2,3].map(n =>
+      `<button onmousedown="event.preventDefault();document.execCommand('fontSize',false,'${n+2}')" title="Taille ${n}"
+        style="padding:3px 8px;border:1px solid var(--border);border-radius:5px;background:var(--bg2);color:var(--text);cursor:pointer;font-size:${10+n*2}px">A</button>`).join('')}
+    <button onmousedown="event.preventDefault();document.execCommand('insertUnorderedList')"
+      style="padding:3px 8px;border:1px solid var(--border);border-radius:5px;background:var(--bg2);color:var(--text);cursor:pointer;font-size:13px">• Liste</button>
+    <button onmousedown="event.preventDefault();document.execCommand('removeFormat')"
+      style="padding:3px 8px;border:1px solid var(--border);border-radius:5px;background:var(--bg2);color:var(--text);cursor:pointer;font-size:13px">Effacer format</button>
+  </div>`;
+}
+
+function openNewMemoDialog() {
+  const dark = document.body.classList.contains('dark');
+  const overlay = document.createElement('div');
+  overlay.id = 'memo-dlg-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:1rem';
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+
+  const dlg = document.createElement('div');
+  dlg.style.cssText = `background:${dark?'#242424':'#fff'};color:${dark?'#f0f0ee':'#1a1a1a'};border-radius:12px;padding:20px;width:100%;max-width:680px;max-height:90vh;overflow-y:auto;display:flex;flex-direction:column;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,0.25)`;
+  dlg.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <span style="font-weight:600;font-size:15px">Nouveau mémo</span>
+      <button onclick="document.getElementById('memo-dlg-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text3);line-height:1">×</button>
+    </div>
+    <div style="background:#fef3c7;color:#92400e;border-radius:8px;padding:8px 12px;font-size:13px;line-height:1.5">
+      ⚠ Les mémos sont enregistrés par utilisateur, ils ne sont pas partageables vers un autre utilisateur, ils sont enregistrés dans ce navigateur et ne sont disponibles que depuis ce navigateur.
+    </div>
+    <div style="display:flex;gap:12px">
+      <div style="flex:1">
+        <label style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Titre</label>
+        <input id="memo-dlg-titre" type="text" placeholder="Titre du mémo" style="width:100%;margin-top:4px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text);font-size:14px;box-sizing:border-box;outline:none">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Échéance (facultatif)</label>
+        <input id="memo-dlg-date" type="date" onclick="try{this.showPicker()}catch(e){}" style="display:block;width:100%;margin-top:4px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text);font-size:14px;box-sizing:border-box;outline:none;cursor:pointer">
+      </div>
+    </div>
+    <div style="flex:1">
+      <label style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Contenu</label>
+      <div style="margin-top:4px">${_memoDialogToolbar()}</div>
+      <div id="memo-dlg-body" contenteditable="true"
+        style="min-height:160px;border:1px solid var(--border);border-radius:8px;padding:10px;background:var(--bg2);color:var(--text);font-size:14px;line-height:1.6;outline:none;overflow-y:auto"></div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px">
+      <button onclick="document.getElementById('memo-dlg-overlay').remove()" style="padding:7px 16px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:13px;font-weight:500;cursor:pointer">Annuler</button>
+      <button onclick="saveMemoFromDialog(null)" style="padding:7px 16px;border-radius:8px;border:none;background:#1d4ed8;color:#fff;font-size:13px;font-weight:500;cursor:pointer">Enregistrer</button>
+    </div>
+    <div id="memo-dlg-status" style="font-size:13px;color:#b91c1c;text-align:right"></div>
+  `;
+
+  overlay.appendChild(dlg);
+  document.body.appendChild(overlay);
+  setTimeout(() => document.getElementById('memo-dlg-titre')?.focus(), 50);
+}
+
+function openEditMemoDialog(idEnc) {
+  const id = decodeURIComponent(idEnc);
+  const m = memosCache.find(x => x.id === id);
+  if (!m) return;
+
+  const dark = document.body.classList.contains('dark');
+  const overlay = document.createElement('div');
+  overlay.id = 'memo-dlg-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:1rem';
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+
+  const dlg = document.createElement('div');
+  dlg.style.cssText = `background:${dark?'#242424':'#fff'};color:${dark?'#f0f0ee':'#1a1a1a'};border-radius:12px;padding:20px;width:100%;max-width:680px;max-height:90vh;overflow-y:auto;display:flex;flex-direction:column;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,0.25)`;
+  const titreEsc = (m.titre||'').replace(/"/g,'&quot;');
+  const encId = encodeURIComponent(id).replace(/'/g,'%27');
+  const dateEchVal = m.dateEcheance || '';
+  dlg.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <span style="font-weight:600;font-size:15px">Modifier le mémo</span>
+      <button onclick="document.getElementById('memo-dlg-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text3);line-height:1">×</button>
+    </div>
+    <div style="display:flex;gap:12px">
+      <div style="flex:1">
+        <label style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Titre</label>
+        <input id="memo-dlg-titre" type="text" value="${titreEsc}" style="width:100%;margin-top:4px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text);font-size:14px;box-sizing:border-box;outline:none">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Échéance (facultatif)</label>
+        <input id="memo-dlg-date" type="date" value="${dateEchVal}" onclick="try{this.showPicker()}catch(e){}" style="display:block;width:100%;margin-top:4px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text);font-size:14px;box-sizing:border-box;outline:none;cursor:pointer">
+      </div>
+    </div>
+    <div style="flex:1">
+      <label style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Contenu</label>
+      <div style="margin-top:4px">${_memoDialogToolbar()}</div>
+      <div id="memo-dlg-body" contenteditable="true"
+        style="min-height:160px;border:1px solid var(--border);border-radius:8px;padding:10px;background:var(--bg2);color:var(--text);font-size:14px;line-height:1.6;outline:none;overflow-y:auto">${m.contenu||''}</div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px">
+      <button onclick="document.getElementById('memo-dlg-overlay').remove()" style="padding:7px 16px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:13px;font-weight:500;cursor:pointer">Annuler</button>
+      <button onclick="saveMemoFromDialog('${encId}')" style="padding:7px 16px;border-radius:8px;border:none;background:#1d4ed8;color:#fff;font-size:13px;font-weight:500;cursor:pointer">Enregistrer</button>
+    </div>
+    <div id="memo-dlg-status" style="font-size:13px;color:#b91c1c;text-align:right"></div>
+  `;
+
+  overlay.appendChild(dlg);
+  document.body.appendChild(overlay);
+}
+
+async function saveMemoFromDialog(existingIdEnc) {
+  const titre        = (document.getElementById('memo-dlg-titre')?.value || '').trim();
+  const contenu      = document.getElementById('memo-dlg-body')?.innerHTML || '';
+  const dateEcheance = document.getElementById('memo-dlg-date')?.value || '';
+  const status       = document.getElementById('memo-dlg-status');
+  if (!titre) { if (status) status.textContent = 'Le titre est obligatoire.'; return; }
+
+  if (existingIdEnc) {
+    const id = decodeURIComponent(existingIdEnc);
+    const m = memosCache.find(x => x.id === id);
+    if (m) { m.titre = titre; m.contenu = contenu; m.dateEcheance = dateEcheance || undefined; }
+  } else {
+    const memo = {
+      id: crypto.randomUUID(),
+      eleveId: getEleveId(),
+      titre,
+      contenu,
+      dateCreation: new Date().toISOString(),
+      fait: false
+    };
+    if (dateEcheance) memo.dateEcheance = dateEcheance;
+    memosCache.unshift(memo);
+  }
+
+  await saveMemos();
+  renderMemosFromCache();
+  // Rafraîchir le détail si le mémo modifié était ouvert
+  if (existingIdEnc && selectedMemoId === decodeURIComponent(existingIdEnc)) {
+    openMemoDetail(existingIdEnc);
+  }
+  document.getElementById('memo-dlg-overlay')?.remove();
+}
+
+// ── Export CSV ──────────────────────────────────────────────────────────────
+
+function exportMemosCsv() {
+  if (!memosCache.length) { alert('Aucun mémo à exporter.'); return; }
+  const csvEsc = s => `"${(s||'').replace(/"/g,'""')}"`;
+  const rows = [['id','eleveId','titre','contenu_texte','dateCreation','fait','dateEcheance']];
+  memosCache.forEach(m => {
+    const texte = (m.contenu||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+    rows.push([csvEsc(m.id), csvEsc(String(m.eleveId||'')), csvEsc(m.titre||''), csvEsc(texte), csvEsc(m.dateCreation||''), m.fait?'1':'0', csvEsc(m.dateEcheance||'')]);
+  });
+  const csv  = rows.map(r => r.join(',')).join('\r\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement('a'), { href: url, download: `memos-${new Date().toISOString().substring(0,10)}.csv` });
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── Import CSV ──────────────────────────────────────────────────────────────
+
+function _parseCsvLine(line) {
+  // Parsing simple : gère les champs entre guillemets avec guillemets doublés
+  const result = [];
+  let cur = '', inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (inQ) {
+      if (c === '"' && line[i+1] === '"') { cur += '"'; i++; }
+      else if (c === '"') inQ = false;
+      else cur += c;
+    } else {
+      if (c === '"') inQ = true;
+      else if (c === ',') { result.push(cur); cur = ''; }
+      else cur += c;
+    }
+  }
+  result.push(cur);
+  return result;
+}
+
+async function importMemosCsv(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+  const text = await file.text();
+  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) { alert('Fichier CSV vide ou invalide.'); return; }
+
+  const headers = _parseCsvLine(lines[0]);
+  const idx = {
+    id:           headers.indexOf('id'),
+    eleveId:      headers.indexOf('eleveId'),
+    titre:        headers.indexOf('titre'),
+    contenu_texte:headers.indexOf('contenu_texte'),
+    dateCreation: headers.indexOf('dateCreation'),
+    fait:         headers.indexOf('fait'),
+    dateEcheance: headers.indexOf('dateEcheance'),
+  };
+  if (idx.id < 0 || idx.titre < 0) { alert('CSV invalide : colonnes "id" et "titre" requises.'); return; }
+
+  const imported = lines.slice(1).map(line => {
+    const cols = _parseCsvLine(line);
+    const m = {
+      id:           cols[idx.id]           || '',
+      eleveId:      idx.eleveId >= 0       ? (cols[idx.eleveId] || getEleveId()) : getEleveId(),
+      titre:        cols[idx.titre]        || '',
+      contenu:      idx.contenu_texte >= 0 && cols[idx.contenu_texte] ? `<p>${cols[idx.contenu_texte].replace(/\n/g,'<br>')}</p>` : '',
+      dateCreation: idx.dateCreation >= 0  ? (cols[idx.dateCreation] || new Date().toISOString()) : new Date().toISOString(),
+      fait:         idx.fait >= 0          ? cols[idx.fait] === '1' : false,
+    };
+    if (idx.dateEcheance >= 0 && cols[idx.dateEcheance]) m.dateEcheance = cols[idx.dateEcheance];
+    return m;
+  }).filter(m => m.id && m.titre);
+
+  if (!imported.length) { alert('Aucun mémo valide trouvé dans le fichier.'); return; }
+
+  // Traiter les conflits un par un
+  await _processMemoImportQueue(imported, 0);
+}
+
+async function _processMemoImportQueue(list, i) {
+  if (i >= list.length) {
+    await saveMemos();
+    renderMemosFromCache();
+    return;
+  }
+  const imp = list[i];
+  const existing = memosCache.find(m => m.id === imp.id);
+
+  if (!existing) {
+    memosCache.unshift(imp);
+    await _processMemoImportQueue(list, i + 1);
+    return;
+  }
+
+  // Conflit : afficher un dialog à 3 boutons
+  _showMemoConflictDialog(imp, existing, async choice => {
+    if (choice === 'update') {
+      Object.assign(existing, imp);
+    } else if (choice === 'add') {
+      imp.id = crypto.randomUUID(); // nouvel ID unique
+      memosCache.unshift(imp);
+    }
+    // 'skip' : on ne fait rien
+    await _processMemoImportQueue(list, i + 1);
+  });
+}
+
+function _showMemoConflictDialog(imp, existing, callback) {
+  const dark = document.body.classList.contains('dark');
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:2000;display:flex;align-items:center;justify-content:center;padding:1rem';
+
+  const titreH = (imp.titre||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const dlg = document.createElement('div');
+  dlg.style.cssText = `background:${dark?'#242424':'#fff'};color:${dark?'#f0f0ee':'#1a1a1a'};border-radius:12px;padding:20px;width:100%;max-width:480px;display:flex;flex-direction:column;gap:14px;box-shadow:0 8px 32px rgba(0,0,0,0.3)`;
+  dlg.innerHTML = `
+    <div style="font-weight:600;font-size:15px">Conflit d'import</div>
+    <div style="font-size:14px;line-height:1.6">
+      Le mémo <strong>${titreH}</strong> existe déjà.<br>
+      <span style="color:var(--text3);font-size:13px">Créé le ${(existing.dateCreation||'').substring(0,10)}</span>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+      <button data-choice="skip"   style="padding:7px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:13px;font-weight:500;cursor:pointer">Ignorer</button>
+      <button data-choice="update" style="padding:7px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:13px;font-weight:500;cursor:pointer">Mettre à jour</button>
+      <button data-choice="add"    style="padding:7px 14px;border-radius:8px;border:none;background:#1d4ed8;color:#fff;font-size:13px;font-weight:500;cursor:pointer">Ajouter comme nouveau</button>
+    </div>
+  `;
+
+  dlg.querySelectorAll('button[data-choice]').forEach(btn => {
+    btn.onclick = () => { overlay.remove(); callback(btn.dataset.choice); };
+  });
+
+  overlay.appendChild(dlg);
+  document.body.appendChild(overlay);
+}
