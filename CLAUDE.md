@@ -39,7 +39,7 @@ CLAUDE.md                   # Ce fichier
 | Emploi du temps | Grille hebdomadaire, nav semaines, sélecteur de semaine via calendrier natif (`edtOpenCalendar`), jours fériés (algo Pâques), jours Congés grisés (body uniquement), dialog au clic, color-coded |
 | Notes | Tableau trié par trimestre + graphique Chart.js (zones colorées, hachures, légende cliquable, courbe moyenne classe par note) |
 | Devoirs | Liste groupée par date, toggle fait/non-fait (API PUT), badge PJ, détail + PJ téléchargeables, sélection visuelle persistante, filtre "Faits" + filtre "Interros", badge count dans l'onglet |
-| Cours | Trois sous-onglets : **Contenus de séances** (plage de dates, J-14 → aujourd'hui, groupé par jour, filtre par matière) + **Espaces de travail** (liste + explorateur arborescence + téléchargement fichiers) + **Manuels** (liste manuels numériques, ouverture CAS) |
+| Cours | Trois sous-onglets : **Contenus de séances** (plage de dates, J-14 → aujourd'hui, groupé par jour, filtre par matière) + **Espaces de travail** (liste + explorateur arborescence + ouverture fichiers dans Collabora Online via WOPI) + **Manuels** (liste manuels numériques, ouverture CAS) |
 | Messages | Reçus/envoyés/brouillons/archivés, PJ téléchargeables, marquage lu, décoding entités HTML natif, sélection persistante, filtre "Non lus" |
 | Messages — Correspondances | Carnet de correspondance élève (lettres/docs reçus), badge PJ PDF, badge signature, `fetchCorrespondanceCount()` en arrière-plan dès le chargement Messages |
 | Messages — Contacts | Liste contacts (Professeurs / Personnels / Autres), bouton "Écrire" → ouvre composition avec destinataire pré-rempli |
@@ -79,6 +79,8 @@ Fonctionnalités transversales : dark mode, cache IndexedDB stale-while-revalida
 - Fichiers statiques servis directement, `__VERSION__` remplacé par timestamp
 - Endpoint `POST /shutdown` pour arrêter le serveur depuis l'UI
 - Endpoint `GET /cas-redirect?url=...` — suit la redirection CAS authentifiée (headers X-Token, 2fa-token, X-Gtk transmis), gère les redirections HTML (`<meta refresh>`, `window.location`)
+- Endpoint `GET /collabora-url` — fetche `libreoffice.ecoledirecte.com/hosting/discovery`, extrait l'URL `cool.html` et la renvoie en JSON (`{ viewUrl }`)
+- Header `WOPI-Token` retransmis au client via `Access-Control-Expose-Headers` (nécessaire pour construire l'access_token Collabora)
 
 ---
 
@@ -106,6 +108,7 @@ let _coursActiveTab = 'seances';   // sous-onglet actif ('seances' | 'espaces' |
 let _espacesCache = null;          // liste des espaces de travail (null = non chargé)
 let _selectedEspaceId = null;      // ID de l'espace sélectionné dans la liste
 let _espaceNavPath = [];           // pile de navigation dans l'arborescence [{libelle, children}, ...]
+let _collaboraViewUrl = null;      // cache de l'URL cool.html (Collabora discovery)
 let _seancesMatieresFilter = null; // Set des matières cochées (null = toutes)
 let _seancesAllData = null;        // données séances brutes pour le filtre matière
 
@@ -167,7 +170,8 @@ loadEspaceTravailContent(espaceId) // fetch arborescence + init _espaceNavPath
 renderEspaceExplorer()        // render breadcrumb + contenu du nœud courant
 navigateEspaceInto(childIdx)  // entre dans un sous-dossier
 navigateEspaceTo(depth)       // remonte dans le breadcrumb
-downloadEspaceFile(espaceIdEnc, fileIdEnc, filenameEnc) // télécharge via triggerDownload
+openEspaceFile(espaceIdEnc, fileIdEnc, filenameEnc) // ouvre dans Collabora Online (WOPI) via form POST _blank
+_openCollaboraViewer(collaboraUrl, accessToken, idUser) // soumet le form POST vers _blank (iframe bloquée par X-Frame-Options)
 loadManuels()                 // charge la liste des manuels numériques
 renderManuels(manuels)        // render la liste des manuels
 openManuel(urlEncoded)        // ouvre un manuel via /cas-redirect (CAS auth)
@@ -405,6 +409,8 @@ Dark mode : `color-scheme: dark` + `filter: invert(1)` sur l'icône calendrier
 - Arborescence : `_espaceNavPath` est une pile de nœuds ; `renderEspaceExplorer()` affiche toujours le dernier
 - Dossiers détectés via `Array.isArray(c.children)`, fichiers sinon
 - Breadcrumb cliquable via `navigateEspaceTo(depth)` → tronque la pile
+- Icône breadcrumb racine : SVG maison (remplace l'emoji `⌂`)
+- Fichiers ouverts via `openEspaceFile()` → Collabora Online (WOPI) ; `_openCollaboraViewer()` fait un form POST vers `_blank` car `libreoffice.ecoledirecte.com` bloque l'iframe
 
 ### Profil — dialog Compte/Sécurité
 - `openProfile()` charge `/v3/profil.awp` ; fallback sur `accountData` si le fetch échoue
@@ -490,7 +496,7 @@ Tous ces éléments sont intégrés dans les fichiers actuels :
 - EDT sélecteur de semaine — `edtOpenCalendar(e)` + `.edt-week-label-btn` + `#edt-date-picker`
 - Onglet "Cours" — trois sous-onglets Séances / Espaces de travail / Manuels, `switchCoursTab()`, `_coursActiveTab`
 - Séances — filtre par matière : `_populateSeancesMatieresFilter()`, `toggleSeancesMatiereMenu()`, `_renderSeancesFiltered()`
-- Espaces de travail — liste, explorateur arborescence, nav breadcrumb, téléchargement fichiers
+- Espaces de travail — liste, explorateur arborescence, nav breadcrumb, ouverture fichiers dans Collabora Online (WOPI) via `openEspaceFile()` + `_openCollaboraViewer()` (form POST `_blank`)
 - Manuels — `loadManuels()` / `renderManuels()` + `openManuel()` via `/cas-redirect` proxy
 - Proxy `/cas-redirect` — ouvre les URLs CAS authentifiées (X-Token + cookies de session)
 - `formatFrPhone()` / `normalizeFrPhone()` — formatage/normalisation N° FR pour le profil

@@ -9,7 +9,7 @@
 - 📅 **Timetable** — Weekly view with day-by-day layout, color-coded courses, week picker via calendar, course details on click
 - 📊 **Grades** — Per-trimester breakdown with sortable table, grade curves and color-coded zones
 - 📚 **Homework** — Upcoming assignments fetched from the *cahier de textes*, with "done/undone" toggle, filter by interros, and count badge
-- 📖 **Courses** — Three sub-tabs: **Lesson contents** (date range, subject filter) · **Workspaces** (file tree explorer, download) · **Textbooks** (digital manuals via CAS authentication)
+- 📖 **Courses** — Three sub-tabs: **Lesson contents** (date range, subject filter) · **Workspaces** (file tree explorer, open files in Collabora Online viewer) · **Textbooks** (digital manuals via CAS authentication)
 - ✉️ **Messages** — Inbox/sent/drafts/archived with full content view, unread filter, attachment download, compose with rich editor and contact picker
 - 🏫 **Attendance & School life** — Absences, sanctions/encouragements, QCM (quizzes), and surveys
 - ⚡ **Instant navigation** — IndexedDB cache with stale-while-revalidate (30 min TTL)

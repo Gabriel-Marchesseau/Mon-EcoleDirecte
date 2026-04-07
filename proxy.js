@@ -189,6 +189,32 @@ const server = https.createServer(sslOptions, async (req, res) => {
     return;
   }
 
+  // Endpoint discovery Collabora — récupère l'URL cool.html depuis libreoffice.ecoledirecte.com
+  if (parsedUrl.pathname === '/collabora-url' && req.method === 'GET') {
+    try {
+      const xml = await new Promise((resolve, reject) => {
+        const r = https.request({
+          hostname: 'libreoffice.ecoledirecte.com', port: 443,
+          path: '/hosting/discovery', method: 'GET',
+          headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': '*/*' }
+        }, res2 => {
+          const chunks = [];
+          res2.on('data', c => chunks.push(c));
+          res2.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+        });
+        r.on('error', reject);
+        r.end();
+      });
+      const match = xml.match(/urlsrc="([^"]*cool\.html[^"]*)"/);
+      const viewUrl = match ? match[1] : 'https://libreoffice.ecoledirecte.com/browser/cool.html?';
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ viewUrl }));
+    } catch(e) {
+      res.writeHead(500); res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
   // Endpoint MD5 local (pour construire les WOPI file IDs)
   if (parsedUrl.pathname === '/md5' && req.method === 'GET') {
     const s = parsedUrl.searchParams.get('s') || '';
@@ -310,10 +336,12 @@ const server = https.createServer(sslOptions, async (req, res) => {
       const resHeaders = {
         'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*',
-        'Access-Control-Expose-Headers': 'X-Gtk-Value',
+        'Access-Control-Expose-Headers': 'X-Gtk-Value, WOPI-Token',
       };
       // Renvoyer le GTK actuel au client après chaque initSession
       if (session.gtk) resHeaders['X-Gtk-Value'] = session.gtk;
+      // Retransmettre le WOPI-Token si présent (utilisé par le viewer Collabora)
+      if (result.headers['wopi-token']) resHeaders['WOPI-Token'] = result.headers['wopi-token'];
 
       res.writeHead(200, resHeaders);
       res.end(result.body);

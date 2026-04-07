@@ -1985,7 +1985,7 @@ function renderEspaceExplorer() {
 
   // ── Breadcrumb ──────────────────────────────────────────────────
   const crumbs = _espaceNavPath.map((node, i) => {
-    const label = i === 0 ? '<span style="font-size:18px;line-height:1;vertical-align:middle">⌂</span>' : node.libelle || 'Dossier';
+    const label = i === 0 ? '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;display:inline-block"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z"/><polyline points="9 21 9 12 15 12 15 21"/></svg>' : node.libelle || 'Dossier';
     if (i < _espaceNavPath.length - 1) {
       return `<span onclick="navigateEspaceTo(${i})" style="cursor:pointer;color:#1d4ed8">${label}</span>`;
     }
@@ -2015,7 +2015,7 @@ function renderEspaceExplorer() {
       const espaceIdEnc = encodeURIComponent(_selectedEspaceId).replace(/'/g, '%27');
       const fileIdEnc = encodeURIComponent(c.id).replace(/'/g, '%27');
       const titleEsc = label.replace(/"/g, '&quot;');
-      return `<div onclick="downloadEspaceFile('${espaceIdEnc}','${fileIdEnc}','${filenameEnc}')"
+      return `<div onclick="openEspaceFile('${espaceIdEnc}','${fileIdEnc}','${filenameEnc}')"
         onmouseover="this.style.background='var(--bg3)'"
         onmouseout="this.style.background='transparent'"
         style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--border2);cursor:pointer;border-radius:4px;transition:background 0.1s"
@@ -2051,35 +2051,75 @@ function navigateEspaceTo(depth) {
   renderEspaceExplorer();
 }
 
-async function downloadEspaceFile(espaceIdEnc, fileIdEnc, filenameEnc) {
+let _collaboraViewUrl = null; // cache de l'URL cool.html (discovery)
+
+async function openEspaceFile(espaceIdEnc, fileIdEnc, filenameEnc) {
   const espaceId = decodeURIComponent(espaceIdEnc);
-  const fileId = decodeURIComponent(fileIdEnc);
+  const fileId   = decodeURIComponent(fileIdEnc);
   const filename = decodeURIComponent(filenameEnc);
-  const eleveId = getEleveId();
-  const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
+  const eleveId  = getEleveId();
+  const headers  = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
   if (twoFaToken) headers['2fa-token'] = twoFaToken;
 
-  // Étape 1 — grant WOPI
-  const grantResp = await fetch(
-    `${getProxy()}/v3/E/${eleveId}/grant/WOPI.awp?verbe=get&v=4.97.2`,
-    { method: 'POST', headers, body: 'data={}' }
-  );
-  const grant = await grantResp.json();
-  if (grant.code !== 200) throw new Error(`Grant WOPI échoué: ${grant.code}`);
+  // Étape 1 — grant WOPI + MD5 + discovery en parallèle
+  const grantResp = fetch(`${getProxy()}/v3/E/${eleveId}/grant/WOPI.awp?verbe=get&v=4.97.2`, { method: 'POST', headers, body: 'data={}' });
+  const [grantRespObj, md5Data, viewUrlData] = await Promise.all([
+    grantResp,
+    fetch(`${getProxy()}/md5?s=${encodeURIComponent(fileId)}`).then(r => r.json()),
+    _collaboraViewUrl ? Promise.resolve({ viewUrl: _collaboraViewUrl }) : fetch(`${getProxy()}/collabora-url`).then(r => r.json()),
+  ]);
+  const grantData = await grantRespObj.json();
+  // Le wopiToken vient du header WOPI-Token (pas du corps JSON) — cf. credentialsStore EcoleDirecte
+  const wopiToken = grantRespObj.headers.get('WOPI-Token') || grantData.token;
 
-  // Construire le WOPI file ID : eleveCode¤CLOUD¤filename (sans hash)
-  const folderPath = fileId.substring(0, fileId.lastIndexOf('\\') + 1);
-  const toB64 = str => btoa(String.fromCharCode(...new TextEncoder().encode(str)));
-  const fp = toB64(folderPath).replace(/=+$/, '');
-  const parts = fileId.replace(/^\\\\/, '').split('\\');
-  const eleveCode = parts[2];
+  if (grantData.code !== 200) throw new Error(`Grant WOPI échoué: ${grantData.code}`);
+  _collaboraViewUrl = viewUrlData.viewUrl;
 
-  const wopiFileId = toB64(`${eleveCode}\xA4CLOUD\xA4${filename}`).replace(/=+$/, '');
+  // Étape 2 — construire le WOPI file ID : codeOgec¤CLOUD¤filename¤md5(fileId)
+  // (même algo que EcoleDirecte : Db.MD5.generate(o) avec o = chemin complet)
+  const toB64     = str => btoa(String.fromCharCode(...new TextEncoder().encode(str)));
+  const filenameFp = fileId.split(/[\\/]/).pop();              // dernier segment du chemin
+  const folderPath = fileId.slice(0, fileId.length - filenameFp.length); // chemin sans nom de fichier
+  const eleveCode  = fileId.replace(/^\\\\/, '').split('\\')[2];         // parts[2]
+  const wopiFileId = toB64(`${eleveCode}\xA4CLOUD\xA4${filenameFp}\xA4${md5Data.hash}`).replace(/=+$/, '');
+  const fp         = toB64(folderPath); // avec padding = (requis)
 
-  const wopiUrl = `${getProxy()}/restv3/ws/wopi/files/${wopiFileId}/contents?fp=${encodeURIComponent(fp)}`;
-  const dlHeaders = { 'X-Token': token, 'X-ApisVer': '4.97.2' };
-  if (twoFaToken) dlHeaders['2fa-token'] = twoFaToken;
-  await triggerDownload(wopiUrl, { method: 'GET', headers: dlHeaders }, filename);
+  // Étape 3 — WOPISrc pointe directement vers api.ecoledirecte.com (pas le proxy)
+  const wopiSrc = `https://api.ecoledirecte.com/restv3/ws/wopi/files/${wopiFileId}?fp=${fp}`;
+
+  // Étape 4 — access_token : grantToken¤base64(json) — format EcoleDirecte
+  const tokenJson = JSON.stringify({
+    data: JSON.stringify({ idEntity: parseInt(espaceId, 10), typeEntity: 'W' }),
+    idUser: eleveId,
+    typeUser: 'E',
+    ro: 1,
+    typeFichier: 'CLOUD',
+  });
+  const accessToken = `${wopiToken}\xA4${btoa(tokenJson)}`;
+
+  // Étape 5 — URL Collabora + form POST vers iframe (même mécanisme qu'EcoleDirecte)
+  // On retire les paramètres variables de l'URL discovery ({...}&WOPISrc=…) pour construire proprement
+  const collaboraBase = _collaboraViewUrl.replace(/\{[^}]*\}/g, '').replace(/\?.*$/, '');
+  const collaboraUrl  = `${collaboraBase}?lang=fr-FR&WOPISrc=${encodeURIComponent(wopiSrc)}`;
+
+  _openCollaboraViewer(collaboraUrl, accessToken, eleveId);
+}
+
+function _openCollaboraViewer(collaboraUrl, accessToken, idUser) {
+  // libreoffice.ecoledirecte.com bloque l'intégration iframe depuis des domaines non-ecoledirecte.com
+  // → form POST ciblant _blank (nouvel onglet), même mécanisme qu'EcoleDirecte mais sans iframe
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = collaboraUrl;
+  form.target = '_blank';
+  [['access_token', accessToken], ['typeUser', 'E'], ['idUser', String(idUser)]].forEach(([name, value]) => {
+    const input = document.createElement('input');
+    input.type = 'hidden'; input.name = name; input.value = value;
+    form.appendChild(input);
+  });
+  document.body.appendChild(form);
+  form.submit();
+  document.body.removeChild(form);
 }
 
 async function loadDevoirs() {
