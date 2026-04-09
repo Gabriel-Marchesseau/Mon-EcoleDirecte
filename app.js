@@ -31,6 +31,25 @@ darkStyle.textContent = `
   .pj-badge { border: 1px solid #bfdbfe; display:inline-block; line-height:1.5; vertical-align:middle; }
   body.dark .pj-badge { background: #1e3a5f !important; color: #93c5fd !important; border-color: #1e40af !important; }
   body.dark #notes-view-toggle { background: #242424 !important; border-color: var(--border) !important; }
+  .postits-list { display:flex;flex-direction:column;gap:16px;padding:4px 0; }
+  .postit-card { border-radius:10px;border-left:4px solid #6b7280;background:var(--bg2);padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.06); }
+  .postit-card.type-info { border-left-color:#1d4ed8;background:#eff6ff; }
+  .postit-card.type-alerte { border-left-color:#ca8a04;background:#fefce8; }
+  .postit-card.type-urgence { border-left-color:#dc2626;background:#fff1f2; }
+  body.dark .postit-card { background:var(--bg3); }
+  body.dark .postit-card.type-info { background:#1e2a3a; }
+  body.dark .postit-card.type-alerte { background:#2a2515; }
+  body.dark .postit-card.type-urgence { background:#2a1515; }
+  .postit-meta { display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--text3);margin-bottom:10px;gap:8px;flex-wrap:wrap; }
+  .postit-type { text-transform:uppercase;font-size:11px;font-weight:600;letter-spacing:.05em; }
+  .postit-type.type-info { color:#1d4ed8; }
+  .postit-type.type-alerte { color:#ca8a04; }
+  .postit-type.type-urgence { color:#dc2626; }
+  .postit-content { font-size:13px;line-height:1.6;color:var(--text); }
+  body.dark .postit-content, body.dark .postit-content * { color:var(--text) !important; }
+  .postit-content ul, .postit-content ol { padding-left:1.5em;margin:6px 0; }
+  .postit-content p { margin:4px 0; }
+  .postit-author { font-size:12px;color:var(--text3);margin-top:10px;padding-top:8px;border-top:1px solid var(--border2); }
 `;
 document.head.appendChild(darkStyle);
 (function() {
@@ -50,8 +69,14 @@ let sessionExpired = false;
 function getProxy() { return window.location.origin; }
 
 // ── Routeur ────────────────────────────────────────────────
-const ROUTE_TO_TAB = { '/edt': 'edt', '/notes': 'notes', '/devoirs': 'devoirs', '/seances': 'seances', '/messages': 'messages', '/vie-scolaire': 'absences', '/memos': 'memos' };
-const TAB_TO_ROUTE = { 'edt': '/edt', 'notes': '/notes', 'devoirs': '/devoirs', 'seances': '/seances', 'messages': '/messages', 'absences': '/vie-scolaire', 'memos': '/memos' };
+const ROUTE_TO_TAB = { '/accueil': 'accueil', '/edt': 'edt', '/notes': 'notes', '/devoirs': 'devoirs', '/seances': 'seances', '/messages': 'messages', '/vie-scolaire': 'absences', '/memos': 'memos', '/vie-scolaire-parent': 'viescolaire-parent', '/administratif': 'administratif' };
+const TAB_TO_ROUTE = { 'accueil': '/accueil', 'edt': '/edt', 'notes': '/notes', 'devoirs': '/devoirs', 'seances': '/seances', 'messages': '/messages', 'absences': '/vie-scolaire', 'memos': '/memos', 'viescolaire-parent': '/vie-scolaire-parent', 'administratif': '/administratif' };
+
+// Paramètres utilisateur — onglets courants + compte actif
+let _currentTabs = [];
+let _currentAccountId = '';
+let _settingsPendingDefault = 'accueil';
+let _settingsOverlayEl = null;
 function getTabFromPath() { return ROUTE_TO_TAB[location.pathname] || null; }
 window.addEventListener('popstate', () => { const t = getTabFromPath(); if (t) switchTab(t, true); });
 function getEleveId() {
@@ -406,9 +431,11 @@ function onLoggedIn(data) {
   const initials = nom.split(' ').map(s => s[0] || '').join('').substring(0, 2).toUpperCase();
   document.getElementById('user-avatar').textContent = initials;
   document.getElementById('user-name').textContent = nom.trim();
-  document.getElementById('user-type').textContent = acc.typeCompte ? `Compte ${acc.typeCompte}` : 'EcoleDirecte';
-  // Init onglets
-  const TABS = [
+  const isEleve = acc.typeCompte === 'E';
+  document.getElementById('user-type').textContent = isEleve ? 'Compte élève' : 'Compte parent';
+  // Init onglets selon le type de compte
+  const TABS = isEleve ? [
+    { id: 'accueil',  label: 'Accueil' },
     { id: 'edt',      label: 'Emploi du temps' },
     { id: 'notes',    label: 'Notes' },
     { id: 'devoirs',  label: 'Devoirs' },
@@ -416,7 +443,14 @@ function onLoggedIn(data) {
     { id: 'messages', label: 'Messages' },
     { id: 'absences', label: 'Vie scolaire' },
     { id: 'memos',    label: 'Mémos' },
+  ] : [
+    { id: 'accueil',             label: 'Accueil' },
+    { id: 'messages',            label: 'Messages' },
+    { id: 'viescolaire-parent',  label: 'Vie scolaire' },
+    { id: 'administratif',       label: 'Administratif' },
   ];
+  _currentTabs = TABS;
+  _currentAccountId = acc.id || acc.idLogin || 'default';
   const bar = document.getElementById('tab-bar');
   bar.innerHTML = '';
   TABS.forEach((t, i) => {
@@ -428,8 +462,13 @@ function onLoggedIn(data) {
     btn.onclick = () => switchTab(t.id);
     bar.appendChild(btn);
   });
-  updateDevoirsTabCount();
-  switchTab(getTabFromPath() || localStorage.getItem('ed_last_tab') || 'edt');
+  if (isEleve) updateDevoirsTabCount();
+  const validTabIds = new Set(TABS.map(t => t.id));
+  const savedDefault = localStorage.getItem(`ed_default_tab_${_currentAccountId}`);
+  const defaultTab = (savedDefault && validTabIds.has(savedDefault)) ? savedDefault : 'accueil';
+  // Priorité : onglet dans l'URL > page par défaut configurée (ed_last_tab ignoré)
+  const urlTab = getTabFromPath();
+  switchTab((urlTab && validTabIds.has(urlTab)) ? urlTab : defaultTab);
 
   // EDT : géré par edtWeekOffset
 }
@@ -481,7 +520,7 @@ async function openProfile() {
       <div style="width:52px;height:52px;border-radius:50%;background:#4f46e5;color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;flex-shrink:0">${initials}</div>
       <div>
         <div style="font-size:17px;font-weight:600">${nom.trim()}</div>
-        <div style="font-size:13px;color:var(--text3)">${acc.typeCompte ? `Compte ${acc.typeCompte}` : 'EcoleDirecte'}</div>
+        <div style="font-size:13px;color:var(--text3)">${acc.typeCompte === 'E' ? 'Compte élève' : 'Compte parent'}</div>
       </div>
     </div>
     <div id="profile-form-area" style="font-size:14px;text-align:center;padding:16px 0"><span class="spinner"></span> Chargement…</div>`;
@@ -837,6 +876,7 @@ function logout() {
   const pbc = document.getElementById('notes-period-btns');
   if (pbc) pbc.innerHTML = '';
   localStorage.removeItem('ed_session');
+  history.replaceState({}, '', '/');
   document.getElementById('login-card').style.display = 'block';
   document.getElementById('api-card').classList.remove('active-card');
   document.getElementById('login-status').innerHTML = '';
@@ -1316,6 +1356,7 @@ function switchVieScolaireTab(section) {
   if (!eleveId) return;
   if (section === 'qcm') { loadQcm(); return; }
   if (section === 'sondages') { loadSondages(); return; }
+  if (section === 'portemonnaie') { loadPorteMonnaie(); return; }
   // Absences / sanctions : re-render depuis le cache sans refetch
   edCache.get(`absences:${eleveId}`).then(entry => {
     if (entry) document.getElementById('absences-result').innerHTML = renderVieScolaireSection(entry.data, section);
@@ -1406,6 +1447,82 @@ async function loadSondages() {
     resultEl.innerHTML = `<p style="color:#b91c1c;font-size:14px">Erreur : ${e.message}</p>`;
     spinEl.style.display = 'none';
   });
+}
+
+async function loadPorteMonnaie() {
+  const eleveId = getEleveId();
+  if (!eleveId) return;
+  const cacheKey = `portemonnaie:${eleveId}`;
+  const resultEl = document.getElementById('absences-result');
+  const spinEl = document.getElementById('spin-absences');
+
+  await edCache.load(cacheKey, async () => {
+    const resp = await fetch(`${getProxy()}/v3/comptes/detail.awp?verbe=get&v=4.98.0`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' },
+      body: `data=${encodeURIComponent(JSON.stringify({ eleveId }))}`
+    });
+    const d = await resp.json();
+    if (d.code !== 200) throw new Error(`Code ${d.code}`);
+    return d.data;
+  }, {
+    onSpinner: () => { spinEl.style.display = 'inline'; resultEl.innerHTML = centeredSpinner(); },
+    onCached:  (data) => { resultEl.innerHTML = renderPorteMonnaie(data); spinEl.style.display = 'none'; },
+    onFresh:   (data) => { resultEl.innerHTML = renderPorteMonnaie(data); spinEl.style.display = 'none'; },
+    diffFn:    edCache.defaultDiff,
+  }).catch(e => {
+    resultEl.innerHTML = `<p style="color:#b91c1c;font-size:14px">Erreur : ${e.message}</p>`;
+    spinEl.style.display = 'none';
+  });
+}
+
+function renderPorteMonnaie(data) {
+  const comptes = data?.comptes || [];
+  if (!comptes.length) return '<p style="color:var(--text3);font-size:14px">Aucun compte disponible.</p>';
+
+  let html = '';
+  comptes.forEach(c => {
+    const solde = typeof c.solde === 'number' ? c.solde : 0;
+    const soldeCouleur = solde < 0 ? '#b91c1c' : (solde < 5 ? '#b45309' : '#15803d');
+    const ecritures = Array.isArray(c.ecritures) ? c.ecritures : [];
+
+    html += `<div style="background:var(--bg3);border-radius:10px;padding:14px 16px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div>
+          <div style="font-weight:600;font-size:15px">${c.libelle || c.libelleCompte || c.codeCompte}</div>
+          ${c.codeCompte ? `<div style="color:var(--text3);font-size:12px">${c.codeCompte}</div>` : ''}
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:22px;font-weight:700;color:${soldeCouleur}">${solde.toFixed(2)} €</div>
+          <div style="font-size:11px;color:var(--text3)">Solde disponible</div>
+        </div>
+      </div>`;
+
+    if (ecritures.length) {
+      html += `<div style="border-top:1px solid var(--border);padding-top:8px">
+        <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em">Historique</div>`;
+      ecritures.forEach(e => {
+        const montant = typeof e.montant === 'number' ? e.montant : 0;
+        const signe = montant > 0 ? '+' : '';
+        const mCouleur = montant < 0 ? '#b91c1c' : (montant > 0 ? '#15803d' : 'var(--text3)');
+        const dateStr = e.date ? e.date.split('T')[0].split('-').reverse().join('/') : '';
+        html += `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;border-bottom:1px solid var(--border2);font-size:13px">
+          <div>
+            <span style="color:var(--text)">${e.libelle || '—'}</span>
+            ${dateStr ? `<span style="color:var(--text3);font-size:11px;margin-left:8px">${dateStr}</span>` : ''}
+          </div>
+          <span style="font-weight:600;color:${mCouleur};white-space:nowrap;margin-left:12px">${signe}${montant.toFixed(2)} €</span>
+        </div>`;
+      });
+      html += `</div>`;
+    } else {
+      html += `<div style="color:var(--text3);font-size:13px;margin-top:6px">Aucune écriture.</div>`;
+    }
+
+    html += `</div>`;
+  });
+
+  return html;
 }
 
 function renderQcm(data) {
@@ -2038,10 +2155,45 @@ function renderEspaceExplorer() {
     <div>${items}${empty}</div>`;
 }
 
-function navigateEspaceInto(childIdx) {
+function _getFolderPath(folder) {
+  // folder.id example: "\0061051K\W\468\sauvegarde\Méthodologies"
+  // Extracts the path after "\W\{espaceId}": "\sauvegarde\Méthodologies"
+  const id = folder.id || '';
+  const marker = `\\W\\${_selectedEspaceId}`;
+  const idx = id.indexOf(marker);
+  if (idx === -1) return null;
+  const path = id.substring(idx + marker.length);
+  return path || null;
+}
+
+async function navigateEspaceInto(childIdx) {
   const currentNode = _espaceNavPath[_espaceNavPath.length - 1];
-  const child = (currentNode.children || [])[childIdx];
+  let child = (currentNode.children || [])[childIdx];
   if (!child) return;
+
+  // If the folder's children aren't loaded yet, fetch them via idFolder
+  if (Array.isArray(child.children) && child.children.length === 0) {
+    const folderPath = _getFolderPath(child);
+    if (folderPath) {
+      const detailEl = document.getElementById('espaces-detail');
+      if (detailEl) detailEl.innerHTML = centeredSpinner();
+      try {
+        const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
+        if (twoFaToken) headers['2fa-token'] = twoFaToken;
+        const resp = await fetch(
+          `${getProxy()}/v3/cloud/W/${_selectedEspaceId}.awp?verbe=get&idFolder=${encodeURIComponent(folderPath)}&v=4.97.2`,
+          { method: 'POST', headers, body: 'data={}' }
+        );
+        const data = await resp.json();
+        if (data.code === 200 && data.data && data.data[0]) {
+          child = data.data[0];
+        }
+      } catch (e) {
+        console.error('[navigateEspaceInto]', e);
+      }
+    }
+  }
+
   _espaceNavPath.push(child);
   renderEspaceExplorer();
 }
@@ -2900,6 +3052,130 @@ function buildChart(datasets, periode) {
   chartInst._buildLegend();
 }
 
+// ── Accueil — post-its ────────────────────────────────────────────────────
+
+const POSTIT_TYPE_LABELS = { info: 'Info', alerte: 'Alerte', urgence: 'Urgence' };
+
+async function loadAccueil() {
+  const eleveId = getEleveId();
+  const resultEl = document.getElementById('accueil-result');
+  const spinEl   = document.getElementById('spin-accueil');
+  if (!resultEl) return;
+
+  await edCache.load(`accueil:${eleveId}`, async () => {
+    const headers = {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'X-Token': token,
+      'X-ApisVer': '4.98.0'
+    };
+    if (twoFaToken) headers['2fa-token'] = twoFaToken;
+    const resp = await fetch(`${getProxy()}/v3/E/${eleveId}/timelineAccueilCommun.awp?verbe=get&v=4.98.0`, {
+      method: 'POST',
+      headers,
+      body: 'data={}'
+    });
+    const json = await resp.json();
+    if (json.code !== 200) throw new Error(json.message || `Code ${json.code}`);
+    return json.data;
+  }, {
+    onSpinner: () => { if (spinEl) spinEl.style.display = 'inline'; resultEl.innerHTML = ''; },
+    onCached: (data, ts) => { if (spinEl) spinEl.style.display = 'none'; renderAccueil(data); updateFreshnessLabel('accueil', ts); },
+    onFresh:  (data)     => { if (spinEl) spinEl.style.display = 'none'; renderAccueil(data); updateFreshnessLabel('accueil', Date.now()); },
+    diffFn: (a, b) => edCache.defaultDiff(a, b)
+  });
+  if (spinEl) spinEl.style.display = 'none';
+}
+
+function renderAccueil(data) {
+  const resultEl = document.getElementById('accueil-result');
+  if (!resultEl) return;
+  const postits = data?.postits || [];
+  if (!postits.length) {
+    resultEl.innerHTML = '<div style="text-align:center;color:var(--text4);font-size:14px;padding:40px 0">Aucun post-it pour le moment.</div>';
+    return;
+  }
+  resultEl.innerHTML = `<div class="postits-list">${postits.map(renderPostit).join('')}</div>`;
+}
+
+function renderPostit(p) {
+  const type = (p.type || '').toLowerCase();
+  const typeLabel = POSTIT_TYPE_LABELS[type] || type || 'Info';
+
+  let contenu = '';
+  try { contenu = b64d((p.contenu || '').replace(/\n/g, '')); } catch(e) { contenu = p.contenu || ''; }
+
+  const dateDebut = p.dateDebut || '';
+  const dateFin   = p.dateFin   || '';
+  let dateStr = '';
+  if (dateDebut && dateFin && dateDebut !== dateFin) dateStr = `Du ${dateDebut} au ${dateFin}`;
+  else if (dateDebut) dateStr = dateDebut;
+
+  const auteur = p.auteur ? [p.auteur.prenom, p.auteur.nom].filter(s => s && s.trim() && s.trim() !== '-').join(' ').trim() : '';
+
+  return `<div class="postit-card type-${type}">
+    <div class="postit-meta">
+      <span class="postit-type type-${type}">${typeLabel}</span>
+      ${dateStr ? `<span style="font-size:12px;color:var(--text3)">${dateStr}</span>` : ''}
+    </div>
+    <div class="postit-content">${contenu}</div>
+    ${auteur ? `<div class="postit-author">— ${auteur}</div>` : ''}
+  </div>`;
+}
+
+// ── Paramètres — page par défaut ─────────────────────────────────────────
+
+function openSettingsDialog() {
+  const dark   = document.body.classList.contains('dark');
+  const dlgBg  = dark ? '#242424' : '#fff';
+  const dlgText = dark ? '#f0f0ee' : '#1a1a1a';
+
+  _settingsPendingDefault = localStorage.getItem(`ed_default_tab_${_currentAccountId}`) || 'accueil';
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1000;display:flex;align-items:center;justify-content:center;padding:1.5rem';
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+  _settingsOverlayEl = overlay;
+
+  const tabBtns = _currentTabs.map(t => {
+    const isSel = t.id === _settingsPendingDefault;
+    return `<button data-tabid="${t.id}" onclick="settingsSelectTab('${t.id}')" style="text-align:left;padding:10px 14px;border-radius:8px;cursor:pointer;font-size:14px;width:100%;background:${isSel ? '#1d4ed8' : (dark ? 'var(--bg3)' : 'var(--bg2)')};color:${isSel ? '#fff' : 'var(--text)'};border:${isSel ? '2px solid #1d4ed8' : '1.5px solid var(--border)'};font-weight:${isSel ? '500' : 'normal'}">${t.label}</button>`;
+  }).join('');
+
+  const dialog = document.createElement('div');
+  dialog.style.cssText = `background:${dlgBg};color:${dlgText};border-radius:12px;padding:1.5rem;max-width:360px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,.35);position:relative`;
+  dialog.innerHTML = `
+    <button onclick="_settingsOverlayEl&&_settingsOverlayEl.remove()" style="position:absolute;top:10px;right:12px;background:none;border:none;cursor:pointer;font-size:18px;color:${dark?'#666':'#aaa'}">×</button>
+    <div style="font-size:16px;font-weight:600;margin-bottom:4px">Paramètres</div>
+    <div style="font-size:13px;color:var(--text3);margin-bottom:14px">Page affichée par défaut à l'ouverture</div>
+    <div id="settings-tab-btns" style="display:flex;flex-direction:column;gap:6px;margin-bottom:20px">${tabBtns}</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button onclick="_settingsOverlayEl&&_settingsOverlayEl.remove()" class="btn" style="height:34px;font-size:13px;padding:0 14px">Annuler</button>
+      <button onclick="saveSettingsDefault()" class="btn btn-primary" style="height:34px;font-size:13px;padding:0 14px">Valider</button>
+    </div>`;
+
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+}
+
+function settingsSelectTab(tabId) {
+  _settingsPendingDefault = tabId;
+  const dark = document.body.classList.contains('dark');
+  document.querySelectorAll('#settings-tab-btns button').forEach(btn => {
+    const isSel = btn.dataset.tabid === tabId;
+    btn.style.background   = isSel ? '#1d4ed8' : (dark ? 'var(--bg3)' : 'var(--bg2)');
+    btn.style.color        = isSel ? '#fff' : 'var(--text)';
+    btn.style.border       = isSel ? '2px solid #1d4ed8' : '1.5px solid var(--border)';
+    btn.style.fontWeight   = isSel ? '500' : 'normal';
+  });
+}
+
+function saveSettingsDefault() {
+  if (_settingsPendingDefault) {
+    localStorage.setItem(`ed_default_tab_${_currentAccountId}`, _settingsPendingDefault);
+  }
+  if (_settingsOverlayEl) _settingsOverlayEl.remove();
+}
+
 async function forceRefresh(tab) {
   // Session expirée → aller se reconnecter
   if (!token) { logout(); return; }
@@ -2909,7 +3185,10 @@ async function forceRefresh(tab) {
 
   // Supprimer le cache de cet onglet
   const eleveId = getEleveId();
-  if (tab === 'edt') {
+  if (tab === 'accueil') {
+    await edCache.delete(`accueil:${eleveId}`);
+    await loadAccueil();
+  } else if (tab === 'edt') {
     const mon = getMondayOfWeek(edtWeekOffset);
     const fmt = d => d.toISOString().substring(0,10);
     await edCache.delete(`edt:${fmt(mon)}`);
@@ -2929,6 +3208,7 @@ async function forceRefresh(tab) {
   } else if (tab === 'absences') {
     if (vieScolaireSection === 'qcm') { await edCache.delete(`qcm:${eleveId}`); await loadQcm(); return; }
     if (vieScolaireSection === 'sondages') { await edCache.delete(`sondages:${eleveId}`); await loadSondages(); return; }
+    if (vieScolaireSection === 'portemonnaie') { await edCache.delete(`portemonnaie:${eleveId}`); await loadPorteMonnaie(); return; }
     await edCache.delete(`absences:${eleveId}`);
     await loadAbsences();
   } else if (tab === 'devoirs') {
@@ -3131,7 +3411,8 @@ function switchTab(id, fromPopstate = false) {
   if (refreshBtn) {
     refreshBtn.onclick = () => forceRefresh(id);
   }
-  if (id === 'edt') runEdt();
+  if (id === 'accueil') loadAccueil();
+  else if (id === 'edt') runEdt();
   else if (id === 'notes') loadNotes();
   else if (id === 'absences') {
     vieScolaireSection = 'absences';
@@ -3157,6 +3438,9 @@ function switchTab(id, fromPopstate = false) {
   }
   else if (id === 'messages') loadMessages();
   else if (id === 'memos') loadMemos();
+  // Onglets compte parent — contenu à venir
+  // else if (id === 'viescolaire-parent') { /* TODO */ }
+  // else if (id === 'administratif') { /* TODO */ }
 }
 
 function togglePwd() {

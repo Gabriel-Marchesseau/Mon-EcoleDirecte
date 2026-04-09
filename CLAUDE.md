@@ -36,19 +36,20 @@ CLAUDE.md                   # Ce fichier
 
 | Onglet | État |
 |--------|------|
+| Accueil | Post-its de l'établissement (`timelineAccueilCommun.awp`), colorés par type (info/alerte/urgence), date et auteur |
 | Emploi du temps | Grille hebdomadaire, nav semaines, sélecteur de semaine via calendrier natif (`edtOpenCalendar`), jours fériés (algo Pâques), jours Congés grisés (body uniquement), dialog au clic, color-coded |
 | Notes | Tableau trié par trimestre + graphique Chart.js (zones colorées, hachures, légende cliquable, courbe moyenne classe par note) |
 | Devoirs | Liste groupée par date, toggle fait/non-fait (API PUT), badge PJ, détail + PJ téléchargeables, sélection visuelle persistante, filtre "Faits" + filtre "Interros", badge count dans l'onglet |
-| Cours | Trois sous-onglets : **Contenus de séances** (plage de dates, J-14 → aujourd'hui, groupé par jour, filtre par matière) + **Espaces de travail** (liste + explorateur arborescence + ouverture fichiers dans Collabora Online via WOPI) + **Manuels** (liste manuels numériques, ouverture CAS) |
+| Cours | Trois sous-onglets : **Contenus de séances** (plage de dates, J-14 → aujourd'hui, groupé par jour, filtre par matière) + **Espaces de travail** (liste + explorateur arborescence, lazy-load sous-dossiers, ouverture fichiers dans Collabora Online via WOPI) + **Manuels** (liste manuels numériques, ouverture CAS) |
 | Messages | Reçus/envoyés/brouillons/archivés, PJ téléchargeables, marquage lu, décoding entités HTML natif, sélection persistante, filtre "Non lus" |
 | Messages — Correspondances | Carnet de correspondance élève (lettres/docs reçus), badge PJ PDF, badge signature, `fetchCorrespondanceCount()` en arrière-plan dès le chargement Messages |
 | Messages — Contacts | Liste contacts (Professeurs / Personnels / Autres), bouton "Écrire" → ouvre composition avec destinataire pré-rempli |
 | Nouveau message | Dialog composition : éditeur enrichi (contenteditable), PJ drop zone, sélecteur destinataires (contact picker tabulé) |
-| Vie scolaire | Quatre onglets : Absences (liste avec justificatifs) + Sanctions/Encouragements + QCM + Sondages |
+| Vie scolaire | Cinq onglets : Absences (liste avec justificatifs) + Sanctions/Encouragements + QCM + Sondages + **Porte-monnaie** (soldes et historique des écritures) |
 | Mémos | Notes locales (IndexedDB), éditeur rich-text, date d'échéance, tri colonnes, filtres "Faits"/"Expirés", export/import CSV, résolution de conflits d'import |
 | Onglet ··· | Appel API manuel libre |
 
-Fonctionnalités transversales : dark mode, cache IndexedDB stale-while-revalidate (TTL 30 min), badges nouveautés, mode hors-ligne (session expirée → reconnexion silencieuse automatique ou cache conservé + bannière reconnexion), routeur SPA (URL par onglet), label fraîcheur, refresh forcé, arrêt proxy, double auth 2FA avec QCM et réponses automatiques configurables + sauvegarde auto des réponses manuelles.
+Fonctionnalités transversales : dark mode, cache IndexedDB stale-while-revalidate (TTL 30 min), badges nouveautés, mode hors-ligne (session expirée → reconnexion silencieuse automatique ou cache conservé + bannière reconnexion), routeur SPA (URL par onglet), label fraîcheur, refresh forcé, arrêt proxy, double auth 2FA avec QCM et réponses automatiques configurables + sauvegarde auto des réponses manuelles, **paramètres page par défaut** (dialog engrenage, configurable par compte), **support compte parent** (jeu d'onglets adapté à `typeCompte`).
 
 ---
 
@@ -69,6 +70,9 @@ Fonctionnalités transversales : dark mode, cache IndexedDB stale-while-revalida
 - **QCM** : `GET /v3/eleves/{id}/qcms/0/associations.awp?verbe=get` → liste des QCM à répondre
 - **Sondages** : `GET /v3/edforms.awp?verbe=getlist` → liste des sondages
 - **Manuels** : ouverts via endpoint CAS `/cas-redirect?url=...` (proxy suit la redirection authentifiée)
+- **Accueil / post-its** : `POST /v3/E/{eleveId}/timelineAccueilCommun.awp?verbe=get` → `{ postits: [{type, contenu (base64), dateDebut, dateFin, auteur}] }`
+- **Porte-monnaie** : `POST /v3/comptes/detail.awp?verbe=get&v=4.98.0` avec `data={eleveId}` → `{ comptes: [{libelle, codeCompte, solde, ecritures: [{libelle, montant, date}]}] }`
+- **Sous-dossiers espaces** : `POST /v3/cloud/W/{espaceId}.awp?verbe=get&idFolder={path}` → recharge uniquement le sous-dossier (chemin extrait de `folder.id` après `\W\{espaceId}`)
 
 ---
 
@@ -81,6 +85,8 @@ Fonctionnalités transversales : dark mode, cache IndexedDB stale-while-revalida
 - Endpoint `GET /cas-redirect?url=...` — suit la redirection CAS authentifiée (headers X-Token, 2fa-token, X-Gtk transmis), gère les redirections HTML (`<meta refresh>`, `window.location`)
 - Endpoint `GET /collabora-url` — fetche `libreoffice.ecoledirecte.com/hosting/discovery`, extrait l'URL `cool.html` et la renvoie en JSON (`{ viewUrl }`)
 - Header `WOPI-Token` retransmis au client via `Access-Control-Expose-Headers` (nécessaire pour construire l'access_token Collabora)
+- Routes SPA `/accueil`, `/vie-scolaire-parent`, `/administratif` ajoutées (servent l'app HTML pour le routeur client)
+- Page 404 personnalisée en français pour les chemins inconnus (hors `/v3/` et fichiers statiques)
 
 ---
 
@@ -121,10 +127,16 @@ let memosSortBy  = 'dateCreation'; // 'titre' | 'dateEcheance' | 'dateCreation'
 let memosSortDir = 'desc';         // 'asc' | 'desc'
 
 // Routeur SPA
-const ROUTE_TO_TAB = { '/edt': 'edt', '/notes': 'notes', '/devoirs': 'devoirs',
+const ROUTE_TO_TAB = { '/accueil': 'accueil', '/edt': 'edt', '/notes': 'notes', '/devoirs': 'devoirs',
   '/seances': 'seances', '/messages': 'messages', '/vie-scolaire': 'absences',
-  '/perso': 'perso', '/memos': 'memos' };
-const TAB_TO_ROUTE = { 'edt': '/edt', ... , 'absences': '/vie-scolaire', 'memos': '/memos' };
+  '/perso': 'perso', '/memos': 'memos', '/vie-scolaire-parent': 'viescolaire-parent', '/administratif': 'administratif' };
+const TAB_TO_ROUTE = { 'accueil': '/accueil', 'edt': '/edt', ... , 'absences': '/vie-scolaire', 'memos': '/memos', 'viescolaire-parent': '/vie-scolaire-parent', 'administratif': '/administratif' };
+
+// Onglets courants et compte actif (initialisés dans onLoggedIn)
+let _currentTabs = [];
+let _currentAccountId = '';
+let _settingsPendingDefault = 'accueil';
+let _settingsOverlayEl = null;
 ```
 
 ---
@@ -175,6 +187,24 @@ _openCollaboraViewer(collaboraUrl, accessToken, idUser) // soumet le form POST v
 loadManuels()                 // charge la liste des manuels numériques
 renderManuels(manuels)        // render la liste des manuels
 openManuel(urlEncoded)        // ouvre un manuel via /cas-redirect (CAS auth)
+
+// Accueil
+loadAccueil()                 // charge les post-its (`timelineAccueilCommun.awp`) depuis edCache
+renderAccueil(data)           // render la liste de post-its
+renderPostit(p)               // → HTML d'un post-it (type, contenu base64, dates, auteur)
+
+// Paramètres
+openSettingsDialog()          // dialog engrenage — sélection de l'onglet par défaut
+settingsSelectTab(tabId)      // met à jour la sélection visuelle dans le dialog
+saveSettingsDefault()         // persiste dans `localStorage` clé `ed_default_tab_{accountId}`
+
+// Vie scolaire
+loadPorteMonnaie()            // charge soldes + écritures (`comptes/detail.awp`) depuis edCache
+renderPorteMonnaie(data)      // render les comptes avec solde coloré et historique
+
+// Espaces de travail
+_getFolderPath(folder)        // extrait le chemin d'un dossier depuis `folder.id` (après `\W\{espaceId}`)
+// navigateEspaceInto() est désormais async — lazy-load les enfants si `children` est vide
 
 // Séances — filtre matière
 _populateSeancesMatieresFilter()    // peuple le menu déroulant des matières
@@ -267,6 +297,8 @@ espace-content:{espaceId}
 manuels:{eleveId}
 contacts:{tab}:{eleveId}      ← tab = teachers | staff | tutors
 memos:{eleveId}               ← mémos locaux (pas d'API EcoleDirecte, stockage pur IndexedDB)
+accueil:{eleveId}             ← post-its de l'établissement
+portemonnaie:{eleveId}        ← soldes et écritures porte-monnaie
 ```
 
 ---
@@ -421,6 +453,17 @@ Dark mode : `color-scheme: dark` + `filter: invert(1)` sur l'icône calendrier
 - Layout stable : hauteur du wrapper fixée au maximum des deux sections pour éviter le saut au changement d'onglet
 - Boutons Annuler/Valider communs en bas (hors des sections), `#pf-save-btn` détecte l'onglet actif
 
+### Accueil — post-its
+- Classes CSS : `.postits-list`, `.postit-card`, `.postit-card.type-{info|alerte|urgence}`, `.postit-meta`, `.postit-type`, `.postit-content`, `.postit-author`
+- Couleurs de bordure gauche : info → `#1d4ed8`, alerte → `#ca8a04`, urgence → `#dc2626`
+- Contenu décodé en base64 (`b64d()`) — peut contenir du HTML riche
+
+### Paramètres — dialog page par défaut
+- Bouton engrenage (SVG) dans le header, déclenche `openSettingsDialog()`
+- Sélection mémorisée dans `localStorage` clé `ed_default_tab_{_currentAccountId}`
+- Boutons de sélection avec état actif (fond `#1d4ed8`, texte blanc)
+- `_settingsOverlayEl` — référence globale vers l'overlay (pour fermeture depuis inline onclick)
+
 ### Mode hors-ligne / session expirée
 - `sessionExpired = true` quand le token est révoqué
 - Avant d'entrer en mode hors-ligne, `silentReauth(savedSession)` tente un re-login automatique (identifiants sauvegardés dans `localStorage`)
@@ -515,5 +558,12 @@ Tous ces éléments sont intégrés dans les fichiers actuels :
 - `forceRefresh` — invalide proprement les nouvelles clés cache IndexedDB (qcm, sondages, espaces, espace-content, manuels, correspondances)
 - Onglet "Mémos" — notes locales (`panel-memos`, route `/memos`), stockage IndexedDB pur (aucune API), éditeur contenteditable, date d'échéance, filtres Faits/Expirés, tri colonnes, export/import CSV avec résolution de conflits
 - `buildNotesPeriodButtons()` — boutons période Notes construits dynamiquement depuis l'API (adapte le label trimestre/semestre, remplace les boutons statiques dans le HTML)
-- `logout()` — vide aussi `notesData` et `notesPeriod` (+ efface `#notes-period-btns`) pour éviter les boutons fantômes après reconnexion
+- `logout()` — vide aussi `notesData` et `notesPeriod` (+ efface `#notes-period-btns`) pour éviter les boutons fantômes après reconnexion + réinitialise l'URL à `/`
 - Icône filtre SVG (entonnoir) ajoutée dans les toolbars Devoirs, Séances, Messages (cohérence visuelle)
+- Onglet "Accueil" — post-its établissement (`timelineAccueilCommun.awp`), types info/alerte/urgence colorés, `loadAccueil()` / `renderAccueil()` / `renderPostit()`
+- Porte-monnaie (sous-onglet Vie scolaire) — `loadPorteMonnaie()` / `renderPorteMonnaie()` : soldes et historique écritures via `comptes/detail.awp`
+- Support compte parent — `onLoggedIn()` détecte `typeCompte === 'E'` (élève) vs parent et génère un jeu d'onglets différent (Accueil + Messages + Vie scolaire + Administratif)
+- Paramètres page par défaut — `openSettingsDialog()` (bouton engrenage en header) permet de choisir l'onglet d'accueil par compte (`ed_default_tab_{accountId}`)
+- Startup : priorité URL > page par défaut configurée (l'ancienne clé `ed_last_tab` ignorée)
+- Espaces de travail : `navigateEspaceInto()` est désormais async — lazy-load des sous-dossiers vides via `idFolder` param ; `_getFolderPath()` extrait le chemin depuis `folder.id`
+- Proxy 404 — page d'erreur 404 personnalisée en français pour les chemins inconnus

@@ -6,16 +6,20 @@
 
 ## Features
 
+- 🏠 **Home** — School announcements (post-its) color-coded by type: info, alert, urgent
 - 📅 **Timetable** — Weekly view with day-by-day layout, color-coded courses, week picker via calendar, course details on click
 - 📊 **Grades** — Per-trimester breakdown with sortable table, grade curves and color-coded zones
 - 📚 **Homework** — Upcoming assignments fetched from the *cahier de textes*, with "done/undone" toggle, filter by interros, and count badge
-- 📖 **Courses** — Three sub-tabs: **Lesson contents** (date range, subject filter) · **Workspaces** (file tree explorer, open files in Collabora Online viewer) · **Textbooks** (digital manuals via CAS authentication)
+- 📖 **Courses** — Three sub-tabs: **Lesson contents** (date range, subject filter) · **Workspaces** (file tree explorer with lazy-loaded sub-folders, open files in Collabora Online viewer) · **Textbooks** (digital manuals via CAS authentication)
 - ✉️ **Messages** — Inbox/sent/drafts/archived with full content view, unread filter, attachment download, compose with rich editor and contact picker
-- 🏫 **Attendance & School life** — Absences, sanctions/encouragements, QCM (quizzes), and surveys
+- 🏫 **Attendance & School life** — Absences, sanctions/encouragements, QCM (quizzes), surveys, and **wallet** (account balance + transaction history)
+- 📝 **Memos** — Local notes (IndexedDB), rich-text editor, due dates, column sorting, done/expired filters, CSV export/import
 - ⚡ **Instant navigation** — IndexedDB cache with stale-while-revalidate (30 min TTL)
 - 🔴 **New content badges** — Tab badges when new notes or messages are detected
 - 📶 **Offline mode** — Displays cached data with a banner when the proxy is unreachable
 - 🌙 **Dark mode** — Toggleable, preference saved locally
+- ⚙️ **Settings** — Choose the default landing tab per account (gear icon in header)
+- 👨‍👩‍👧 **Parent account support** — Adapted tab set for parent accounts (typeCompte ≠ E)
 - 🔒 **Secure** — All requests go through a local HTTPS proxy; credentials never leave your machine
 - 🔄 **Auto-reload (debug)** — `nodemon` watches for file changes and restarts automatically
 

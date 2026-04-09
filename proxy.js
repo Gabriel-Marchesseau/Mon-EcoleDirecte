@@ -245,7 +245,7 @@ const server = https.createServer(sslOptions, async (req, res) => {
   const parsedPathOnly = new URL(req.url, 'https://localhost').pathname;
   const staticFiles2 = { '/': 'ecoledirecte.html', '/app.js': 'app.js', '/style.css': 'style.css', '/cache.js': 'cache.js', '/ecoledirecte.html': 'ecoledirecte.html', '/favicon.ico': 'favicon.ico' };
   // Routes SPA — toute URL non-API non-statique sert l'app HTML (routeur côté client)
-  const SPA_ROUTES = ['/edt', '/notes', '/devoirs', '/seances', '/messages', '/vie-scolaire', '/perso', '/memos'];
+  const SPA_ROUTES = ['/edt', '/notes', '/devoirs', '/seances', '/messages', '/vie-scolaire', '/perso', '/memos', '/vie-scolaire-parent', '/administratif'];
   const isSpaRoute = SPA_ROUTES.includes(parsedPathOnly);
   const fileKey = isSpaRoute ? '/' : parsedPathOnly;
   if ((staticFiles2[fileKey] || isSpaRoute) && req.method === 'GET') {
@@ -262,6 +262,64 @@ const server = https.createServer(sslOptions, async (req, res) => {
     } catch(e) {
       res.writeHead(404); res.end('Not found');
     }
+    return;
+  }
+
+  // Page 404 pour les chemins inconnus (hors API /v3/)
+  if (req.method === 'GET' && !parsedPathOnly.startsWith('/v3/') && !staticFiles2[parsedPathOnly] && !isSpaRoute) {
+    const page404 = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Page introuvable — Mon EcoleDirecte</title>
+  <link rel="icon" href="/favicon.ico">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f3f4f6;
+      color: #111827;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      gap: 1.5rem;
+      text-align: center;
+      padding: 2rem;
+    }
+    .code { font-size: 6rem; font-weight: 800; color: #4f46e5; line-height: 1; }
+    .title { font-size: 1.4rem; font-weight: 600; color: #374151; }
+    .path { font-size: 0.9rem; color: #9ca3af; font-family: monospace; }
+    a {
+      margin-top: 0.5rem;
+      display: inline-block;
+      padding: 0.65rem 1.8rem;
+      background: #4f46e5;
+      color: #fff;
+      border-radius: 10px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.95rem;
+      transition: background 0.15s;
+    }
+    a:hover { background: #4338ca; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #111827; color: #f9fafb; }
+      .title { color: #e5e7eb; }
+    }
+  </style>
+</head>
+<body>
+  <div class="code">404</div>
+  <div class="title">Cette page n'existe pas</div>
+  <div class="path">${parsedPathOnly}</div>
+  <a href="/">Retour à l'accueil</a>
+</body>
+</html>`;
+    res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+    res.end(page404);
     return;
   }
 
