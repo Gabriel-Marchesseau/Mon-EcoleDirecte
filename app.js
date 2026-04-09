@@ -79,10 +79,23 @@ let _settingsPendingDefault = 'accueil';
 let _settingsOverlayEl = null;
 function getTabFromPath() { return ROUTE_TO_TAB[location.pathname] || null; }
 window.addEventListener('popstate', () => { const t = getTabFromPath(); if (t) switchTab(t, true); });
+function getCurrentAnnee() {
+  const now = new Date();
+  const y = now.getFullYear();
+  return now.getMonth() >= 8 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
+}
+
 function getEleveId() {
   if (!accountData) return '';
   const acc = accountData.accounts ? accountData.accounts[0] : accountData;
   return acc.id || '';
+}
+// Pour les endpoints /v3/eleves/{id}/... : renvoie l'ID de l'élève même depuis un compte parent
+function getChildEleveId() {
+  if (!accountData) return '';
+  const acc = accountData.accounts ? accountData.accounts[0] : accountData;
+  if (acc?.typeCompte === 'E') return acc.id || '';
+  return acc?.profile?.eleves?.[0]?.id || acc?.eleves?.[0]?.id || acc.id || '';
 }
 
 function showStatus(el, msg, type) { el.innerHTML = `<div class="status ${type}">${msg}</div>`; }
@@ -225,7 +238,14 @@ function showQcm(data, twoFaTokenValue) {
   }
   const grid = document.createElement('div');
   grid.className = 'qcm-grid';
-  propositions.forEach(pr => {
+  const sortedProps = propositions.slice().sort((a, b) => {
+    const la = b64(a.label || a.libelle || a.valeur || a);
+    const lb = b64(b.label || b.libelle || b.valeur || b);
+    const na = parseFloat(la), nb = parseFloat(lb);
+    if (!isNaN(na) && !isNaN(nb)) return na - nb;
+    return la.localeCompare(lb, 'fr');
+  });
+  sortedProps.forEach(pr => {
     const raw = pr.id || pr.valeur || pr;
     const label = b64(pr.label || pr.libelle || pr.valeur || pr);
     const btn = document.createElement('button');
@@ -432,7 +452,12 @@ function onLoggedIn(data) {
   document.getElementById('user-avatar').textContent = initials;
   document.getElementById('user-name').textContent = nom.trim();
   const isEleve = acc.typeCompte === 'E';
-  document.getElementById('user-type').textContent = isEleve ? 'Compte élève' : 'Compte parent';
+  const accountType = isEleve ? 'Compte élève' : 'Compte parent';
+  const schoolName = acc.nomEtablissement || acc.profile?.nomEtablissement || '';
+  const className  = acc.profile?.classe?.libelle || acc.libelleClasse || '';
+  const metaParts  = [accountType, schoolName, className].filter(Boolean);
+  const metaEl = document.getElementById('user-meta');
+  if (metaEl) metaEl.textContent = metaParts.join(' · ');
   // Init onglets selon le type de compte
   const TABS = isEleve ? [
     { id: 'accueil',  label: 'Accueil' },
@@ -463,6 +488,9 @@ function onLoggedIn(data) {
     bar.appendChild(btn);
   });
   if (isEleve) updateDevoirsTabCount();
+  // Masquer le sous-onglet Correspondances pour les comptes parents
+  const corrTabBtn = document.querySelector('#panel-messages .sub-tab[data-tab="correspondance"]');
+  if (corrTabBtn) corrTabBtn.style.display = isEleve ? '' : 'none';
   const validTabIds = new Set(TABS.map(t => t.id));
   const savedDefault = localStorage.getItem(`ed_default_tab_${_currentAccountId}`);
   const defaultTab = (savedDefault && validTabIds.has(savedDefault)) ? savedDefault : 'accueil';
@@ -547,7 +575,7 @@ async function openProfile() {
   const fs = `width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid ${inputBorder};border-radius:8px;background:${inputBg};color:${dlgText};font-size:14px;outline:none`;
   const ls = `font-size:13px;font-weight:600;color:var(--text2);margin-bottom:4px;display:block`;
   const hs = `font-size:11px;color:var(--text3);margin-top:3px`;
-  const qOptions = (profileData.questionsPossibles || [])
+  const qOptions = (profileData.questionsPossibles || []).slice().sort((a, b) => a.localeCompare(b, 'fr'))
     .map(q => `<option value="${q}"${q === profileData.questionSecrete ? ' selected' : ''}>${q}</option>`).join('');
 
   function pwField(id) {
@@ -1299,8 +1327,10 @@ async function loadMessages() {
 
   const fetchBoth = async () => {
     if (sessionExpired) throw new Error('Session expirée');
+    const _acc = accountData?.accounts ? accountData.accounts[0] : accountData;
+    const _msgBase = _acc?.typeCompte === 'E' ? `/v3/eleves/${eleveId}/messages.awp` : `/v3/familles/${eleveId}/messages.awp`;
     const fetchTab = async type => {
-      const resp = await fetch(`${getProxy()}/v3/eleves/${eleveId}/messages.awp?force=false&typeRecuperation=${type}&idClasseur=0&orderBy=date&order=desc&query=&onlyRead=&page=0&itemsPerPage=100&getAll=0&verbe=get`, {
+      const resp = await fetch(`${getProxy()}${_msgBase}?force=false&typeRecuperation=${type}&idClasseur=0&orderBy=date&order=desc&query=&onlyRead=&page=0&itemsPerPage=100&getAll=0&verbe=get`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
         body: `data=${encodeURIComponent(JSON.stringify({ anneeMessages: annee }))}`
@@ -1326,8 +1356,11 @@ async function loadMessages() {
     applyMessageSelection();
     document.getElementById('spin-messages').style.display = 'none';
     updateFreshnessLabel('messages', Date.now());
-    if (msgActiveTab === 'correspondance') loadCorrespondance();
-    else fetchCorrespondanceCount();
+    const _isEleve = (accountData?.accounts ? accountData.accounts[0] : accountData)?.typeCompte === 'E';
+    if (_isEleve) {
+      if (msgActiveTab === 'correspondance') loadCorrespondance();
+      else fetchCorrespondanceCount();
+    }
     if (isFresh && oldData) {
       const newCount = received.length + sent.length;
       const oldCount = (oldData.received?.length || 0) + (oldData.sent?.length || 0);
@@ -3057,19 +3090,25 @@ function buildChart(datasets, periode) {
 const POSTIT_TYPE_LABELS = { info: 'Info', alerte: 'Alerte', urgence: 'Urgence' };
 
 async function loadAccueil() {
-  const eleveId = getEleveId();
+  const acc = accountData?.accounts ? accountData.accounts[0] : accountData;
+  const accountId = acc?.id || '';
+  const isEleve = acc?.typeCompte === 'E';
   const resultEl = document.getElementById('accueil-result');
   const spinEl   = document.getElementById('spin-accueil');
   if (!resultEl) return;
 
-  await edCache.load(`accueil:${eleveId}`, async () => {
+  const accueilUrl = isEleve
+    ? `${getProxy()}/v3/E/${accountId}/timelineAccueilCommun.awp?verbe=get&v=4.98.0`
+    : `${getProxy()}/v3/1/${accountId}/timelineAccueilCommun.awp?verbe=get&v=4.98.0`;
+
+  await edCache.load(`accueil:${accountId}`, async () => {
     const headers = {
       'Content-Type': 'application/x-www-form-urlencoded',
       'X-Token': token,
       'X-ApisVer': '4.98.0'
     };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
-    const resp = await fetch(`${getProxy()}/v3/E/${eleveId}/timelineAccueilCommun.awp?verbe=get&v=4.98.0`, {
+    const resp = await fetch(accueilUrl, {
       method: 'POST',
       headers,
       body: 'data={}'
@@ -3240,6 +3279,18 @@ async function forceRefresh(tab) {
     }
   } else if (tab === 'memos') {
     renderMemosFromCache();
+  } else if (tab === 'viescolaire-parent') {
+    if (_vspActiveTab === 'documents') {
+      await edCache.delete(`documents-parent:${eleveId}`);
+      _vspDocsData = null; _selectedVspDocKey = null;
+      await loadVspDocuments();
+    } else if (_vspActiveTab === 'dossier') {
+      await edCache.delete(`dossier-inscription:${eleveId}`);
+      await loadDossierInscription();
+    } else if (_vspActiveTab === 'sondages') {
+      await edCache.delete(`sondages-parent:${eleveId}`);
+      await loadVspSondages();
+    }
   }
 
   const btn2 = document.getElementById('tab-refresh-btn');
@@ -3438,9 +3489,390 @@ function switchTab(id, fromPopstate = false) {
   }
   else if (id === 'messages') loadMessages();
   else if (id === 'memos') loadMemos();
-  // Onglets compte parent — contenu à venir
-  // else if (id === 'viescolaire-parent') { /* TODO */ }
+  else if (id === 'viescolaire-parent') switchVspTab(_vspActiveTab);
   // else if (id === 'administratif') { /* TODO */ }
+}
+
+// ── Vie scolaire parent ────────────────────────────────────────────────────
+let _vspActiveTab = 'documents';
+let _vspDocsData = null;
+let _selectedVspDocKey = null;
+let _vspDocFilter = null; // null = toutes catégories, string = clé de catégorie filtrée
+
+function switchVspTab(tab) {
+  _vspActiveTab = tab;
+  document.querySelectorAll('#vsp-tabs .sub-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  const isDoc = tab === 'documents';
+  const resultEl  = document.getElementById('vsp-result');
+  const docPanel  = document.getElementById('vsp-doc-panel');
+  if (resultEl) resultEl.style.display  = isDoc ? 'none' : '';
+  if (docPanel) docPanel.style.display  = isDoc ? 'flex' : 'none';
+  if (tab === 'documents')  { _vspDocFilter = null; loadVspDocuments(); }
+  else if (tab === 'dossier')   loadDossierInscription();
+  else if (tab === 'sondages')  loadVspSondages();
+}
+
+async function loadVspSondages() {
+  const eleveId = getEleveId();
+  if (!eleveId) return;
+  const cacheKey = `sondages-parent:${eleveId}`;
+  const resultEl = document.getElementById('vsp-result');
+  const spinEl   = document.getElementById('spin-vsp');
+  if (!resultEl) return;
+
+  await edCache.load(cacheKey, async () => {
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' };
+    if (twoFaToken) headers['2fa-token'] = twoFaToken;
+    const resp = await fetch(`${getProxy()}/v3/edforms.awp?verbe=getlist&v=4.98.0`, {
+      method: 'POST', headers, body: `data=${encodeURIComponent(JSON.stringify({ anneeForms: getCurrentAnnee(), typeEntity: '1', idEntity: eleveId }))}`
+    });
+    const d = await resp.json();
+    if (d.code !== 200) throw new Error(d.message || `Code ${d.code}`);
+    return d.data;
+  }, {
+    onSpinner: () => { spinEl.style.display = 'inline'; resultEl.innerHTML = centeredSpinner(); },
+    onCached:  (data, ts) => { spinEl.style.display = 'none'; resultEl.innerHTML = renderVspSondages(data); updateFreshnessLabel('viescolaire-parent', ts || Date.now()); },
+    onFresh:   (data)     => { spinEl.style.display = 'none'; resultEl.innerHTML = renderVspSondages(data); updateFreshnessLabel('viescolaire-parent', Date.now()); },
+    diffFn:    edCache.defaultDiff,
+  }).catch(e => {
+    resultEl.innerHTML = `<p style="color:#b91c1c;font-size:14px">Erreur : ${e.message}</p>`;
+    spinEl.style.display = 'none';
+  });
+}
+
+function renderVspSondages(data) {
+  const items = Array.isArray(data) ? data : (data?.forms || data?.sondages || []);
+  const title = `<div style="font-weight:600;font-size:15px;margin-bottom:12px">Formulaires et sondages (${items.length})</div>`;
+  if (!items.length) return title + `<div style="background:var(--bg3);border-radius:8px;padding:12px 16px;font-size:13px;color:var(--text2)">Aucun formulaire / sondage disponible actuellement !</div>`;
+  let rows = '';
+  items.forEach(s => {
+    const titre = (s.titre || s.title || s.libelle || '').trim();
+    const date = (s.date || s.dateDebut || s.dateFin || '').trim();
+    const statut = (s.statut || s.status || '').trim();
+    const done = statut && statut.toLowerCase() !== 'non_effectue' && statut.toLowerCase() !== 'non effectué';
+    const description = (s.description || '').trim();
+    rows += `<div style="padding:8px 10px;border-radius:8px;background:var(--bg3);margin-bottom:6px;font-size:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+        <span style="font-weight:500">${titre || 'Formulaire sans titre'}</span>
+        ${done ? '<span style="color:#15803d;font-weight:500;font-size:13px">Répondu</span>'
+               : '<span style="color:#b45309;font-weight:500;font-size:13px">En attente</span>'}
+      </div>
+      ${description ? `<div style="color:var(--text2)">${description}</div>` : ''}
+      ${date ? `<div style="color:var(--text3);font-size:13px">${date}</div>` : ''}
+    </div>`;
+  });
+  return title + rows;
+}
+
+async function loadVspDocuments() {
+  const eleveId = getEleveId();
+  if (!eleveId) return;
+  const cacheKey = `documents-parent:${eleveId}`;
+  const listEl = document.getElementById('vsp-doc-list');
+  const spinEl = document.getElementById('spin-vsp');
+  if (!listEl) return;
+
+  await edCache.load(cacheKey, async () => {
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' };
+    if (twoFaToken) headers['2fa-token'] = twoFaToken;
+    const resp = await fetch(`${getProxy()}/v3/familledocuments.awp?archive=&verbe=get&v=4.98.0`, {
+      method: 'POST', headers, body: 'data={}'
+    });
+    const d = await resp.json();
+    if (d.code !== 200) throw new Error(d.message || `Code ${d.code}`);
+    return d.data;
+  }, {
+    onSpinner: () => { spinEl.style.display = 'inline'; listEl.innerHTML = centeredSpinner(); },
+    onCached:  (data, ts) => { spinEl.style.display = 'none'; _vspDocsData = data; renderVspDocToolbar(data); listEl.innerHTML = renderVspDocList(data); updateFreshnessLabel('viescolaire-parent', ts || Date.now()); },
+    onFresh:   (data)     => { spinEl.style.display = 'none'; _vspDocsData = data; renderVspDocToolbar(data); listEl.innerHTML = renderVspDocList(data); updateFreshnessLabel('viescolaire-parent', Date.now()); },
+    diffFn:    edCache.defaultDiff,
+  }).catch(e => {
+    listEl.innerHTML = `<p style="color:#b91c1c;font-size:14px">Erreur : ${e.message}</p>`;
+    spinEl.style.display = 'none';
+  });
+}
+
+const VSP_DOC_CATEGORIES = [
+  { key: 'administratifs', label: 'Administratifs',               shortLabel: 'Administratifs' },
+  { key: 'notes',          label: 'Bulletins et relevés de notes', shortLabel: 'Bulletins' },
+  { key: 'factures',       label: 'Factures',                     shortLabel: 'Factures' },
+  { key: 'inscriptions',   label: 'Inscriptions',                 shortLabel: 'Inscriptions' },
+  { key: 'viescolaire',    label: 'Vie scolaire',                 shortLabel: 'Vie scolaire' },
+  { key: 'entreprises',    label: 'Entreprises',                  shortLabel: 'Entreprises' },
+];
+
+function _vspPersonnesMap(data) {
+  const map = {};
+  (data?.listesPiecesAVerser?.personnes || []).forEach(p => { map[p.id] = `${p.prenom} ${p.nom}`; });
+  return map;
+}
+
+function renderVspDocToolbar(data) {
+  const toolbarEl = document.getElementById('vsp-doc-toolbar');
+  if (!toolbarEl) return;
+  const activeCats = VSP_DOC_CATEGORIES.filter(cat => (data[cat.key] || []).length > 0);
+  if (activeCats.length <= 1) { toolbarEl.innerHTML = ''; return; }
+  const svgFilter = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:.45;flex-shrink:0;color:var(--text2)"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>`;
+  let html = svgFilter;
+  activeCats.forEach(cat => {
+    const items = data[cat.key] || [];
+    const count = items.length;
+    const hasPendingSig = items.some(d => d.signatureDemandee && !d.signature?.dateValidation);
+    const pressed = _vspDocFilter === cat.key ? 'true' : 'false';
+    const sigIcon = hasPendingSig ? ' ✍' : '';
+    html += `<button class="vsp-cat-filter-btn" aria-pressed="${pressed}" onclick="toggleVspDocFilter('${cat.key}')">${cat.shortLabel}${sigIcon} (${count})</button>`;
+  });
+  toolbarEl.innerHTML = html;
+}
+
+function toggleVspDocFilter(key) {
+  _vspDocFilter = (_vspDocFilter === key) ? null : key;
+  _selectedVspDocKey = null;
+  if (_vspDocsData) {
+    renderVspDocToolbar(_vspDocsData);
+    document.getElementById('vsp-doc-list').innerHTML = renderVspDocList(_vspDocsData);
+    const detailEl = document.getElementById('vsp-doc-detail');
+    if (detailEl) { detailEl.style.alignItems = 'center'; detailEl.style.justifyContent = 'center'; detailEl.innerHTML = '<span style="color:var(--text4);font-size:13px;text-align:center">Sélectionne un document<br>pour voir le détail ici</span>'; }
+  }
+}
+
+function renderVspDocList(data) {
+  const personnes = _vspPersonnesMap(data);
+  let html = '';
+  let firstVisible = true;
+  const catsToShow = _vspDocFilter
+    ? VSP_DOC_CATEGORIES.filter(c => c.key === _vspDocFilter)
+    : VSP_DOC_CATEGORIES;
+  catsToShow.forEach(cat => {
+    const items = data[cat.key] || [];
+    if (!items.length) return;
+    const sepStyle = firstVisible ? '' : 'margin-top:20px;border-top:1px solid var(--border2);padding-top:12px;';
+    firstVisible = false;
+    html += `<div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;padding:10px 4px 4px;${sepStyle}">${cat.label} (${items.length})</div>`;
+    items.forEach((doc, i) => {
+      const key = `${cat.key}:${i}`;
+      const isSigned  = !!doc.signature?.dateValidation;
+      const needsSig  = doc.signatureDemandee && !isSigned;
+      const dateStr   = (doc.date || '').substring(0, 10);
+      const eleveNom  = doc.idEleve ? (personnes[doc.idEleve] || '') : '';
+      const sigBadge  = isSigned  ? `<span style="color:#15803d;font-size:11px;font-weight:600;flex-shrink:0">✓</span>`
+                      : needsSig  ? `<span style="font-size:11px;font-weight:600;flex-shrink:0;background:#b45309;color:#fff;padding:1px 7px;border-radius:10px;white-space:nowrap">✍ À signer</span>`
+                      : '';
+      const isSelected = _selectedVspDocKey === key;
+      const needsSigBorder = needsSig && !isSelected ? 'border-left:3px solid #b45309;padding-left:5px;' : '';
+      html += `<div data-vsp-doc-key="${key}" onclick="openVspDocDetail('${cat.key}',${i})"
+        style="display:flex;align-items:flex-start;padding:7px 4px;border-bottom:1px solid var(--border2);font-size:13px;cursor:pointer;border-radius:4px;${needsSigBorder}${isSelected ? 'box-shadow:inset 3px 0 0 #1d4ed8;background:var(--bg3)' : ''}"
+        onmouseover="if('${key}'!==_selectedVspDocKey)this.style.background='var(--bg3)'"
+        onmouseout="if('${key}'!==_selectedVspDocKey)this.style.background='transparent'">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+            <span style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${doc.libelle}</span>
+            ${sigBadge}
+          </div>
+          <div style="color:var(--text3);font-size:12px;margin-top:1px">${[dateStr, eleveNom].filter(Boolean).join(' · ')}</div>
+        </div>
+      </div>`;
+    });
+  });
+  return html || `<p style="color:var(--text3);font-size:14px">Aucun document disponible.</p>`;
+}
+
+function openVspDocDetail(category, idx) {
+  const key = `${category}:${idx}`;
+  _selectedVspDocKey = key;
+  document.querySelectorAll('[data-vsp-doc-key]').forEach(el => {
+    const sel = el.dataset.vspDocKey === key;
+    el.style.boxShadow = sel ? 'inset 3px 0 0 #1d4ed8' : '';
+    el.style.background = sel ? 'var(--bg3)' : 'transparent';
+  });
+
+  const detailEl = document.getElementById('vsp-doc-detail');
+  if (!detailEl || !_vspDocsData) return;
+  const doc = (_vspDocsData[category] || [])[idx];
+  if (!doc) return;
+
+  const personnes = _vspPersonnesMap(_vspDocsData);
+  const isSigned = !!doc.signature?.dateValidation;
+  const needsSig = doc.signatureDemandee && !isSigned;
+  const dateStr  = (doc.date || '').substring(0, 10);
+  const eleveNom = doc.idEleve ? (personnes[doc.idEleve] || '') : '';
+  const typeStr  = doc.type || '';
+  const catLabel = VSP_DOC_CATEGORIES.find(c => c.key === category)?.label || '';
+
+  let sigHtml = '';
+  if (isSigned) {
+    const sigDate = doc.signature.dateValidation.substring(0, 10);
+    const tel = doc.signature.tel ? ` · ${doc.signature.tel}` : '';
+    sigHtml = `<div style="margin-top:14px;padding:10px 14px;border-radius:8px;background:#f0fdf4;border:1px solid #bbf7d0">
+      <span style="font-size:13px;font-weight:600;color:#15803d">✓ Signé le ${sigDate}${tel}</span>
+    </div>`;
+  } else if (needsSig) {
+    sigHtml = `<div style="margin-top:14px;padding:10px 14px;border-radius:8px;background:#fffbeb;border:1px solid #fde68a">
+      <span style="font-size:13px;font-weight:600;color:#b45309">● Signature électronique demandée</span>
+    </div>`;
+  }
+
+  const fileId = doc.id || doc.idFichier || null;
+  const dlFilename = (doc.libelle || 'document') + (doc.libelle?.toLowerCase().endsWith('.pdf') ? '' : '.pdf');
+  const dlFilenameEnc = encodeURIComponent(dlFilename).replace(/'/g, '%27');
+  const VSP_DOWNLOAD_TYPES = { notes: 'Note', factures: 'Facture', administratifs: 'Doc', inscriptions: 'INSCR_DOC_A_SIGNER' };
+  const dlType = VSP_DOWNLOAD_TYPES[category];
+  const dlBtn = (dlType && fileId)
+    ? `<button onclick="downloadVspFile(${fileId},'${dlFilenameEnc}','${dlType}')"
+        style="margin-top:16px;display:flex;align-items:center;gap:7px;padding:8px 16px;border-radius:8px;border:none;background:#1d4ed8;color:#fff;font-size:13px;font-weight:500;cursor:pointer">
+        📄 Télécharger le PDF
+      </button>`
+    : '';
+
+  detailEl.style.alignItems = 'flex-start';
+  detailEl.style.justifyContent = 'flex-start';
+  detailEl.innerHTML = `
+    <div style="font-size:15px;font-weight:600;line-height:1.4;margin-bottom:10px">${doc.libelle}</div>
+    <div style="font-size:13px;color:var(--text3)">${[catLabel, typeStr].filter(Boolean).join(' · ')}</div>
+    ${dateStr   ? `<div style="font-size:13px;color:var(--text3);margin-top:4px">${dateStr}</div>` : ''}
+    ${eleveNom  ? `<div style="font-size:13px;color:var(--text3);margin-top:4px">Élève : ${eleveNom}</div>` : ''}
+    ${sigHtml}
+    ${dlBtn}`;
+}
+
+async function downloadVspFile(fileId, filenameEnc, leTypeDeFichier) {
+  const filename = decodeURIComponent(filenameEnc);
+  try {
+    const dlUrl = `${getProxy()}/v3/telechargement.awp?verbe=get&fichierId=${fileId}&leTypeDeFichier=${leTypeDeFichier}&v=4.98.0`;
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
+    if (twoFaToken) headers['2fa-token'] = twoFaToken;
+    await triggerDownload(dlUrl, {
+      method: 'POST',
+      headers,
+      body: `data=${encodeURIComponent(JSON.stringify({ forceDownload: 0, archive: false, anneeArchive: '' }))}`
+    }, filename);
+  } catch(e) {
+    alert(`Erreur téléchargement : ${e.message}`);
+  }
+}
+
+async function loadDossierInscription() {
+  const eleveId = getEleveId();
+  if (!eleveId) return;
+  const cacheKey = `dossier-inscription:${eleveId}`;
+  const resultEl = document.getElementById('vsp-result');
+  const spinEl   = document.getElementById('spin-vsp');
+  if (!resultEl) return;
+
+  await edCache.load(cacheKey, async () => {
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' };
+    if (twoFaToken) headers['2fa-token'] = twoFaToken;
+    const resp = await fetch(`${getProxy()}/v3/inscriptions/familleDossierInscription.awp?verbe=get&v=4.98.0`, {
+      method: 'POST', headers, body: 'data={}'
+    });
+    const d = await resp.json();
+    if (d.code !== 200) throw new Error(d.message || `Code ${d.code}`);
+    return d.data;
+  }, {
+    onSpinner: () => { spinEl.style.display = 'inline'; resultEl.innerHTML = centeredSpinner(); },
+    onCached:  (data, ts) => { spinEl.style.display = 'none'; resultEl.innerHTML = renderDossierInscription(data); updateFreshnessLabel('viescolaire-parent', ts || Date.now()); },
+    onFresh:   (data)     => { spinEl.style.display = 'none'; resultEl.innerHTML = renderDossierInscription(data); updateFreshnessLabel('viescolaire-parent', Date.now()); },
+    diffFn:    edCache.defaultDiff,
+  }).catch(e => {
+    resultEl.innerHTML = `<p style="color:#b91c1c;font-size:14px">Erreur : ${e.message}</p>`;
+    spinEl.style.display = 'none';
+  });
+}
+
+function renderDossierInscription(data) {
+  if (!data) return `<p style="color:var(--text3);font-size:14px">Aucune donnée.</p>`;
+
+  const card = (title, content) =>
+    `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:14px">
+      <div style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">${title}</div>
+      ${content}
+    </div>`;
+
+  const kv = (label, value) => {
+    const display = (value === null || value === undefined || value === '') ? `<span style="color:var(--text4)">—</span>`
+      : typeof value === 'boolean' ? (value ? 'Oui' : 'Non')
+      : String(value);
+    return `<div style="display:flex;gap:12px;padding:5px 0;border-bottom:1px solid var(--border2);font-size:13px">
+      <span style="color:var(--text3);flex:0 0 180px">${label}</span>
+      <span style="color:var(--text)">${display}</span>
+    </div>`;
+  };
+
+  let html = '';
+
+  // ── Statut ──
+  const typeLabel = data.isReinscription ? 'Réinscription' : 'Inscription';
+  const etatBadge = data.etat
+    ? `<span style="margin-left:8px;font-size:11px;padding:2px 8px;border-radius:10px;background:#fef9c3;color:#854d0e">${data.etat}</span>`
+    : '';
+  html += card('Statut',
+    kv('Type', typeLabel + etatBadge) +
+    kv('Commentaire', data.commentaire || '')
+  );
+
+  // ── Facturation ──
+  const f = data.facturation || {};
+  const hasFactu = Object.values(f).some(v => v !== '' && v !== 0 && v !== false && !(typeof v === 'object' && Object.keys(v).length === 0));
+  if (hasFactu) {
+    html += card('Facturation',
+      kv('Mode de règlement', f.modeReglement) +
+      kv('Titulaire du compte', f.titulaireCompte) +
+      kv('IBAN', f.IBAN) +
+      kv('Domiciliation', f.domiciliation) +
+      kv("Jour d'échéance", f.jourEcheance || '') +
+      kv('Facture papier', f.facturePapier) +
+      kv('Nb enfants à charge', f.nbEnfantsACharge || '') +
+      kv('Cotisation APEL', f.cotisationAPEL || '')
+    );
+  }
+
+  // ── Élèves ──
+  if (data.eleves?.length) {
+    const rows = data.eleves.map(e =>
+      `<div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--border2);color:var(--text)">
+        ${[e.prenom, e.nom].filter(Boolean).join(' ')}
+        ${e.classe ? `<span style="color:var(--text3);margin-left:8px">${e.classe}</span>` : ''}
+      </div>`
+    ).join('');
+    html += card('Élèves', rows);
+  }
+
+  // ── Pièces du dossier ──
+  if (data.piecesDossier?.length) {
+    const rows = data.piecesDossier.map(p =>
+      `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border2);font-size:13px">
+        <span style="color:var(--text)">${p.libelle || p.nom || JSON.stringify(p)}</span>
+        ${p.statut ? `<span style="color:var(--text3);font-size:12px">${p.statut}</span>` : ''}
+      </div>`
+    ).join('');
+    html += card('Pièces du dossier', rows);
+  }
+
+  // ── Documents de l'établissement ──
+  if (data.documentsEtablissement?.length) {
+    const rows = data.documentsEtablissement.map(d =>
+      `<div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--border2);color:var(--text)">${d.libelle || d.nom || JSON.stringify(d)}</div>`
+    ).join('');
+    html += card("Documents de l'établissement", rows);
+  }
+
+  // ── Historique des paiements ──
+  if (data.historiquePaiements?.length) {
+    const rows = data.historiquePaiements.map(p =>
+      `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border2);font-size:13px">
+        <span style="color:var(--text)">${p.libelle || p.description || ''}</span>
+        <span style="color:var(--text2);font-weight:500">${p.montant !== undefined ? p.montant + ' €' : ''}</span>
+        <span style="color:var(--text3);font-size:12px">${p.date || ''}</span>
+      </div>`
+    ).join('');
+    html += card('Historique des paiements', rows);
+  }
+
+  // Dossier indisponible (hors période d'inscription) — aucun contenu à afficher
+  if (!html) return `<div style="border:1px solid var(--border);border-radius:10px;padding:48px 24px;text-align:center">
+    <span style="font-size:13px;font-weight:600;color:var(--text2);letter-spacing:.04em">LE DOSSIER N'EST ACTUELLEMENT PAS DISPONIBLE</span>
+  </div>`;
+  return html;
 }
 
 function togglePwd() {
@@ -3802,7 +4234,11 @@ async function openMessageDialog(msgId) {
   if (cached && !cached.read) {
     cached.read = true;
     const annee = document.getElementById('msg-annee')?.value || '';
-    fetch(`${getProxy()}/v3/eleves/${eleveId}/messages/${msgId}.awp?verbe=put`, {
+    const _acc2 = accountData?.accounts ? accountData.accounts[0] : accountData;
+    const _markUrl = _acc2?.typeCompte === 'E'
+      ? `${getProxy()}/v3/eleves/${eleveId}/messages/${msgId}.awp?verbe=put`
+      : `${getProxy()}/v3/familles/${eleveId}/messages/${msgId}.awp?verbe=put`;
+    fetch(_markUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
       body: `data=${encodeURIComponent(JSON.stringify({ anneeMessages: annee }))}`
@@ -3829,7 +4265,15 @@ async function openMessageDialog(msgId) {
       <div style="font-weight:600;font-size:14px;margin-bottom:6px;line-height:1.4">${cached?.subject || ''}</div>
       ${from ? `<div style="font-size:14px;color:var(--text3);margin-bottom:2px">De : ${from}</div>` : ''}
       ${to   ? `<div style="font-size:14px;color:var(--text3);margin-bottom:2px">À : ${to}</div>`   : ''}
-      <div style="font-size:14px;color:var(--text4);margin-bottom:10px">${cached?.date || ''}</div>
+      <div style="font-size:14px;color:var(--text4);margin-bottom:8px">${cached?.date || ''}</div>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <button onclick="replyMessage(${msgId})" style="display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:7px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:13px;font-weight:500;cursor:pointer">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 4l4-3v2h2c3 0 5 2 5 5 0-2-2-3-5-3H6v2L2 4z" fill="currentColor"/></svg>Répondre
+        </button>
+        <button onclick="forwardMessage(${msgId})" style="display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:7px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:13px;font-weight:500;cursor:pointer">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M12 4l-4-3v2H6C3 3 1 5 1 8c0-2 2-3 5-3h2v2l4-3z" fill="currentColor"/></svg>Transférer
+        </button>
+      </div>
       ${cached?.files?.length ? `
       <div style="margin-bottom:10px;padding:8px;background:var(--bg3);border-radius:8px;border:1px solid var(--border)">
         <div style="font-size:14px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Pièces jointes (${cached.files.length})</div>
@@ -3867,10 +4311,14 @@ async function openMessageDialog(msgId) {
     const mode = direction === 'received' ? 'destinataire' : 'expediteur';
     const annee = document.getElementById('msg-annee')?.value || '';
 
+    const _acc3 = accountData?.accounts ? accountData.accounts[0] : accountData;
+    const _msgContentBase = _acc3?.typeCompte === 'E'
+      ? `/v3/eleves/${eleveId}/messages/${msgId}.awp`
+      : `/v3/familles/${eleveId}/messages/${msgId}.awp`;
     await edCache.load(cacheKey, async () => {
       const endpoints = [
-        { url: `/v3/eleves/${eleveId}/messages/${msgId}.awp?verbe=get&mode=${mode}`, body: `data=${encodeURIComponent(JSON.stringify({ anneeMessages: annee }))}` },
-        { url: `/v3/eleves/${eleveId}/messages/${msgId}.awp?verbe=get`, body: 'data={}' },
+        { url: `${_msgContentBase}?verbe=get&mode=${mode}`, body: `data=${encodeURIComponent(JSON.stringify({ anneeMessages: annee }))}` },
+        { url: `${_msgContentBase}?verbe=get`, body: 'data={}' },
       ];
       for (const ep of endpoints) {
         const resp = await fetch(`${getProxy()}${ep.url}`, {
@@ -3897,6 +4345,31 @@ async function openMessageDialog(msgId) {
     const contentEl = document.getElementById('msg-dialog-content');
     if (contentEl) contentEl.innerHTML = `<em style="color:#b91c1c">Erreur : ${e.message}</em>`;
   }
+}
+
+function replyMessage(msgId) {
+  const cached = cachedMessages[msgId];
+  if (!cached) return;
+  const sender = cached.from;
+  const initialRecipient = sender ? {
+    id: sender.id,
+    nom: [sender.civilite, sender.prenom, sender.nom].filter(Boolean).join(' ').trim() || String(sender.id),
+    type: 'teachers',
+    _raw: sender
+  } : null;
+  const subject = 'Re: ' + (cached.subject || '').replace(/^Re:\s*/i, '');
+  const contentEl = document.getElementById('msg-dialog-content');
+  const quotedHtml = (contentEl && !contentEl.querySelector('.spinner')) ? contentEl.innerHTML : '';
+  openNewMessageDialog({ initialRecipient, mode: 'reply', subject, quotedHtml });
+}
+
+function forwardMessage(msgId) {
+  const cached = cachedMessages[msgId];
+  if (!cached) return;
+  const subject = 'Tr: ' + (cached.subject || '').replace(/^(Tr:|Fwd:)\s*/i, '');
+  const contentEl = document.getElementById('msg-dialog-content');
+  const quotedHtml = (contentEl && !contentEl.querySelector('.spinner')) ? contentEl.innerHTML : '';
+  openNewMessageDialog({ mode: 'forward', subject, quotedHtml, forwardId: msgId, forwardFiles: cached.files || [] });
 }
 
 function getFileIcon(filename) {
@@ -4320,8 +4793,11 @@ function resetSecuritySettings() {
 
 // ── Nouveau message ────────────────────────────────────────────────────────
 
-let newMsgRecipients = []; // { id, nom, type }
+let newMsgRecipients = []; // { id, nom, type, _raw? }
 let newMsgAttachments = []; // File[]
+let _newMsgMode = null;        // null | 'reply' | 'forward'
+let _newMsgForwardId = null;   // msgId pour le transfert
+let _newMsgForwardFiles = [];  // fichiers à transférer
 let contactsCache = { teachers: null, staff: null, tutors: null };
 function resetContactsCache() { contactsCache = { teachers: null, staff: null, tutors: null }; }
 
@@ -4331,28 +4807,33 @@ function getIdClasse() {
 }
 
 function openMsgToContact(id, nomEnc, type) {
-  openNewMessageDialog({ id, nom: decodeURIComponent(nomEnc), type });
+  openNewMessageDialog({ initialRecipient: { id, nom: decodeURIComponent(nomEnc), type } });
 }
 
-function openNewMessageDialog(initialRecipient = null) {
+function openNewMessageDialog({ initialRecipient = null, mode = null, subject = '', quotedHtml = '', forwardId = null, forwardFiles = [] } = {}) {
   newMsgRecipients = initialRecipient ? [initialRecipient] : [];
   newMsgAttachments = [];
+  _newMsgMode = mode;
+  _newMsgForwardId = forwardId;
+  _newMsgForwardFiles = forwardFiles;
   const dark = document.body.classList.contains('dark');
+  const dlgTitle = mode === 'reply' ? 'Répondre' : mode === 'forward' ? 'Transférer' : 'Nouveau message';
+  const sendLabel = mode === 'reply' ? 'Répondre' : mode === 'forward' ? 'Transférer' : 'Envoyer';
   const overlay = document.createElement('div');
   overlay.id = 'new-msg-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:1rem';
   overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
 
   const dlg = document.createElement('div');
-  dlg.style.cssText = `background:${dark?'#242424':'#fff'};color:${dark?'#f0f0ee':'#1a1a1a'};border-radius:12px;padding:20px;width:100%;max-width:680px;max-height:90vh;overflow-y:auto;display:flex;flex-direction:column;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,0.25)`;
+  dlg.style.cssText = `background:${dark?'#242424':'#fff'};color:${dark?'#f0f0ee':'#1a1a1a'};border-radius:12px;padding:20px;width:100%;max-width:680px;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,0.25)`;
   dlg.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <span style="font-weight:600;font-size:15px">Nouveau message</span>
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-shrink:0">
+      <span style="font-weight:600;font-size:15px">${dlgTitle}</span>
       <button onclick="document.getElementById('new-msg-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text3);line-height:1">×</button>
     </div>
 
     <!-- À -->
-    <div>
+    <div style="flex-shrink:0">
       <label style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">À</label>
       <div id="new-msg-to-wrap" onclick="openContactPicker()" style="min-height:36px;border:1px solid var(--border);border-radius:8px;padding:6px 10px;cursor:pointer;display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-top:4px;background:var(--bg2)">
         <span id="new-msg-to-chips" style="display:contents"></span>
@@ -4361,34 +4842,35 @@ function openNewMessageDialog(initialRecipient = null) {
     </div>
 
     <!-- Sujet -->
-    <div>
+    <div style="flex-shrink:0">
       <label style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Sujet</label>
       <input id="new-msg-subject" type="text" placeholder="Sujet du message" style="width:100%;margin-top:4px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text);font-size:14px;box-sizing:border-box;outline:none">
     </div>
 
     <!-- Message (contenteditable enrichi) -->
-    <div style="flex:1">
-      <label style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Message</label>
-      <div id="new-msg-toolbar" style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;margin-bottom:4px">
+    <div style="flex:1;min-height:0;display:flex;flex-direction:column">
+      <label style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;flex-shrink:0">Message</label>
+      <div id="new-msg-toolbar" style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;margin-bottom:4px;flex-shrink:0">
         ${['bold','italic','underline'].map(cmd =>
-          `<button onmousedown="event.preventDefault();document.execCommand('${cmd}')" title="${cmd}"
+          `<button data-rte-cmd="${cmd}" onmousedown="event.preventDefault();document.execCommand('${cmd}');setTimeout(()=>_syncRteToolbar('new-msg-toolbar'),0)" title="${cmd}"
             style="padding:3px 8px;border:1px solid var(--border);border-radius:5px;background:var(--bg2);color:var(--text);cursor:pointer;font-size:13px">
             ${cmd==='bold'?'<b>G</b>':cmd==='italic'?'<i>I</i>':'<u>S</u>'}
           </button>`).join('')}
         ${[1,2,3].map(n =>
-          `<button onmousedown="event.preventDefault();document.execCommand('fontSize',false,'${n+2}')" title="Taille ${n}"
+          `<button data-rte-cmd="fontSize" data-rte-size="${n+2}" onmousedown="event.preventDefault();document.execCommand('fontSize',false,'${n+2}');setTimeout(()=>_syncRteToolbar('new-msg-toolbar'),0)" title="Taille ${n}"
             style="padding:3px 8px;border:1px solid var(--border);border-radius:5px;background:var(--bg2);color:var(--text);cursor:pointer;font-size:${10+n*2}px">A</button>`).join('')}
-        <button onmousedown="event.preventDefault();document.execCommand('insertUnorderedList')"
-          style="padding:3px 8px;border:1px solid var(--border);border-radius:5px;background:var(--bg2);color:var(--text);cursor:pointer;font-size:13px">• Liste</button>
-        <button onmousedown="event.preventDefault();document.execCommand('removeFormat')"
+        <button data-rte-cmd="insertUnorderedList" onmousedown="event.preventDefault();document.execCommand('insertUnorderedList');setTimeout(()=>_syncRteToolbar('new-msg-toolbar'),0)" title="Liste à puces"
+          style="padding:3px 7px;border:1px solid var(--border);border-radius:5px;background:var(--bg2);color:var(--text);cursor:pointer;display:inline-flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="2.5" cy="4" r="1.5" fill="currentColor"/><rect x="5.5" y="3" width="9" height="2" rx="1" fill="currentColor"/><circle cx="2.5" cy="8" r="1.5" fill="currentColor"/><rect x="5.5" y="7" width="9" height="2" rx="1" fill="currentColor"/><circle cx="2.5" cy="12" r="1.5" fill="currentColor"/><rect x="5.5" y="11" width="9" height="2" rx="1" fill="currentColor"/></svg></button>
+        <button onmousedown="event.preventDefault();document.execCommand('removeFormat');setTimeout(()=>_syncRteToolbar('new-msg-toolbar'),0)"
           style="padding:3px 8px;border:1px solid var(--border);border-radius:5px;background:var(--bg2);color:var(--text);cursor:pointer;font-size:13px">Effacer format</button>
       </div>
       <div id="new-msg-body" contenteditable="true"
-        style="min-height:160px;border:1px solid var(--border);border-radius:8px;padding:10px;background:var(--bg2);color:var(--text);font-size:14px;line-height:1.6;outline:none;overflow-y:auto"></div>
+        onmouseup="_syncRteToolbar('new-msg-toolbar')" onkeyup="_syncRteToolbar('new-msg-toolbar')"
+        style="flex:1;min-height:calc(1.6em * 3 + 20px);border:1px solid var(--border);border-radius:8px;padding:10px;background:var(--bg2);color:var(--text);font-size:14px;line-height:1.6;outline:none;overflow-y:auto"></div>
     </div>
 
     <!-- Pièces jointes -->
-    <div>
+    <div style="flex-shrink:0">
       <label style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Pièces jointes</label>
       <div id="new-msg-dropzone" onclick="document.getElementById('new-msg-file-input').click()"
         ondragover="event.preventDefault();this.style.borderColor='#1d4ed8'"
@@ -4402,16 +4884,35 @@ function openNewMessageDialog(initialRecipient = null) {
     </div>
 
     <!-- Boutons -->
-    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px">
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px;flex-shrink:0">
       <button onclick="saveMsgDraft()" style="padding:7px 16px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:13px;font-weight:500;cursor:pointer">Enregistrer dans les brouillons</button>
-      <button onclick="sendNewMessage()" style="padding:7px 16px;border-radius:8px;border:none;background:#1d4ed8;color:#fff;font-size:13px;font-weight:500;cursor:pointer">Envoyer</button>
+      <button onclick="sendNewMessage()" style="padding:7px 16px;border-radius:8px;border:none;background:#1d4ed8;color:#fff;font-size:13px;font-weight:500;cursor:pointer">${sendLabel}</button>
     </div>
-    <div id="new-msg-status" style="font-size:13px;text-align:right"></div>
+    <div id="new-msg-status" style="font-size:13px;text-align:right;flex-shrink:0"></div>
   `;
 
   overlay.appendChild(dlg);
   document.body.appendChild(overlay);
   if (initialRecipient) renderNewMsgChips();
+
+  if (subject) {
+    const subjEl = document.getElementById('new-msg-subject');
+    if (subjEl) subjEl.value = subject;
+  }
+  if (quotedHtml) {
+    const bodyEl = document.getElementById('new-msg-body');
+    if (bodyEl) {
+      const sep = `<br><br><div style="border-top:1px solid var(--border);margin:10px 0 6px 0"></div><div style="color:var(--text3);font-size:12px;margin-bottom:4px">— Message original —</div><div style="padding:8px 12px;border-left:3px solid #1d4ed8;background:var(--bg3);border-radius:0 6px 6px 0;color:var(--text2);font-size:13px">${quotedHtml}</div>`;
+      bodyEl.innerHTML = sep;
+      // Placer le curseur au début
+      const range = document.createRange();
+      range.setStart(bodyEl, 0);
+      range.collapse(true);
+      const sel = window.getSelection();
+      if (sel) { sel.removeAllRanges(); sel.addRange(range); }
+      bodyEl.focus();
+    }
+  }
 }
 
 function renderNewMsgChips() {
@@ -4590,7 +5091,63 @@ function getMsgPayload(isDraft) {
   const subject = document.getElementById('new-msg-subject')?.value.trim() || '';
   const body    = document.getElementById('new-msg-body')?.innerHTML || '';
   const to = newMsgRecipients.map(r => ({ id: r.id, typeDestinataire: r.type === 'teachers' ? 'P' : r.type === 'staff' ? 'A' : 'L' }));
-  return { subject, body: btoa(unescape(encodeURIComponent(body))), to, isDraft: isDraft ? 1 : 0 };
+  const payload = { subject, body: btoa(unescape(encodeURIComponent(body))), to, isDraft: isDraft ? 1 : 0 };
+  if (_newMsgForwardId) {
+    payload.forwardId = _newMsgForwardId;
+    payload.transfertFiles = _newMsgForwardFiles;
+  }
+  return payload;
+}
+
+function getMsgPayloadParent(isDraft) {
+  const subject = document.getElementById('new-msg-subject')?.value.trim() || '';
+  const body    = document.getElementById('new-msg-body')?.innerHTML || '';
+  const content = btoa(unescape(encodeURIComponent(body)));
+  const eleveId = getEleveId();
+  const annee   = document.getElementById('msg-annee')?.value || '';
+  const now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  const date = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+
+  const destinataires = newMsgRecipients.map(r => {
+    if (r._raw) {
+      const raw = r._raw;
+      const typeNum = String(raw.type || raw.typeDestinataire || '1');
+      return {
+        civilite: raw.civilite || '', nom: raw.nom || '', prenom: raw.prenom || '', particule: raw.particule || '',
+        type: typeNum, id: raw.id, sexe: raw.sexe || '', matiere: raw.matiere || '',
+        classe: raw.classe || { id: 0, libelle: '', code: '' },
+        photo: raw.photo || '', badge: raw.badge || '', etablissements: raw.etablissements || [],
+        responsable: raw.responsable || { id: 0, typeResp: '', versQui: '', contacts: [] },
+        fonction: raw.fonction || { id: 0, libelle: '' },
+        isPP: raw.isPP || false, isSelected: true,
+        uniqID: raw.uniqID || `${raw.id}_${typeNum}_0_0`, idRegime: raw.idRegime || 0, to_cc_cci: 'to'
+      };
+    }
+    const typeNum = r.type === 'teachers' ? '2' : r.type === 'staff' ? '3' : r.type === 'tutors' ? '4' : '1';
+    const parts = r.nom.trim().split(/\s+/);
+    const nom = parts.length > 1 ? parts.slice(1).join(' ') : r.nom;
+    const prenom = parts.length > 1 ? parts[0] : '';
+    return {
+      civilite: '', nom, prenom, particule: '', type: typeNum, id: r.id, sexe: '', matiere: '',
+      classe: { id: 0, libelle: '', code: '' }, photo: '', badge: '', etablissements: [],
+      responsable: { id: 0, typeResp: '', versQui: '', contacts: [] }, fonction: { id: 0, libelle: '' },
+      isPP: false, isSelected: true, uniqID: `${r.id}_${typeNum}_0_0`, idRegime: 0, to_cc_cci: 'to'
+    };
+  });
+
+  const msg = {
+    subject, content,
+    groupesDestinataires: [{ destinataires, selection: { type: 'W' } }],
+    idDossier: -1, idClasseur: 0, mtype: 'received', date, read: true,
+    from: { role: '1', id: eleveId, read: true }, brouillon: isDraft
+  };
+  if (_newMsgForwardId) {
+    msg.forwardId = _newMsgForwardId;
+    msg.transfertFiles = _newMsgForwardFiles;
+    msg.files = _newMsgForwardFiles;
+  }
+  return { message: msg, anneeMessages: annee };
 }
 
 function setMsgStatus(msg, color) {
@@ -4602,17 +5159,23 @@ async function sendNewMessage() {
   if (!newMsgRecipients.length) { setMsgStatus('Ajoutez au moins un destinataire.', '#b91c1c'); return; }
   const subject = document.getElementById('new-msg-subject')?.value.trim();
   if (!subject) { setMsgStatus('Le sujet est obligatoire.', '#b91c1c'); return; }
-  setMsgStatus('Envoi en cours…', 'var(--text3)');
+  const actionLabel = _newMsgMode === 'reply' ? 'Réponse' : _newMsgMode === 'forward' ? 'Transfert' : 'Envoi';
+  setMsgStatus(`${actionLabel} en cours…`, 'var(--text3)');
   try {
     const eleveId = getEleveId();
+    const _acc = accountData?.accounts ? accountData.accounts[0] : accountData;
+    const isParent = _acc?.typeCompte !== 'E';
     const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
-    const resp = await fetch(`${getProxy()}/v3/eleves/${eleveId}/messages.awp?verbe=post&v=4.97.2`, {
-      method: 'POST', headers, body: `data=${encodeURIComponent(JSON.stringify(getMsgPayload(false)))}`
-    });
+    const endpoint = isParent
+      ? `${getProxy()}/v3/familles/${eleveId}/messages.awp?verbe=post&v=4.98.0`
+      : `${getProxy()}/v3/eleves/${eleveId}/messages.awp?verbe=post&v=4.97.2`;
+    const payload = isParent ? getMsgPayloadParent(false) : getMsgPayload(false);
+    const resp = await fetch(endpoint, { method: 'POST', headers, body: `data=${encodeURIComponent(JSON.stringify(payload))}` });
     const data = await resp.json();
     if (data.code !== 200) throw new Error(data.message || `Code ${data.code}`);
-    setMsgStatus('Message envoyé !', '#15803d');
+    const successLabel = _newMsgMode === 'reply' ? 'Réponse envoyée !' : _newMsgMode === 'forward' ? 'Message transféré !' : 'Message envoyé !';
+    setMsgStatus(successLabel, '#15803d');
     setTimeout(() => { document.getElementById('new-msg-overlay')?.remove(); loadMessages(); }, 1200);
   } catch(e) { setMsgStatus(`Erreur : ${e.message}`, '#b91c1c'); }
 }
@@ -4621,11 +5184,15 @@ async function saveMsgDraft() {
   setMsgStatus('Enregistrement…', 'var(--text3)');
   try {
     const eleveId = getEleveId();
+    const _acc = accountData?.accounts ? accountData.accounts[0] : accountData;
+    const isParent = _acc?.typeCompte !== 'E';
     const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
-    const resp = await fetch(`${getProxy()}/v3/eleves/${eleveId}/messages.awp?verbe=post&v=4.97.2`, {
-      method: 'POST', headers, body: `data=${encodeURIComponent(JSON.stringify(getMsgPayload(true)))}`
-    });
+    const endpoint = isParent
+      ? `${getProxy()}/v3/familles/${eleveId}/messages.awp?verbe=post&v=4.98.0`
+      : `${getProxy()}/v3/eleves/${eleveId}/messages.awp?verbe=post&v=4.97.2`;
+    const payload = isParent ? getMsgPayloadParent(true) : getMsgPayload(true);
+    const resp = await fetch(endpoint, { method: 'POST', headers, body: `data=${encodeURIComponent(JSON.stringify(payload))}` });
     const data = await resp.json();
     if (data.code !== 200) throw new Error(data.message || `Code ${data.code}`);
     setMsgStatus('Brouillon enregistré !', '#15803d');
@@ -4874,19 +5441,40 @@ async function deleteMemo(idEnc) {
   await saveMemos();
 }
 
+function _syncRteToolbar(toolbarId) {
+  const toolbar = document.getElementById(toolbarId);
+  if (!toolbar) return;
+  toolbar.querySelectorAll('[data-rte-cmd]').forEach(btn => {
+    const cmd = btn.dataset.rteCmd;
+    const size = btn.dataset.rteSize;
+    let active = false;
+    try {
+      if (size) {
+        active = document.queryCommandValue('fontSize') === size;
+      } else {
+        active = document.queryCommandState(cmd);
+      }
+    } catch(e) {}
+    btn.style.background = active ? 'var(--bg4,#d1d5db)' : 'var(--bg2)';
+    btn.style.borderColor = active ? '#1d4ed8' : 'var(--border)';
+    btn.style.boxShadow = active ? 'inset 0 1px 3px rgba(0,0,0,0.18)' : '';
+    btn.style.color = active ? '#1d4ed8' : 'var(--text)';
+  });
+}
+
 function _memoDialogToolbar() {
-  return `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:4px">
+  return `<div id="memo-dlg-toolbar" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:4px">
     ${['bold','italic','underline'].map(cmd =>
-      `<button onmousedown="event.preventDefault();document.execCommand('${cmd}')" title="${cmd}"
+      `<button data-rte-cmd="${cmd}" onmousedown="event.preventDefault();document.execCommand('${cmd}');setTimeout(()=>_syncRteToolbar('memo-dlg-toolbar'),0)" title="${cmd}"
         style="padding:3px 8px;border:1px solid var(--border);border-radius:5px;background:var(--bg2);color:var(--text);cursor:pointer;font-size:13px">
         ${cmd==='bold'?'<b>G</b>':cmd==='italic'?'<i>I</i>':'<u>S</u>'}
       </button>`).join('')}
     ${[1,2,3].map(n =>
-      `<button onmousedown="event.preventDefault();document.execCommand('fontSize',false,'${n+2}')" title="Taille ${n}"
+      `<button data-rte-cmd="fontSize" data-rte-size="${n+2}" onmousedown="event.preventDefault();document.execCommand('fontSize',false,'${n+2}');setTimeout(()=>_syncRteToolbar('memo-dlg-toolbar'),0)" title="Taille ${n}"
         style="padding:3px 8px;border:1px solid var(--border);border-radius:5px;background:var(--bg2);color:var(--text);cursor:pointer;font-size:${10+n*2}px">A</button>`).join('')}
-    <button onmousedown="event.preventDefault();document.execCommand('insertUnorderedList')"
-      style="padding:3px 8px;border:1px solid var(--border);border-radius:5px;background:var(--bg2);color:var(--text);cursor:pointer;font-size:13px">• Liste</button>
-    <button onmousedown="event.preventDefault();document.execCommand('removeFormat')"
+    <button data-rte-cmd="insertUnorderedList" onmousedown="event.preventDefault();document.execCommand('insertUnorderedList');setTimeout(()=>_syncRteToolbar('memo-dlg-toolbar'),0)" title="Liste à puces"
+      style="padding:3px 7px;border:1px solid var(--border);border-radius:5px;background:var(--bg2);color:var(--text);cursor:pointer;display:inline-flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="2.5" cy="4" r="1.5" fill="currentColor"/><rect x="5.5" y="3" width="9" height="2" rx="1" fill="currentColor"/><circle cx="2.5" cy="8" r="1.5" fill="currentColor"/><rect x="5.5" y="7" width="9" height="2" rx="1" fill="currentColor"/><circle cx="2.5" cy="12" r="1.5" fill="currentColor"/><rect x="5.5" y="11" width="9" height="2" rx="1" fill="currentColor"/></svg></button>
+    <button onmousedown="event.preventDefault();document.execCommand('removeFormat');setTimeout(()=>_syncRteToolbar('memo-dlg-toolbar'),0)"
       style="padding:3px 8px;border:1px solid var(--border);border-radius:5px;background:var(--bg2);color:var(--text);cursor:pointer;font-size:13px">Effacer format</button>
   </div>`;
 }
@@ -4906,7 +5494,7 @@ function openNewMemoDialog() {
       <button onclick="document.getElementById('memo-dlg-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text3);line-height:1">×</button>
     </div>
     <div style="background:#fef3c7;color:#92400e;border-radius:8px;padding:8px 12px;font-size:13px;line-height:1.5">
-      ⚠ Les mémos sont enregistrés par utilisateur, ils ne sont pas partageables vers un autre utilisateur, ils sont enregistrés dans ce navigateur et ne sont disponibles que depuis ce navigateur.
+      ⚠ Les mémos sont enregistrés par utilisateur et dans le navigateur en cours.
     </div>
     <div style="display:flex;gap:12px">
       <div style="flex:1">
@@ -4922,6 +5510,7 @@ function openNewMemoDialog() {
       <label style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Contenu</label>
       <div style="margin-top:4px">${_memoDialogToolbar()}</div>
       <div id="memo-dlg-body" contenteditable="true"
+        onmouseup="_syncRteToolbar('memo-dlg-toolbar')" onkeyup="_syncRteToolbar('memo-dlg-toolbar')"
         style="min-height:160px;border:1px solid var(--border);border-radius:8px;padding:10px;background:var(--bg2);color:var(--text);font-size:14px;line-height:1.6;outline:none;overflow-y:auto"></div>
     </div>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px">
@@ -4971,6 +5560,7 @@ function openEditMemoDialog(idEnc) {
       <label style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Contenu</label>
       <div style="margin-top:4px">${_memoDialogToolbar()}</div>
       <div id="memo-dlg-body" contenteditable="true"
+        onmouseup="_syncRteToolbar('memo-dlg-toolbar')" onkeyup="_syncRteToolbar('memo-dlg-toolbar')"
         style="min-height:160px;border:1px solid var(--border);border-radius:8px;padding:10px;background:var(--bg2);color:var(--text);font-size:14px;line-height:1.6;outline:none;overflow-y:auto">${m.contenu||''}</div>
     </div>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px">
@@ -5022,10 +5612,9 @@ async function saveMemoFromDialog(existingIdEnc) {
 function exportMemosCsv() {
   if (!memosCache.length) { alert('Aucun mémo à exporter.'); return; }
   const csvEsc = s => `"${(s||'').replace(/"/g,'""')}"`;
-  const rows = [['id','eleveId','titre','contenu_texte','dateCreation','fait','dateEcheance']];
+  const rows = [['id','eleveId','titre','contenu_html','dateCreation','fait','dateEcheance']];
   memosCache.forEach(m => {
-    const texte = (m.contenu||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
-    rows.push([csvEsc(m.id), csvEsc(String(m.eleveId||'')), csvEsc(m.titre||''), csvEsc(texte), csvEsc(m.dateCreation||''), m.fait?'1':'0', csvEsc(m.dateEcheance||'')]);
+    rows.push([csvEsc(m.id), csvEsc(String(m.eleveId||'')), csvEsc(m.titre||''), csvEsc(m.contenu||''), csvEsc(m.dateCreation||''), m.fait?'1':'0', csvEsc(m.dateEcheance||'')]);
   });
   const csv  = rows.map(r => r.join(',')).join('\r\n');
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
@@ -5070,7 +5659,7 @@ async function importMemosCsv(input) {
     id:           headers.indexOf('id'),
     eleveId:      headers.indexOf('eleveId'),
     titre:        headers.indexOf('titre'),
-    contenu_texte:headers.indexOf('contenu_texte'),
+    contenu_html: headers.indexOf('contenu_html'),
     dateCreation: headers.indexOf('dateCreation'),
     fait:         headers.indexOf('fait'),
     dateEcheance: headers.indexOf('dateEcheance'),
@@ -5083,7 +5672,7 @@ async function importMemosCsv(input) {
       id:           cols[idx.id]           || '',
       eleveId:      idx.eleveId >= 0       ? (cols[idx.eleveId] || getEleveId()) : getEleveId(),
       titre:        cols[idx.titre]        || '',
-      contenu:      idx.contenu_texte >= 0 && cols[idx.contenu_texte] ? `<p>${cols[idx.contenu_texte].replace(/\n/g,'<br>')}</p>` : '',
+      contenu:      idx.contenu_html >= 0 ? (cols[idx.contenu_html] || '') : '',
       dateCreation: idx.dateCreation >= 0  ? (cols[idx.dateCreation] || new Date().toISOString()) : new Date().toISOString(),
       fait:         idx.fait >= 0          ? cols[idx.fait] === '1' : false,
     };

@@ -68,7 +68,7 @@
       <div class="avatar" id="user-avatar" onclick="openProfile()" style="cursor:pointer" title="Mon profil">?</div>
       <div class="profile-info" style="flex:1;cursor:pointer" onclick="openProfile()" title="Mon profil">
         <p style="font-size:15px;font-weight:500;" id="user-name">—</p>
-        <p style="font-size:12px;color:#888;" id="user-type">—</p>
+        <p style="font-size:12px;color:#888;margin-top:1px" id="user-meta">—</p>
       </div>
       <div style="display:flex;align-items:center;gap:4px">
         <span style="font-size:14px;font-weight:500;color:#aaa">Mon EcoleDirecte</span>
@@ -244,13 +244,26 @@
 
     <!-- Panel Vie scolaire (compte parent) -->
     <div class="tab-panel" id="panel-viescolaire-parent">
-      <div class="sub-tabs" style="margin-bottom:14px">
-        <button class="sub-tab active">Dossier d'inscription</button>
-        <button class="sub-tab">Sondages</button>
-        <button class="sub-tab">Documents</button>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <div class="sub-tabs" id="vsp-tabs">
+          <button class="sub-tab active" data-tab="documents" onclick="switchVspTab('documents')">Documents</button>
+          <button class="sub-tab" data-tab="dossier" onclick="switchVspTab('dossier')">Dossier d'inscription</button>
+          <button class="sub-tab" data-tab="sondages" onclick="switchVspTab('sondages')">Sondages</button>
+        </div>
+        <span id="spin-vsp" style="display:none"><span class="spinner"></span></span>
+        <span id="freshness-viescolaire-parent" style="font-size:11px;color:var(--text4);margin-left:auto"></span>
       </div>
-      <div style="flex:1;overflow-y:auto;min-height:0;display:flex;align-items:center;justify-content:center">
-        <span style="color:var(--text4);font-size:13px">Contenu à venir</span>
+      <!-- Panneau simple (dossier, sondages) -->
+      <div id="vsp-result" style="flex:1;overflow-y:auto;min-height:0;display:none"></div>
+      <!-- Panneau deux colonnes (documents) -->
+      <div id="vsp-doc-panel" style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <div id="vsp-doc-toolbar" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px"></div>
+        <div style="display:flex;gap:12px;flex:1;min-height:0">
+          <div id="vsp-doc-list" style="flex:1;overflow-y:auto;min-height:0"></div>
+          <div id="vsp-doc-detail" style="width:50%;border-left:1px solid var(--border);padding-left:12px;overflow-y:auto;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+            <span style="color:var(--text4);font-size:13px;text-align:center">Sélectionne un document<br>pour voir le détail ici</span>
+          </div>
+        </div>
       </div>
     </div>
 

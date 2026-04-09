@@ -103,6 +103,11 @@
   #devoir-detail-panel ul { padding-left: 1.4em; margin: 4px 0; }
   #devoir-detail-panel li { margin-bottom: 2px; }
 
+  /* Listes dans les éditeurs contenteditable et les panels de visualisation */
+  [contenteditable] ul, #memo-detail-panel ul, #message-detail-panel ul { padding-left: 1.4em; margin: 4px 0; list-style: disc; }
+  [contenteditable] ol, #memo-detail-panel ol, #message-detail-panel ol { padding-left: 1.4em; margin: 4px 0; list-style: decimal; }
+  [contenteditable] li, #memo-detail-panel li, #message-detail-panel li { margin-bottom: 2px; }
+
   /* Neutraliser les styles inline d'EcoleDirecte dans le contenu des messages */
   #message-detail-panel #msg-dialog-content div,
   #message-detail-panel #msg-dialog-content p,
@@ -140,6 +145,9 @@
   #devoirs-hide-done, #devoirs-interro-only, #msg-unread-only, #memos-hide-done, #memos-hide-expires { color: var(--text4); background: transparent; transition: color 0.15s, background 0.15s; padding: 4px 10px; border-radius: 6px; height: 34px; font-size: 13px; font-weight: 500; }
   #devoirs-hide-done:hover, #devoirs-interro-only:hover, #msg-unread-only:hover, #memos-hide-done:hover, #memos-hide-expires:hover { color: var(--text2); background: var(--bg3); }
   #devoirs-hide-done[aria-pressed="true"], #devoirs-interro-only[aria-pressed="true"], #msg-unread-only[aria-pressed="true"], #memos-hide-done[aria-pressed="true"], #memos-hide-expires[aria-pressed="true"] { color: var(--text); background: var(--bg3); }
+  .vsp-cat-filter-btn { color: var(--text4); background: transparent; border: none; cursor: pointer; transition: color 0.15s, background 0.15s; padding: 4px 10px; border-radius: 6px; height: 30px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+  .vsp-cat-filter-btn:hover { color: var(--text2); background: var(--bg3); }
+  .vsp-cat-filter-btn[aria-pressed="true"] { color: var(--text); background: var(--bg3); }
   .tab-freshness-row { display: flex; align-items: center; gap: 6px; margin-left: auto; padding-right: 2px; }
   .tab-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: #1d4ed8; color: #fff; font-size: 10px; font-weight: 700; margin-left: 4px; vertical-align: middle; }
   .espaces-layout { display: flex; flex-direction: row; }

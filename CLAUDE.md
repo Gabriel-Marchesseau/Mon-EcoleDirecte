@@ -44,8 +44,9 @@ CLAUDE.md                   # Ce fichier
 | Messages | Reçus/envoyés/brouillons/archivés, PJ téléchargeables, marquage lu, décoding entités HTML natif, sélection persistante, filtre "Non lus" |
 | Messages — Correspondances | Carnet de correspondance élève (lettres/docs reçus), badge PJ PDF, badge signature, `fetchCorrespondanceCount()` en arrière-plan dès le chargement Messages |
 | Messages — Contacts | Liste contacts (Professeurs / Personnels / Autres), bouton "Écrire" → ouvre composition avec destinataire pré-rempli |
-| Nouveau message | Dialog composition : éditeur enrichi (contenteditable), PJ drop zone, sélecteur destinataires (contact picker tabulé) |
+| Nouveau message | Dialog composition : éditeur enrichi (contenteditable), PJ drop zone, sélecteur destinataires (contact picker tabulé), modes Répondre / Transférer avec message cité |
 | Vie scolaire | Cinq onglets : Absences (liste avec justificatifs) + Sanctions/Encouragements + QCM + Sondages + **Porte-monnaie** (soldes et historique des écritures) |
+| Vie scolaire (parent) | Trois sous-onglets : **Documents** (liste par catégorie avec filtre, détail et téléchargement) + **Dossier d'inscription** + **Sondages** |
 | Mémos | Notes locales (IndexedDB), éditeur rich-text, date d'échéance, tri colonnes, filtres "Faits"/"Expirés", export/import CSV, résolution de conflits d'import |
 | Onglet ··· | Appel API manuel libre |
 
@@ -72,6 +73,9 @@ Fonctionnalités transversales : dark mode, cache IndexedDB stale-while-revalida
 - **Manuels** : ouverts via endpoint CAS `/cas-redirect?url=...` (proxy suit la redirection authentifiée)
 - **Accueil / post-its** : `POST /v3/E/{eleveId}/timelineAccueilCommun.awp?verbe=get` → `{ postits: [{type, contenu (base64), dateDebut, dateFin, auteur}] }`
 - **Porte-monnaie** : `POST /v3/comptes/detail.awp?verbe=get&v=4.98.0` avec `data={eleveId}` → `{ comptes: [{libelle, codeCompte, solde, ecritures: [{libelle, montant, date}]}] }`
+- **Documents famille** : `POST /v3/familledocuments.awp?archive=&verbe=get&v=4.98.0` → `{ administratifs, notes, factures, inscriptions, viescolaire, entreprises, listesPiecesAVerser }`
+- **Messages parent** : `/v3/familles/{eleveId}/messages.awp` (lecture et envoi) à la place de `/v3/eleves/{eleveId}/messages.awp`
+- **Accueil parent** : `POST /v3/1/{accountId}/timelineAccueilCommun.awp?verbe=get&v=4.98.0` (vs `/v3/E/{eleveId}/...` pour l'élève)
 - **Sous-dossiers espaces** : `POST /v3/cloud/W/{espaceId}.awp?verbe=get&idFolder={path}` → recharge uniquement le sous-dossier (chemin extrait de `folder.id` après `\W\{espaceId}`)
 
 ---
@@ -137,6 +141,17 @@ let _currentTabs = [];
 let _currentAccountId = '';
 let _settingsPendingDefault = 'accueil';
 let _settingsOverlayEl = null;
+
+// Onglet Vie scolaire parent
+let _vspActiveTab = 'documents';   // 'documents' | 'dossier' | 'sondages'
+let _vspDocsData = null;           // données brutes documents famille
+let _selectedVspDocKey = null;     // clé du document sélectionné
+let _vspDocFilter = null;          // null = toutes catégories | string = catégorie filtrée
+
+// Nouveau message — modes
+let _newMsgMode = null;            // null | 'reply' | 'forward'
+let _newMsgForwardId = null;       // msgId pour le transfert
+let _newMsgForwardFiles = [];      // fichiers à transférer
 ```
 
 ---
@@ -146,6 +161,8 @@ let _settingsOverlayEl = null;
 ```js
 getProxy()                    // → window.location.origin
 getEleveId()                  // → ID élève depuis accountData
+getChildEleveId()             // → ID élève même depuis un compte parent (cherche dans profile.eleves[])
+getCurrentAnnee()             // → année scolaire courante 'YYYY-YYYY'
 b64d(s)                       // Décode base64 UTF-8 (contenu EcoleDirecte)
 cleanHtml(s)                  // Nettoie le HTML (balises autorisées uniquement)
 centeredSpinner()             // → HTML string du spinner centré
@@ -169,10 +186,14 @@ fetchCorrespondanceCount()    // fetch silencieux en arrière-plan → peuple _c
 loadCorrespondance()          // affiche la liste Correspondances (utilise _correspondancesCache si peuplé, sinon fetch)
 renderCorrespondanceList(resultEl) // render HTML depuis _correspondancesCache
 openMsgToContact(id, nomEnc, type)     // ouvre composition avec destinataire pré-rempli
-openNewMessageDialog(initialRecipient) // dialog composition (initialRecipient optionnel)
+openNewMessageDialog({initialRecipient, mode, subject, quotedHtml, forwardId, forwardFiles}) // dialog composition — mode: null|'reply'|'forward'
 openContactPicker()           // sélecteur destinataires (contact picker tabulé)
 renderNewMsgChips()           // affiche les chips destinataires dans le dialog
 renderAttachmentList()        // affiche la liste des PJ dans le dialog
+replyMessage(msgId)           // ouvre composition en mode "Répondre" avec message cité
+forwardMessage(msgId)         // ouvre composition en mode "Transférer" avec message cité
+getMsgPayload(isDraft)        // payload envoi/brouillon pour comptes élève
+getMsgPayloadParent(isDraft)  // payload envoi/brouillon pour comptes parent (/v3/familles/)
 
 // Cours / Espaces de travail / Manuels
 switchCoursTab(tab)           // 'seances' | 'espaces' | 'manuels' — bascule le sous-panel
@@ -201,6 +222,16 @@ saveSettingsDefault()         // persiste dans `localStorage` clé `ed_default_t
 // Vie scolaire
 loadPorteMonnaie()            // charge soldes + écritures (`comptes/detail.awp`) depuis edCache
 renderPorteMonnaie(data)      // render les comptes avec solde coloré et historique
+
+// Vie scolaire parent
+switchVspTab(tab)             // 'documents' | 'dossier' | 'sondages' — bascule le sous-panel
+loadVspDocuments()            // charge la liste des documents famille (`familledocuments.awp`) depuis edCache
+renderVspDocToolbar(data)     // render les boutons filtre par catégorie (only si > 1 catégorie peuplée)
+toggleVspDocFilter(key)       // active/désactive le filtre par catégorie VSP_DOC_CATEGORIES
+renderVspDocList(data)        // render les documents filtrés par `_vspDocFilter`
+loadDossierInscription()      // charge le dossier d'inscription (endpoint à déterminer)
+loadVspSondages()             // charge les sondages parent (`edforms.awp`) depuis edCache
+renderVspSondages(data)       // render la liste des sondages parent
 
 // Espaces de travail
 _getFolderPath(folder)        // extrait le chemin d'un dossier depuis `folder.id` (après `\W\{espaceId}`)
@@ -253,11 +284,14 @@ deleteMemo(idEnc)             // supprime avec confirm + save
 toggleMemosFaits(btn)         // filtre "Faits" (mémos non faits)
 toggleMemosExpires(btn)       // filtre "Expirés" (dateEcheance < today)
 sortMemosBy(col)              // tri colonnes titre/dateEcheance/dateCreation
-exportMemosCsv()              // export CSV UTF-8 BOM
-importMemosCsv(input)         // import CSV avec résolution de conflits
+exportMemosCsv()              // export CSV UTF-8 BOM (colonne contenu_html — HTML préservé)
+importMemosCsv(input)         // import CSV avec résolution de conflits (supporte contenu_html)
 _parseCsvLine(line)           // parser CSV minimal (guillemets doublés)
 _processMemoImportQueue(list, i) // traite les conflits un par un (récursif async)
 _showMemoConflictDialog(imp, existing, callback) // dialog 3 boutons (Ignorer/Mettre à jour/Ajouter comme nouveau)
+
+// Éditeur rich-text (mémos et nouveau message)
+_syncRteToolbar(toolbarId)    // synchronise l'état visuel des boutons de la toolbar RTE (bold/italic/underline/fontSize actifs)
 
 // Notes — boutons période dynamiques
 buildNotesPeriodButtons()     // construit les boutons depuis notesData.periodes (remplace les boutons statiques HTML, s'adapte trimestres/semestres)
@@ -299,6 +333,9 @@ contacts:{tab}:{eleveId}      ← tab = teachers | staff | tutors
 memos:{eleveId}               ← mémos locaux (pas d'API EcoleDirecte, stockage pur IndexedDB)
 accueil:{eleveId}             ← post-its de l'établissement
 portemonnaie:{eleveId}        ← soldes et écritures porte-monnaie
+documents-parent:{eleveId}    ← documents famille (onglet Vie scolaire parent)
+sondages-parent:{eleveId}     ← sondages parent (onglet Vie scolaire parent)
+dossier-inscription:{eleveId} ← dossier d'inscription (onglet Vie scolaire parent)
 ```
 
 ---
@@ -567,3 +604,17 @@ Tous ces éléments sont intégrés dans les fichiers actuels :
 - Startup : priorité URL > page par défaut configurée (l'ancienne clé `ed_last_tab` ignorée)
 - Espaces de travail : `navigateEspaceInto()` est désormais async — lazy-load des sous-dossiers vides via `idFolder` param ; `_getFolderPath()` extrait le chemin depuis `folder.id`
 - Proxy 404 — page d'erreur 404 personnalisée en français pour les chemins inconnus
+- `replyMessage(msgId)` / `forwardMessage(msgId)` — Répondre / Transférer depuis le dialog message (mode reply/forward avec message cité)
+- `openNewMessageDialog()` étendu — supporte `mode`, `subject`, `quotedHtml`, `forwardId`, `forwardFiles` ; titre et bouton adaptatifs
+- `getMsgPayloadParent(isDraft)` — payload message pour comptes parent (`/v3/familles/`) avec structure `groupesDestinataires`
+- Messages parent — endpoint `/v3/familles/{eleveId}/messages.awp` pour lecture et envoi ; `getMsgPayloadParent()` pour l'envoi
+- `_syncRteToolbar(toolbarId)` — synchronise l'état visuel bold/italic/underline/fontSize dans les toolbars RTE (mémos + nouveau message)
+- Toolbar RTE — bouton "liste à puces" avec icône SVG, état actif reflété pour tous les boutons, liste `ul/ol` stylée dans `[contenteditable]` et panels detail
+- Mémos CSV — colonne renommée `contenu_html` (préserve le HTML rich-text à l'export/import)
+- Onglet Vie scolaire parent — `switchVspTab()` + trois sous-onglets : Documents (`loadVspDocuments()`, `renderVspDocList()`, filtre catégorie), Dossier d'inscription, Sondages (`loadVspSondages()`)
+- `renderVspDocToolbar()` / `toggleVspDocFilter()` — filtre catégories documents famille (`VSP_DOC_CATEGORIES`) avec badge signature en attente
+- `getCurrentAnnee()` / `getChildEleveId()` — nouveaux utilitaires (année scolaire courante, ID élève depuis compte parent)
+- `onLoggedIn()` — `#user-meta` affiche maintenant le type de compte + nom de l'établissement + classe
+- Proxy SPA — `/accueil` ajouté aux `SPA_ROUTES` (manquait, causait un 404 en refresh direct)
+- QCM — propositions triées alphabétiquement (numériques : ordre numérique ; texte : `localeCompare`)
+- Profil — questions secrètes triées alphabétiquement dans le `<select>`
