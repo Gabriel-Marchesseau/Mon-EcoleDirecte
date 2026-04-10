@@ -46,7 +46,7 @@ CLAUDE.md                   # Ce fichier
 | Messages — Contacts | Liste contacts (Professeurs / Personnels / Autres), bouton "Écrire" → ouvre composition avec destinataire pré-rempli |
 | Nouveau message | Dialog composition : éditeur enrichi (contenteditable), PJ drop zone, sélecteur destinataires (contact picker tabulé), modes Répondre / Transférer avec message cité |
 | Vie scolaire | Cinq onglets : Absences (liste avec justificatifs) + Sanctions/Encouragements + QCM + Sondages + **Porte-monnaie** (soldes et historique des écritures) |
-| Vie scolaire (parent) | Trois sous-onglets : **Documents** (liste par catégorie avec filtre, détail et téléchargement) + **Dossier d'inscription** + **Sondages** |
+| Vie scolaire (parent) | Six sous-onglets : **Documents** (liste par catégorie avec filtre, détail et téléchargement) + **Dossier d'inscription** + **Sondages** + **Situation financière** (compte standard : solde, avenir, historique hors factures) + **Porte-monnaie** (comptes portemonnaie/pmactivite avec sous-écritures) + **Mode de règlement** (mode, IBAN, titulaire, prochains prélèvements) |
 | Mémos | Notes locales (IndexedDB), éditeur rich-text, date d'échéance, tri colonnes, filtres "Faits"/"Expirés", export/import CSV, résolution de conflits d'import |
 | Onglet ··· | Appel API manuel libre |
 
@@ -72,9 +72,12 @@ Fonctionnalités transversales : dark mode, cache IndexedDB stale-while-revalida
 - **Sondages** : `GET /v3/edforms.awp?verbe=getlist` → liste des sondages
 - **Manuels** : ouverts via endpoint CAS `/cas-redirect?url=...` (proxy suit la redirection authentifiée)
 - **Accueil / post-its** : `POST /v3/E/{eleveId}/timelineAccueilCommun.awp?verbe=get` → `{ postits: [{type, contenu (base64), dateDebut, dateFin, auteur}] }`
-- **Porte-monnaie** : `POST /v3/comptes/detail.awp?verbe=get&v=4.98.0` avec `data={eleveId}` → `{ comptes: [{libelle, codeCompte, solde, ecritures: [{libelle, montant, date}]}] }`
+- **Porte-monnaie (élève)** : `POST /v3/comptes/detail.awp?verbe=get&v=4.98.0` avec `data={eleveId}` → comptes portemonnaie de l'élève
+- **Finances parent** : `POST /v3/comptes/detail.awp?verbe=get&v=4.98.0` avec `data={}` (sans eleveId) → tous les comptes famille `{ comptes: [{typeCompte, libelle, solde, accomptesEtCautions, avenir, ecritures}], parametrage }`
+- **Mode de règlement parent** : `POST /v3/famillemodedereglement.awp?verbe=get&v=4.98.0` avec `data={}` → `{ demandeencours, modedereglement, iban, domiciliation, bic, tire }`
 - **Documents famille** : `POST /v3/familledocuments.awp?archive=&verbe=get&v=4.98.0` → `{ administratifs, notes, factures, inscriptions, viescolaire, entreprises, listesPiecesAVerser }`
 - **Messages parent** : `/v3/familles/{eleveId}/messages.awp` (lecture et envoi) à la place de `/v3/eleves/{eleveId}/messages.awp`
+- **Marquage lu messages parent** : fetch du contenu avec `verbe=post` (marque comme lu simultanément) ; pas de requête `verbe=put` séparée contrairement au compte élève
 - **Accueil parent** : `POST /v3/1/{accountId}/timelineAccueilCommun.awp?verbe=get&v=4.98.0` (vs `/v3/E/{eleveId}/...` pour l'élève)
 - **Sous-dossiers espaces** : `POST /v3/cloud/W/{espaceId}.awp?verbe=get&idFolder={path}` → recharge uniquement le sous-dossier (chemin extrait de `folder.id` après `\W\{espaceId}`)
 
@@ -224,14 +227,20 @@ loadPorteMonnaie()            // charge soldes + écritures (`comptes/detail.awp
 renderPorteMonnaie(data)      // render les comptes avec solde coloré et historique
 
 // Vie scolaire parent
-switchVspTab(tab)             // 'documents' | 'dossier' | 'sondages' — bascule le sous-panel
+switchVspTab(tab)             // 'documents'|'dossier'|'sondages'|'situation'|'portemonnaie-parent'|'modeReglement'
 loadVspDocuments()            // charge la liste des documents famille (`familledocuments.awp`) depuis edCache
 renderVspDocToolbar(data)     // render les boutons filtre par catégorie (only si > 1 catégorie peuplée)
 toggleVspDocFilter(key)       // active/désactive le filtre par catégorie VSP_DOC_CATEGORIES
 renderVspDocList(data)        // render les documents filtrés par `_vspDocFilter`
-loadDossierInscription()      // charge le dossier d'inscription (endpoint à déterminer)
+loadDossierInscription()      // charge le dossier d'inscription depuis edCache
 loadVspSondages()             // charge les sondages parent (`edforms.awp`) depuis edCache
 renderVspSondages(data)       // render la liste des sondages parent
+loadVspFinances(tab)          // fetch `comptes/detail.awp` avec data={} (parent) → cache `finances-parent:{eleveId}`
+renderVspSituationFinanciere(data) // render compte standard (solde, avenir, historique hors factures)
+renderVspPorteMonnaie(data)   // render comptes portemonnaie/pmactivite avec sous-écritures détaillées
+loadVspModeReglement()        // fetch `famillemodedereglement.awp` → cache `mode-reglement:{eleveId}`
+renderVspModeReglement(data)  // render mode, IBAN, titulaire, domiciliation, BIC + bannière si demande en cours
+_renderEcritureRow(e)         // → HTML d'une ligne d'écriture (libelle, date, montant coloré, bouton DL si idPieceJointe)
 
 // Espaces de travail
 _getFolderPath(folder)        // extrait le chemin d'un dossier depuis `folder.id` (après `\W\{espaceId}`)
@@ -336,6 +345,8 @@ portemonnaie:{eleveId}        ← soldes et écritures porte-monnaie
 documents-parent:{eleveId}    ← documents famille (onglet Vie scolaire parent)
 sondages-parent:{eleveId}     ← sondages parent (onglet Vie scolaire parent)
 dossier-inscription:{eleveId} ← dossier d'inscription (onglet Vie scolaire parent)
+finances-parent:{eleveId}     ← comptes/detail.awp data={} — partagé entre Situation financière et Porte-monnaie
+mode-reglement:{eleveId}      ← famillemodedereglement.awp — Mode de règlement parent
 ```
 
 ---
@@ -439,6 +450,10 @@ Utiliser `X-ApisVer: 4.97.2` (pas `4.75.0`) pour les endpoints de téléchargeme
 ### Jours Congés dans l'EDT (typeCours === 'CONGE')
 Les cours CONGE ont des horaires 00:00 → 23:59 → `top` très négatif → débordent hors du body et cachaient le header (date).  
 Fix : `isCongeDay` map dans `renderEdtGrid()`, les cours CONGE sont exclus de `byDay` et remplacés par une overlay grise sur le body uniquement. `overflow:hidden` sur `.edt-day-body`, `z-index:3` sur `.edt-header`.
+
+### Marquage lu messages — compte parent
+Pour un compte élève, le marquage lu utilise une requête séparée `verbe=put` sur `/v3/eleves/{id}/messages/{msgId}.awp`. Pour un compte parent (`/v3/familles/`), cette requête n'a pas d'effet : c'est le fetch du contenu avec `verbe=post` qui marque simultanément le message comme lu.  
+Fix : `openMessageDialog()` n'envoie le `verbe=put` que si `typeCompte === 'E'` ; le fetch du contenu utilise `verbe=post` (au lieu de `verbe=get`) pour les comptes parent.
 
 ---
 
@@ -611,10 +626,13 @@ Tous ces éléments sont intégrés dans les fichiers actuels :
 - `_syncRteToolbar(toolbarId)` — synchronise l'état visuel bold/italic/underline/fontSize dans les toolbars RTE (mémos + nouveau message)
 - Toolbar RTE — bouton "liste à puces" avec icône SVG, état actif reflété pour tous les boutons, liste `ul/ol` stylée dans `[contenteditable]` et panels detail
 - Mémos CSV — colonne renommée `contenu_html` (préserve le HTML rich-text à l'export/import)
-- Onglet Vie scolaire parent — `switchVspTab()` + trois sous-onglets : Documents (`loadVspDocuments()`, `renderVspDocList()`, filtre catégorie), Dossier d'inscription, Sondages (`loadVspSondages()`)
+- Onglet Vie scolaire parent — `switchVspTab()` + six sous-onglets : Documents, Dossier d'inscription, Sondages, **Situation financière**, **Porte-monnaie**, **Mode de règlement** (3 nouveaux onglets financiers ajoutés à la session suivante)
 - `renderVspDocToolbar()` / `toggleVspDocFilter()` — filtre catégories documents famille (`VSP_DOC_CATEGORIES`) avec badge signature en attente
 - `getCurrentAnnee()` / `getChildEleveId()` — nouveaux utilitaires (année scolaire courante, ID élève depuis compte parent)
 - `onLoggedIn()` — `#user-meta` affiche maintenant le type de compte + nom de l'établissement + classe
 - Proxy SPA — `/accueil` ajouté aux `SPA_ROUTES` (manquait, causait un 404 en refresh direct)
 - QCM — propositions triées alphabétiquement (numériques : ordre numérique ; texte : `localeCompare`)
 - Profil — questions secrètes triées alphabétiquement dans le `<select>`
+- Messages parent — marquage lu corrigé : le fetch du contenu utilise `verbe=post` (au lieu de `verbe=get`) pour les comptes parent ; le `verbe=put` séparé n'est envoyé que pour les comptes élève
+- Vie scolaire parent — onglet Administratif simplifié (Documents et Factures supprimés car accessibles depuis Vie scolaire) ; 3 nouveaux onglets financiers dans Vie scolaire : Situation financière (`comptes/detail.awp` `data={}`), Porte-monnaie (portemonnaie/pmactivite avec sous-écritures), Mode de règlement (`famillemodedereglement.awp`)
+- Situation financière — les écritures avec `idPieceJointe` (factures téléchargeables) sont filtrées de l'historique (accessibles depuis l'onglet Documents)

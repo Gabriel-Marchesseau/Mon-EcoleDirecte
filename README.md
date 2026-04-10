@@ -19,7 +19,7 @@
 - 📶 **Offline mode** — Displays cached data with a banner when the proxy is unreachable
 - 🌙 **Dark mode** — Toggleable, preference saved locally
 - ⚙️ **Settings** — Choose the default landing tab per account (gear icon in header)
-- 👨‍👩‍👧 **Parent account support** — Adapted tab set; parent-specific **School life** panel with Documents, Enrollment Dossier, and Surveys sub-tabs
+- 👨‍👩‍👧 **Parent account support** — Adapted tab set; parent-specific **School life** panel with Documents, Enrollment Dossier, Surveys, **Financial overview**, **Wallet**, and **Payment method** sub-tabs
 - 🔒 **Secure** — All requests go through a local HTTPS proxy; credentials never leave your machine
 - 🔄 **Auto-reload (debug)** — `nodemon` watches for file changes and restarts automatically
 

@@ -249,11 +249,14 @@
           <button class="sub-tab active" data-tab="documents" onclick="switchVspTab('documents')">Documents</button>
           <button class="sub-tab" data-tab="dossier" onclick="switchVspTab('dossier')">Dossier d'inscription</button>
           <button class="sub-tab" data-tab="sondages" onclick="switchVspTab('sondages')">Sondages</button>
+          <button class="sub-tab" data-tab="situation" onclick="switchVspTab('situation')">Situation financière</button>
+          <button class="sub-tab" data-tab="portemonnaie-parent" onclick="switchVspTab('portemonnaie-parent')">Porte-monnaie</button>
+          <button class="sub-tab" data-tab="modeReglement" onclick="switchVspTab('modeReglement')">Mode de règlement</button>
         </div>
         <span id="spin-vsp" style="display:none"><span class="spinner"></span></span>
         <span id="freshness-viescolaire-parent" style="font-size:11px;color:var(--text4);margin-left:auto"></span>
       </div>
-      <!-- Panneau simple (dossier, sondages) -->
+      <!-- Panneau simple (dossier, sondages, finances) -->
       <div id="vsp-result" style="flex:1;overflow-y:auto;min-height:0;display:none"></div>
       <!-- Panneau deux colonnes (documents) -->
       <div id="vsp-doc-panel" style="display:flex;flex-direction:column;flex:1;min-height:0">
@@ -270,12 +273,7 @@
     <!-- Panel Administratif (compte parent) -->
     <div class="tab-panel" id="panel-administratif">
       <div class="sub-tabs" style="margin-bottom:14px">
-        <button class="sub-tab active">Documents</button>
-        <button class="sub-tab">Situation financière</button>
-        <button class="sub-tab">Porte-monnaie</button>
-        <button class="sub-tab">Factures</button>
-        <button class="sub-tab">Mode de règlement</button>
-        <button class="sub-tab">Paiements en ligne</button>
+        <button class="sub-tab active">Paiements en ligne</button>
       </div>
       <div style="flex:1;overflow-y:auto;min-height:0;display:flex;align-items:center;justify-content:center">
         <span style="color:var(--text4);font-size:13px">Contenu à venir</span>

@@ -3290,6 +3290,13 @@ async function forceRefresh(tab) {
     } else if (_vspActiveTab === 'sondages') {
       await edCache.delete(`sondages-parent:${eleveId}`);
       await loadVspSondages();
+    } else if (_VSP_FINANCE_TABS.has(_vspActiveTab)) {
+      await edCache.delete(`finances-parent:${eleveId}`);
+      _vspFinancesData = null;
+      await loadVspFinances(_vspActiveTab);
+    } else if (_vspActiveTab === 'modeReglement') {
+      await edCache.delete(`mode-reglement:${eleveId}`);
+      await loadVspModeReglement();
     }
   }
 
@@ -3498,6 +3505,9 @@ let _vspActiveTab = 'documents';
 let _vspDocsData = null;
 let _selectedVspDocKey = null;
 let _vspDocFilter = null; // null = toutes catégories, string = clé de catégorie filtrée
+let _vspFinancesData = null;
+
+const _VSP_FINANCE_TABS = new Set(['situation', 'portemonnaie-parent']);
 
 function switchVspTab(tab) {
   _vspActiveTab = tab;
@@ -3507,9 +3517,227 @@ function switchVspTab(tab) {
   const docPanel  = document.getElementById('vsp-doc-panel');
   if (resultEl) resultEl.style.display  = isDoc ? 'none' : '';
   if (docPanel) docPanel.style.display  = isDoc ? 'flex' : 'none';
-  if (tab === 'documents')  { _vspDocFilter = null; loadVspDocuments(); }
-  else if (tab === 'dossier')   loadDossierInscription();
-  else if (tab === 'sondages')  loadVspSondages();
+  if (tab === 'documents')             { _vspDocFilter = null; loadVspDocuments(); }
+  else if (tab === 'dossier')          loadDossierInscription();
+  else if (tab === 'sondages')         loadVspSondages();
+  else if (_VSP_FINANCE_TABS.has(tab)) loadVspFinances(tab);
+  else if (tab === 'modeReglement')    loadVspModeReglement();
+}
+
+async function loadVspFinances(tab) {
+  const eleveId = getEleveId();
+  if (!eleveId) return;
+  const cacheKey = `finances-parent:${eleveId}`;
+  const resultEl = document.getElementById('vsp-result');
+  const spinEl   = document.getElementById('spin-vsp');
+  if (!resultEl) return;
+
+  const renderForTab = data => {
+    if (tab === 'situation')           return renderVspSituationFinanciere(data);
+    if (tab === 'portemonnaie-parent') return renderVspPorteMonnaie(data);
+    return '';
+  };
+
+  // Si les données sont déjà en mémoire, re-render sans refetch
+  if (_vspFinancesData) {
+    resultEl.innerHTML = renderForTab(_vspFinancesData);
+    return;
+  }
+
+  await edCache.load(cacheKey, async () => {
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' };
+    if (twoFaToken) headers['2fa-token'] = twoFaToken;
+    const resp = await fetch(`${getProxy()}/v3/comptes/detail.awp?verbe=get&v=4.98.0`, {
+      method: 'POST', headers, body: 'data={}'
+    });
+    const d = await resp.json();
+    if (d.code !== 200) throw new Error(d.message || `Code ${d.code}`);
+    return d.data;
+  }, {
+    onSpinner: () => { spinEl.style.display = 'inline'; resultEl.innerHTML = centeredSpinner(); },
+    onCached:  (data, ts) => { spinEl.style.display = 'none'; _vspFinancesData = data; resultEl.innerHTML = renderForTab(data); updateFreshnessLabel('viescolaire-parent', ts || Date.now()); },
+    onFresh:   (data)     => { spinEl.style.display = 'none'; _vspFinancesData = data; resultEl.innerHTML = renderForTab(data); updateFreshnessLabel('viescolaire-parent', Date.now()); },
+    diffFn:    edCache.defaultDiff,
+  }).catch(e => {
+    resultEl.innerHTML = `<p style="color:#b91c1c;font-size:14px">Erreur : ${e.message}</p>`;
+    spinEl.style.display = 'none';
+  });
+}
+
+function _renderEcritureRow(e) {
+  const montant = typeof e.montant === 'number' ? e.montant : 0;
+  const signe   = montant > 0 ? '+' : '';
+  const mCoul   = montant < 0 ? '#b91c1c' : (montant > 0 ? '#15803d' : 'var(--text3)');
+  const dateStr = e.date ? e.date.split('T')[0].split('-').reverse().join('/') : '';
+  const dlBtn = e.idPieceJointe
+    ? `<button onclick="downloadVspFile(${e.idPieceJointe},'${encodeURIComponent(e.libelle || 'facture').replace(/'/g,'%27')}.pdf','Facture')" title="Télécharger"
+        style="margin-left:6px;padding:2px 7px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);color:var(--text2);font-size:11px;cursor:pointer">📄</button>`
+    : '';
+  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border2);font-size:13px">
+    <div style="flex:1;min-width:0;display:flex;align-items:center;flex-wrap:wrap;gap:4px">
+      <span style="color:var(--text)">${e.libelle || '—'}</span>
+      ${dateStr ? `<span style="color:var(--text3);font-size:11px">${dateStr}</span>` : ''}
+      ${dlBtn}
+    </div>
+    <span style="font-weight:600;color:${mCoul};white-space:nowrap;margin-left:12px">${signe}${montant.toFixed(2)} €</span>
+  </div>`;
+}
+
+function renderVspSituationFinanciere(data) {
+  const comptes = (data?.comptes || []).filter(c => c.typeCompte === 'standard');
+  if (!comptes.length) return '<p style="color:var(--text3);font-size:14px">Aucun compte disponible.</p>';
+  let html = '';
+  comptes.forEach(c => {
+    const solde   = typeof c.solde === 'number' ? c.solde : 0;
+    const soldeCoul = solde < 0 ? '#b91c1c' : (solde === 0 ? 'var(--text3)' : '#15803d');
+    html += `<div style="background:var(--bg3);border-radius:10px;padding:14px 16px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div style="font-weight:600;font-size:15px">${c.libelle || c.libelleCompte}</div>
+        <div style="text-align:right">
+          <div style="font-size:22px;font-weight:700;color:${soldeCoul}">${solde >= 0 ? '+' : ''}${solde.toFixed(2)} €</div>
+          <div style="font-size:11px;color:var(--text3)">Solde</div>
+        </div>
+      </div>`;
+
+    if (c.accomptesEtCautions?.length) {
+      html += `<div style="border-top:1px solid var(--border);padding-top:10px;margin-bottom:10px">
+        <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em">Acomptes et cautions</div>`;
+      c.accomptesEtCautions.forEach(a => {
+        html += `<div style="font-size:13px;color:var(--text);padding:4px 0;border-bottom:1px solid var(--border2)">${a}</div>`;
+      });
+      html += '</div>';
+    }
+
+    if (c.avenir?.length) {
+      html += `<div style="border-top:1px solid var(--border);padding-top:10px;margin-bottom:10px">
+        <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em">À venir</div>`;
+      c.avenir.forEach(a => {
+        const dateStr = a.date ? a.date.split('-').reverse().join('/') : '';
+        const m = typeof a.montant === 'number' ? a.montant : 0;
+        const mCoul = m < 0 ? '#b91c1c' : '#b45309';
+        html += `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;border-bottom:1px solid var(--border2);font-size:13px">
+          <div><span style="color:var(--text)">${a.libelle || '—'}</span>${dateStr ? `<span style="color:var(--text3);font-size:11px;margin-left:8px">${dateStr}</span>` : ''}</div>
+          <span style="font-weight:600;color:${mCoul};white-space:nowrap;margin-left:12px">${m >= 0 ? '+' : ''}${m.toFixed(2)} €</span>
+        </div>`;
+      });
+      html += '</div>';
+    }
+
+    if (c.ecritures?.length) {
+      html += `<div style="border-top:1px solid var(--border);padding-top:10px">
+        <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em">Historique</div>`;
+      c.ecritures.filter(e => !e.idPieceJointe).forEach(e => { html += _renderEcritureRow(e); });
+      html += '</div>';
+    }
+
+    html += '</div>';
+  });
+  return html;
+}
+
+function renderVspPorteMonnaie(data) {
+  const comptes = (data?.comptes || []).filter(c => c.typeCompte === 'portemonnaie' || c.typeCompte === 'pmactivite');
+  if (!comptes.length) return '<p style="color:var(--text3);font-size:14px">Aucun porte-monnaie disponible.</p>';
+  let html = '';
+  comptes.forEach(c => {
+    const solde   = typeof c.solde === 'number' ? c.solde : 0;
+    const soldeCoul = solde < 0 ? '#b91c1c' : (solde < 5 ? '#b45309' : '#15803d');
+    const ecritures = Array.isArray(c.ecritures) ? c.ecritures : [];
+    html += `<div style="background:var(--bg3);border-radius:10px;padding:14px 16px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div>
+          <div style="font-weight:600;font-size:15px">${c.libelle || c.libelleCompte}</div>
+          ${c.codeCompte ? `<div style="color:var(--text3);font-size:12px">${c.codeCompte}</div>` : ''}
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:22px;font-weight:700;color:${soldeCoul}">${solde.toFixed(2)} €</div>
+          <div style="font-size:11px;color:var(--text3)">Solde</div>
+        </div>
+      </div>`;
+    if (ecritures.length) {
+      html += `<div style="border-top:1px solid var(--border);padding-top:8px">
+        <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em">Historique</div>`;
+      ecritures.forEach(e => {
+        html += _renderEcritureRow(e);
+        if (e.ecritures?.length) {
+          html += `<div style="margin:2px 0 6px 12px;padding-left:10px;border-left:2px solid var(--border2)">`;
+          e.ecritures.forEach(s => {
+            const sm = typeof s.montant === 'number' ? s.montant : 0;
+            const sc = sm < 0 ? '#b91c1c' : (sm > 0 ? '#15803d' : 'var(--text3)');
+            const sd = s.date ? s.date.split('T')[0].split('-').reverse().join('/') : '';
+            html += `<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text2);padding:2px 0">
+              <span>${s.libelle || '—'}${sd ? ` <span style="color:var(--text3)">${sd}</span>` : ''}</span>
+              <span style="color:${sc};white-space:nowrap;margin-left:8px">${sm > 0 ? '+' : ''}${sm.toFixed(2)} €</span>
+            </div>`;
+          });
+          html += '</div>';
+        }
+      });
+      html += '</div>';
+    } else {
+      html += '<div style="color:var(--text3);font-size:13px;margin-top:6px">Aucune écriture.</div>';
+    }
+    html += '</div>';
+  });
+  return html;
+}
+
+async function loadVspModeReglement() {
+  const eleveId = getEleveId();
+  if (!eleveId) return;
+  const cacheKey = `mode-reglement:${eleveId}`;
+  const resultEl = document.getElementById('vsp-result');
+  const spinEl   = document.getElementById('spin-vsp');
+  if (!resultEl) return;
+
+  await edCache.load(cacheKey, async () => {
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' };
+    if (twoFaToken) headers['2fa-token'] = twoFaToken;
+    const resp = await fetch(`${getProxy()}/v3/famillemodedereglement.awp?verbe=get&v=4.98.0`, {
+      method: 'POST', headers, body: 'data={}'
+    });
+    const d = await resp.json();
+    if (d.code !== 200) throw new Error(d.message || `Code ${d.code}`);
+    return d.data;
+  }, {
+    onSpinner: () => { spinEl.style.display = 'inline'; resultEl.innerHTML = centeredSpinner(); },
+    onCached:  (data, ts) => { spinEl.style.display = 'none'; resultEl.innerHTML = renderVspModeReglement(data); updateFreshnessLabel('viescolaire-parent', ts || Date.now()); },
+    onFresh:   (data)     => { spinEl.style.display = 'none'; resultEl.innerHTML = renderVspModeReglement(data); updateFreshnessLabel('viescolaire-parent', Date.now()); },
+    diffFn:    edCache.defaultDiff,
+  }).catch(e => {
+    resultEl.innerHTML = `<p style="color:#b91c1c;font-size:14px">Erreur : ${e.message}</p>`;
+    spinEl.style.display = 'none';
+  });
+}
+
+function renderVspModeReglement(data) {
+  if (!data) return '<p style="color:var(--text3);font-size:14px">Aucune information disponible.</p>';
+
+  const kv = (label, value) => {
+    if (!value && value !== false) return '';
+    const display = typeof value === 'boolean' ? (value ? 'Oui' : 'Non') : String(value);
+    return `<div style="display:flex;gap:12px;padding:7px 0;border-bottom:1px solid var(--border2);font-size:13px">
+      <span style="color:var(--text3);flex:0 0 160px">${label}</span>
+      <span style="color:var(--text);font-weight:500">${display}</span>
+    </div>`;
+  };
+
+  let html = `<div style="background:var(--bg3);border-radius:10px;padding:14px 16px;margin-bottom:14px">`;
+
+  if (data.demandeencours) {
+    html += `<div style="margin-bottom:12px;padding:8px 12px;border-radius:8px;background:#fffbeb;border:1px solid #fde68a;font-size:13px;color:#b45309;font-weight:500">
+      ⏳ Une demande de modification est en cours
+    </div>`;
+  }
+
+  html += kv('Mode de règlement', data.modedereglement);
+  html += kv('Titulaire', data.tire);
+  html += kv('IBAN', data.iban);
+  html += kv('Domiciliation', data.domiciliation);
+  html += kv('BIC', data.bic);
+
+  html += '</div>';
+  return html;
 }
 
 async function loadVspSondages() {
@@ -4235,14 +4463,15 @@ async function openMessageDialog(msgId) {
     cached.read = true;
     const annee = document.getElementById('msg-annee')?.value || '';
     const _acc2 = accountData?.accounts ? accountData.accounts[0] : accountData;
-    const _markUrl = _acc2?.typeCompte === 'E'
-      ? `${getProxy()}/v3/eleves/${eleveId}/messages/${msgId}.awp?verbe=put`
-      : `${getProxy()}/v3/familles/${eleveId}/messages/${msgId}.awp?verbe=put`;
-    fetch(_markUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
-      body: `data=${encodeURIComponent(JSON.stringify({ anneeMessages: annee }))}`
-    }).catch(() => {});
+    // Pour un compte élève : requête PUT séparée ; pour un compte parent, le fetch du contenu
+    // avec verbe=post (ci-dessous) marque déjà le message comme lu — pas de requête PUT ici.
+    if (_acc2?.typeCompte === 'E') {
+      fetch(`${getProxy()}/v3/eleves/${eleveId}/messages/${msgId}.awp?verbe=put`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
+        body: `data=${encodeURIComponent(JSON.stringify({ anneeMessages: annee }))}`
+      }).catch(() => {});
+    }
     const row = document.querySelector(`[onclick="openMessageDialog(${msgId})"]`);
     if (row) {
       const dot  = row.querySelector('span:first-child');
@@ -4312,13 +4541,15 @@ async function openMessageDialog(msgId) {
     const annee = document.getElementById('msg-annee')?.value || '';
 
     const _acc3 = accountData?.accounts ? accountData.accounts[0] : accountData;
-    const _msgContentBase = _acc3?.typeCompte === 'E'
+    const _isEleve3 = _acc3?.typeCompte === 'E';
+    const _msgContentBase = _isEleve3
       ? `/v3/eleves/${eleveId}/messages/${msgId}.awp`
       : `/v3/familles/${eleveId}/messages/${msgId}.awp`;
+    const _contentVerbe = _isEleve3 ? 'get' : 'post';
     await edCache.load(cacheKey, async () => {
       const endpoints = [
-        { url: `${_msgContentBase}?verbe=get&mode=${mode}`, body: `data=${encodeURIComponent(JSON.stringify({ anneeMessages: annee }))}` },
-        { url: `${_msgContentBase}?verbe=get`, body: 'data={}' },
+        { url: `${_msgContentBase}?verbe=${_contentVerbe}&mode=${mode}`, body: `data=${encodeURIComponent(JSON.stringify({ anneeMessages: annee }))}` },
+        { url: `${_msgContentBase}?verbe=${_contentVerbe}`, body: 'data={}' },
       ];
       for (const ep of endpoints) {
         const resp = await fetch(`${getProxy()}${ep.url}`, {
