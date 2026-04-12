@@ -25,7 +25,8 @@
 - **Porte-monnaie (élève)** : `POST /v3/comptes/detail.awp?verbe=get&v=4.98.0` avec `data={eleveId}` → comptes portemonnaie de l'élève
 - **Finances parent** : `POST /v3/comptes/detail.awp?verbe=get&v=4.98.0` avec `data={}` (sans eleveId) → tous les comptes famille `{ comptes: [{typeCompte, libelle, solde, accomptesEtCautions, avenir, ecritures}], parametrage }`
 - **Mode de règlement parent** : `POST /v3/famillemodedereglement.awp?verbe=get&v=4.98.0` avec `data={}` → `{ demandeencours, modedereglement, iban, domiciliation, bic, tire }`
-- **Paiements en ligne parent** : `POST /v3/boutique/paiementsenligne.awp?verbe=get&v=4.98.0` avec `data={}` → tableau de groupes `[{ libelle, paiements: [{id, idEleve, img, libelle, montant, montantModifiable, typePaiement (pm|service), detail (base64), isPMPayable}] }]`
+- **Paiements en ligne parent** : `POST /v3/boutique/paiementsenligne.awp?verbe=get&v=4.98.0` avec `data={}` → tableau de groupes `[{ libelle, paiements: [{id, idEleve, img, libelle, libellePanier, montant, montantModifiable, quantiteModifiable, typePaiement (pm|service), detail (base64), isPMPayable}] }]`
+- **Soldes porte-monnaie (sans détail)** : `POST /v3/comptes/sansdetails.awp?verbe=get&v=4.98.0` avec `data={}` → `{ comptes: [{typeCompte, idEleve, solde, …}] }` — utilisé pour afficher le solde pm à côté des items de paiement
 - **Documents famille** : `POST /v3/familledocuments.awp?archive=&verbe=get&v=4.98.0` → `{ administratifs, notes, factures, inscriptions, viescolaire, entreprises, listesPiecesAVerser }`
 - **Messages parent** : `/v3/familles/{eleveId}/messages.awp` (lecture et envoi) à la place de `/v3/eleves/{eleveId}/messages.awp`
 - **Marquage lu messages parent** : fetch du contenu avec `verbe=post` (marque comme lu simultanément) ; pas de requête `verbe=put` séparée contrairement au compte élève
@@ -85,7 +86,7 @@ sondages-parent:{eleveId}     ← sondages parent (page Vie scolaire parent)
 dossier-inscription:{eleveId} ← dossier d'inscription (page Vie scolaire parent)
 finances-parent:{eleveId}     ← comptes/detail.awp data={} — partagé entre Situation financière et Porte-monnaie
 mode-reglement:{eleveId}      ← famillemodedereglement.awp — Mode de règlement parent
-paiements-enligne:{eleveId}   ← boutique/paiementsenligne.awp — Paiements en ligne parent
+paiements-enligne:{eleveId}   ← { paiements, soldesParEleve } — boutique/paiementsenligne.awp + comptes/sansdetails.awp
 ```
 
 ---

@@ -89,6 +89,15 @@ body.dark .child-account-select { ... }
 body.dark .postit-content [style*="background"] { background: transparent !important; }
 ```
 
+## Paiements en ligne — layout panier fixe en bas
+- `#finances-result` passe en `flex-direction:column` via `switchFinancesTab('paiementsenligne')` (style.cssText direct)
+- Layout : zone catalogue scrollable (`flex:1;overflow-y:auto`) + panier fixe en bas (`flex-shrink:0`)
+- `_paiementsData` / `_panierPaiements` (Map) — état global du panier ; réinitialisés au forceRefresh
+- `addToPanier(id)` / `removeFromPanier(id)` / `updatePanierQte(id, delta)` / `updatePanierMontant(id, value)`
+- `_refreshPanierUI()` — re-render `#panier-paiements` + met à jour les boutons "Ajouter" dans le catalogue
+- `openPaiementDialog()` — récapitulatif overlay (WIP, bouton Payer sans action réelle)
+- Dark mode : `.btn-remove-panier:hover` couleur spécifique dans le bloc `darkStyle`
+
 ## Largeur onglets stable au bold
 `.tab::before` avec `data-label` — empêche le saut de largeur lors du bold de l'onglet actif :
 ```css

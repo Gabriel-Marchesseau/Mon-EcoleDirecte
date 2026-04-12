@@ -52,6 +52,18 @@ darkStyle.textContent = `
   .postit-content ul, .postit-content ol { padding-left:1.5em;margin:6px 0; }
   .postit-content p { margin:4px 0; }
   .postit-author { font-size:12px;color:var(--text3);margin-top:10px;padding-top:8px;border-top:1px solid var(--border2); }
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+  input[type=number] { -moz-appearance:textfield; appearance:textfield; }
+  .panier-card { transition:background .15s; }
+  .panier-card:hover { background:var(--bg4) !important; }
+  .panier-row { transition:background .15s; border-radius:6px; }
+  .panier-row:hover { background:var(--bg2) !important; }
+  .btn-add-panier { transition:filter .15s; }
+  .btn-add-panier:not([disabled]):hover { filter:brightness(1.15); }
+  .btn-remove-panier { transition:background .15s, color .15s; }
+  .btn-remove-panier:hover { background:#fee2e2 !important; color:#991b1b !important; }
+  body.dark .btn-remove-panier:hover { background:#3a1515 !important; color:#fca5a5 !important; }
 `;
 document.head.appendChild(darkStyle);
 (function() {
@@ -3489,6 +3501,7 @@ async function forceRefresh(tab) {
       await loadVspModeReglement();
     } else if (_finActiveTab === 'paiementsenligne') {
       await edCache.delete(`paiements-enligne:${eleveId}`);
+      _paiementsData = null; _panierPaiements.clear();
       await loadVspPaiementsEnLigne();
     }
   } else if (tab === 'viescolaire-parent') {
@@ -3714,6 +3727,8 @@ let _selectedVspDocKey = null;
 let _vspDocFilter = null; // null = toutes catégories, string = clé de catégorie filtrée
 let _vspFinancesData = null;
 let _finActiveTab = 'situation';
+let _paiementsData = null;       // données brutes paiements en ligne (catalog + soldes)
+let _panierPaiements = new Map(); // itemId → { item, qte, montantSaisi }
 
 const _VSP_FINANCE_TABS = new Set(['situation', 'portemonnaie-parent']);
 
@@ -3727,6 +3742,14 @@ function switchVspTab(tab) {
 function switchFinancesTab(tab) {
   _finActiveTab = tab;
   document.querySelectorAll('#finances-tabs .sub-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  const resultEl = document.getElementById('finances-result');
+  if (resultEl) {
+    if (tab === 'paiementsenligne') {
+      resultEl.style.cssText = 'flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0';
+    } else {
+      resultEl.style.cssText = 'flex:1;overflow-y:auto;min-height:0';
+    }
+  }
   if (_VSP_FINANCE_TABS.has(tab)) loadVspFinances(tab);
   else if (tab === 'modeReglement') loadVspModeReglement();
   else if (tab === 'paiementsenligne') loadVspPaiementsEnLigne();
@@ -3959,16 +3982,23 @@ async function loadVspPaiementsEnLigne() {
   await edCache.load(cacheKey, async () => {
     const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
-    const resp = await fetch(`${getProxy()}/v3/boutique/paiementsenligne.awp?verbe=get&v=4.98.0`, {
-      method: 'POST', headers, body: 'data={}'
-    });
-    const d = await resp.json();
-    if (d.code !== 200) throw new Error(d.message || `Code ${d.code}`);
-    return d.data;
+    const [rPaiements, rSoldes] = await Promise.all([
+      fetch(`${getProxy()}/v3/boutique/paiementsenligne.awp?verbe=get&v=4.98.0`, { method: 'POST', headers, body: 'data={}' }),
+      fetch(`${getProxy()}/v3/comptes/sansdetails.awp?verbe=get&v=4.98.0`,        { method: 'POST', headers, body: 'data={}' }),
+    ]);
+    const [dPaiements, dSoldes] = await Promise.all([rPaiements.json(), rSoldes.json()]);
+    if (dPaiements.code !== 200) throw new Error(dPaiements.message || `Code ${dPaiements.code}`);
+    const soldesParEleve = {};
+    if (dSoldes.code === 200 && Array.isArray(dSoldes.data?.comptes)) {
+      dSoldes.data.comptes
+        .filter(c => c.typeCompte === 'portemonnaie' || c.typeCompte === 'pmactivite')
+        .forEach(c => { if (c.idEleve != null) soldesParEleve[String(c.idEleve)] = typeof c.solde === 'number' ? c.solde : null; });
+    }
+    return { paiements: dPaiements.data, soldesParEleve };
   }, {
     onSpinner: () => { spinEl.style.display = 'inline'; resultEl.innerHTML = centeredSpinner(); },
-    onCached:  (data, ts) => { spinEl.style.display = 'none'; resultEl.innerHTML = renderVspPaiementsEnLigne(data); updateFreshnessLabel('finances-parent', ts || Date.now()); },
-    onFresh:   (data)     => { spinEl.style.display = 'none'; resultEl.innerHTML = renderVspPaiementsEnLigne(data); updateFreshnessLabel('finances-parent', Date.now()); },
+    onCached:  (data, ts) => { spinEl.style.display = 'none'; _paiementsData = data; resultEl.innerHTML = renderVspPaiementsEnLigne(data); updateFreshnessLabel('finances-parent', ts || Date.now()); },
+    onFresh:   (data)     => { spinEl.style.display = 'none'; _paiementsData = data; resultEl.innerHTML = renderVspPaiementsEnLigne(data); updateFreshnessLabel('finances-parent', Date.now()); },
     diffFn:    edCache.defaultDiff,
   }).catch(e => {
     resultEl.innerHTML = `<p style="color:#b91c1c;font-size:14px">Erreur : ${e.message}</p>`;
@@ -3976,11 +4006,159 @@ async function loadVspPaiementsEnLigne() {
   });
 }
 
+function addToPanier(itemId) {
+  if (!_paiementsData) return;
+  let found = null;
+  for (const g of (_paiementsData.paiements || [])) {
+    for (const p of (g.paiements || [])) { if (p.id === itemId) { found = p; break; } }
+    if (found) break;
+  }
+  if (!found) return;
+  if (_panierPaiements.has(itemId)) {
+    if (found.quantiteModifiable) _panierPaiements.get(itemId).qte++;
+  } else {
+    _panierPaiements.set(itemId, { item: found, qte: 1, montantSaisi: typeof found.montant === 'number' ? found.montant : 0 });
+  }
+  _refreshPanierUI();
+}
+
+function removeFromPanier(itemId) {
+  _panierPaiements.delete(itemId);
+  _refreshPanierUI();
+}
+
+function updatePanierQte(itemId, delta) {
+  const entry = _panierPaiements.get(itemId);
+  if (!entry) return;
+  entry.qte = Math.max(1, entry.qte + delta);
+  _refreshPanierUI();
+}
+
+function updatePanierMontant(itemId, value) {
+  const entry = _panierPaiements.get(itemId);
+  if (!entry) return;
+  entry.montantSaisi = Math.max(0, parseFloat(value) || 0);
+  // Mise à jour du sous-total et total sans re-render complet
+  const row = document.querySelector(`[data-panier-row="${CSS.escape(itemId)}"]`);
+  if (row) {
+    const st = row.querySelector('[data-panier-st]');
+    if (st) st.textContent = (entry.montantSaisi * entry.qte).toFixed(2) + ' €';
+  }
+  _updatePanierTotal();
+}
+
+function _updatePanierTotal() {
+  let total = 0;
+  _panierPaiements.forEach(({ item, qte, montantSaisi }) => {
+    const u = item.montantModifiable ? montantSaisi : (typeof item.montant === 'number' ? item.montant : 0);
+    total += u * qte;
+  });
+  const el = document.getElementById('panier-total');
+  if (el) el.textContent = total.toFixed(2) + ' €';
+}
+
+function _refreshPanierUI() {
+  const panierEl = document.getElementById('panier-paiements');
+  if (!panierEl) return;
+  panierEl.innerHTML = _renderPanierPaiements();
+  // Mettre à jour l'état des boutons "Ajouter"
+  document.querySelectorAll('[data-panier-id]').forEach(btn => {
+    const id = btn.dataset.panierId;
+    const inCart = _panierPaiements.has(id);
+    const entry = _panierPaiements.get(id);
+    const locked = inCart && entry && !entry.item.quantiteModifiable;
+    btn.textContent = inCart ? '✓ Ajouté' : 'Ajouter au panier';
+    btn.style.background = inCart ? '#15803d' : '#1d4ed8';
+    btn.disabled = locked;
+    btn.style.opacity = locked ? '0.65' : '1';
+    btn.style.cursor  = locked ? 'default' : 'pointer';
+  });
+}
+
+function _renderPanierPaiements() {
+  if (_panierPaiements.size === 0) {
+    return `<div style="color:var(--text3);font-size:13px;text-align:center;padding:16px 0">Votre panier est vide.</div>`;
+  }
+  let total = 0;
+  let rows = '';
+  _panierPaiements.forEach((entry, itemId) => {
+    const { item, qte, montantSaisi } = entry;
+    const montantUnit = item.montantModifiable ? montantSaisi : (typeof item.montant === 'number' ? item.montant : 0);
+    const sousTotal = montantUnit * qte;
+    total += sousTotal;
+    const eid = encodeURIComponent(itemId).replace(/'/g, '%27');
+
+    const montantUnitHtml = item.montantModifiable
+      ? `<input type="number" min="0" step="1" value="${montantSaisi.toFixed(2)}"
+           onchange="updatePanierMontant('${eid}',this.value)"
+           style="width:68px;text-align:right;border:1px solid var(--border);border-radius:6px;padding:3px 6px;background:var(--input-bg);color:var(--text);font-size:13px"> €`
+      : `${montantUnit.toFixed(2)} €`;
+
+    const qteHtml = item.quantiteModifiable
+      ? `<div style="display:flex;align-items:center;gap:4px">
+           <button onclick="updatePanierQte('${eid}',-1)" style="width:22px;height:22px;border-radius:50%;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:14px;line-height:1;cursor:pointer;padding:0">−</button>
+           <span style="min-width:18px;text-align:center;font-size:13px">${qte}</span>
+           <button onclick="updatePanierQte('${eid}',1)"  style="width:22px;height:22px;border-radius:50%;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:14px;line-height:1;cursor:pointer;padding:0">+</button>
+         </div>`
+      : `<span style="font-size:13px;color:var(--text2)">${qte}</span>`;
+
+    rows += `<div class="panier-row" data-panier-row="${itemId}" style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--border2)">
+      <div style="flex:1;min-width:0;font-size:13px;font-weight:500;color:var(--text)">${item.libellePanier || item.libelle}</div>
+      <div style="white-space:nowrap;color:var(--text2);font-size:13px">${montantUnitHtml}</div>
+      <div style="white-space:nowrap;text-align:center">${qteHtml}</div>
+      <div data-panier-st style="white-space:nowrap;min-width:64px;text-align:right;font-weight:600;font-size:13px;color:var(--text)">${sousTotal.toFixed(2)} €</div>
+      <button class="btn-remove-panier" onclick="removeFromPanier('${eid}')" title="Supprimer"
+        style="flex-shrink:0;width:24px;height:24px;border-radius:50%;border:1px solid var(--border);background:var(--bg2);color:#b91c1c;font-size:13px;line-height:1;cursor:pointer;padding:0">✕</button>
+    </div>`;
+  });
+  return rows + `<div style="display:flex;justify-content:flex-end;align-items:center;gap:10px;padding-top:10px;margin-top:2px">
+    <span style="font-size:13px;color:var(--text2)">Total</span>
+    <span id="panier-total" style="font-size:18px;font-weight:700;color:var(--text)">${total.toFixed(2)} €</span>
+  </div>`;
+}
+
+function openPaiementDialog() {
+  let rows = '';
+  let total = 0;
+  _panierPaiements.forEach(({ item, qte, montantSaisi }) => {
+    const u = item.montantModifiable ? montantSaisi : (typeof item.montant === 'number' ? item.montant : 0);
+    const st = u * qte;
+    total += st;
+    rows += `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--border2);font-size:13px">
+      <span style="color:var(--text)">${item.libellePanier || item.libelle}</span>
+      <span style="color:var(--text2);white-space:nowrap;margin-left:12px">${qte} × ${u.toFixed(2)} € = <strong>${st.toFixed(2)} €</strong></span>
+    </div>`;
+  });
+  if (!rows) rows = `<p style="color:var(--text3);font-size:13px">Panier vide.</p>`;
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center';
+  overlay.innerHTML = `
+    <div style="background:var(--bg);border-radius:12px;padding:24px;width:min(480px,90vw);max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.2)">
+      <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:16px">Récapitulatif du panier</div>
+      <div style="margin-bottom:16px">${rows}</div>
+      ${total > 0 ? `<div style="display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-bottom:16px;padding-top:4px">
+        <span style="font-size:13px;color:var(--text2)">Total</span>
+        <span style="font-size:18px;font-weight:700;color:var(--text)">${total.toFixed(2)} €</span>
+      </div>` : ''}
+      <div style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:10px 14px;font-size:13px;color:#854d0e;margin-bottom:20px">
+        🚧 WIP — coming soon
+      </div>
+      <div style="display:flex;justify-content:flex-end">
+        <button onclick="this.closest('[style*=fixed]').remove()" style="padding:7px 18px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:13px;font-weight:600;cursor:pointer">Fermer</button>
+      </div>
+    </div>`;
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
 function renderVspPaiementsEnLigne(data) {
-  if (!Array.isArray(data) || !data.length) return '<p style="color:var(--text3);font-size:14px">Aucun paiement en ligne disponible.</p>';
+  const paiementsGroups = Array.isArray(data?.paiements) ? data.paiements : (Array.isArray(data) ? data : []);
+  const soldesParEleve  = data?.soldesParEleve || {};
+  if (!paiementsGroups.length) return '<p style="color:var(--text3);font-size:14px">Aucun paiement en ligne disponible.</p>';
 
   let html = '';
-  data.forEach(group => {
+  paiementsGroups.forEach(group => {
     html += `<div style="margin-bottom:20px">
       <div style="font-size:13px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">${group.libelle || ''}</div>`;
 
@@ -3997,28 +4175,63 @@ function renderVspPaiementsEnLigne(data) {
       if (p.detail) {
         try { detail = b64d(p.detail.replace(/\n/g, '')); } catch(e) { detail = ''; }
       }
-      const montantLabel = p.montantModifiable
-        ? `<span style="font-size:11px;color:var(--text3)">Montant libre</span>`
-        : '';
 
-      html += `<div style="background:var(--bg3);border-radius:10px;padding:12px 14px;margin-bottom:8px;display:flex;gap:12px;align-items:flex-start">
+      // Colonne prix (droite)
+      const inCart = _panierPaiements.has(p.id);
+      const locked = inCart && !p.quantiteModifiable;
+      const btnLabel = inCart ? '✓ Ajouté' : 'Ajouter au panier';
+      const btnBg    = inCart ? '#15803d' : '#1d4ed8';
+      const encodedId = encodeURIComponent(p.id).replace(/'/g, '%27');
+
+      let priceHtml = `<div style="text-align:right;white-space:nowrap;flex-shrink:0;min-width:96px">
+        <div style="font-size:16px;font-weight:700;color:var(--text)">${montant.toFixed(2)} €</div>`;
+      if (p.montantModifiable) {
+        priceHtml += `<div style="font-size:11px;color:var(--text3)">Montant libre</div>`;
+      }
+      if (p.typePaiement === 'pm' && p.idEleve != null) {
+        const solde = soldesParEleve[String(p.idEleve)];
+        if (solde != null) {
+          const soldeCoul = solde < 0 ? '#b91c1c' : (solde < 5 ? '#b45309' : '#15803d');
+          priceHtml += `<div style="margin-top:8px;padding-top:6px;border-top:1px solid var(--border2)">
+            <div style="font-size:11px;color:var(--text3)">Solde actuel</div>
+            <div style="font-size:14px;font-weight:600;color:${soldeCoul}">${solde.toFixed(2)} €</div>
+          </div>`;
+        }
+      }
+      priceHtml += `<button data-panier-id="${p.id}" onclick="addToPanier('${encodedId}')"
+        class="btn-add-panier" ${locked ? 'disabled' : ''}
+        style="margin-top:10px;padding:5px 10px;border-radius:7px;border:none;background:${btnBg};color:#fff;font-size:12px;font-weight:600;cursor:${locked ? 'default' : 'pointer'};opacity:${locked ? '0.65' : '1'};white-space:nowrap"
+        >${btnLabel}</button>`;
+      priceHtml += '</div>';
+
+      html += `<div class="panier-card" style="background:var(--bg3);border-radius:10px;padding:12px 14px;margin-bottom:8px;display:flex;gap:12px;align-items:flex-start">
         ${imgHtml}
         <div style="flex:1;min-width:0">
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:${detail ? '6px' : '0'}">
             <span style="font-weight:600;font-size:14px;color:var(--text)">${p.libelle || '—'}</span>
             ${typeBadge}
           </div>
-          ${detail ? `<div style="font-size:12px;color:var(--text3);margin-bottom:6px;white-space:pre-line">${detail}</div>` : ''}
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <span style="font-size:16px;font-weight:700;color:var(--text)">${montant.toFixed(2)} €</span>
-            ${montantLabel}
-          </div>
+          ${detail ? `<div style="font-size:12px;color:var(--text3);white-space:pre-line">${detail}</div>` : ''}
         </div>
+        ${priceHtml}
       </div>`;
     });
 
     html += '</div>';
   });
+
+  // Liste scrollable + panier fixe en bas (flex column sur #finances-result)
+  html = `<div style="flex:1;overflow-y:auto;min-height:0;padding-bottom:8px">${html}</div>
+  <div style="flex-shrink:0;padding-top:6px">
+    <div style="background:var(--bg3);border-radius:10px;padding:14px 16px;box-shadow:0 -2px 8px rgba(0,0,0,.07)">
+      <div style="font-size:13px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">🛒 Panier</div>
+      <div id="panier-paiements" style="max-height:250px;overflow-y:auto">${_renderPanierPaiements()}</div>
+      <div style="display:flex;justify-content:flex-end;margin-top:12px">
+        <button onclick="openPaiementDialog()" style="padding:8px 20px;border-radius:8px;border:none;background:#1d4ed8;color:#fff;font-size:14px;font-weight:600;cursor:pointer">Payer</button>
+      </div>
+    </div>
+  </div>`;
+
   return html;
 }
 
