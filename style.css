@@ -79,8 +79,11 @@
   .avatar { width: 40px; height: 40px; border-radius: 50%; background: #dbeafe; color: #1d4ed8; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px; flex-shrink: 0; transition: background 0.15s; }
   .avatar:hover { background: #bfdbfe; }
   body.dark .avatar:hover { background: #1e3a5f; }
-  .profile-info { border-radius: 8px; padding: 4px 6px; margin: -4px -6px; transition: background 0.15s; }
-  .profile-info:hover { background: var(--bg4); }
+  .profile-info { border-radius: 8px; padding: 4px 6px; margin: -4px -6px; }
+  .profile-info > div:first-child { border-radius: 6px; padding: 2px 4px; margin: -2px -4px; transition: background 0.15s; }
+  .profile-info > div:first-child:hover { background: var(--bg4); }
+  .child-account-select { height: auto !important; padding: 4px 10px !important; font-size: 12px !important; font-weight: 600; border-radius: 6px !important; border: 1.5px solid var(--border2) !important; background: var(--bg2) !important; color: var(--text) !important; cursor: pointer; }
+  .child-account-select:hover { border-color: var(--border) !important; background: var(--bg3) !important; }
   .divider { border: none; border-top: 1px solid #eee; margin: 12px 0; }
   .custom-row { display: flex; gap: 8px; margin-top: 8px; }
   .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #ddd; border-top-color: #333; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-left: 8px; }
@@ -254,3 +257,6 @@
 body.dark input[type="date"] {
   color-scheme: dark;
 }
+/* Dialog overlay — hover effect on all buttons */
+.dlg-overlay button { transition: filter 0.12s; }
+.dlg-overlay button:hover:not(:disabled) { filter: brightness(0.87); }

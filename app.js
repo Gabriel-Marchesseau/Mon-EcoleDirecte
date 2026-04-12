@@ -30,6 +30,7 @@ darkStyle.textContent = `
   body.dark #security-panel { background: var(--bg3); border-color: var(--border); }
   .pj-badge { border: 1px solid #bfdbfe; display:inline-block; line-height:1.5; vertical-align:middle; }
   body.dark .pj-badge { background: #1e3a5f !important; color: #93c5fd !important; border-color: #1e40af !important; }
+  body.dark .child-account-select { background: #2a2a2a !important; border-color: #444 !important; color: #e8e8e6 !important; }
   body.dark #notes-view-toggle { background: #242424 !important; border-color: var(--border) !important; }
   .postits-list { display:flex;flex-direction:column;gap:16px;padding:4px 0; }
   .postit-card { border-radius:10px;border-left:4px solid #6b7280;background:var(--bg2);padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.06); }
@@ -47,6 +48,7 @@ darkStyle.textContent = `
   .postit-type.type-urgence { color:#dc2626; }
   .postit-content { font-size:13px;line-height:1.6;color:var(--text); }
   body.dark .postit-content, body.dark .postit-content * { color:var(--text) !important; }
+  body.dark .postit-content [style*="background"], body.dark #msg-dialog-content [style*="background"] { background-color: transparent !important; }
   .postit-content ul, .postit-content ol { padding-left:1.5em;margin:6px 0; }
   .postit-content p { margin:4px 0; }
   .postit-author { font-size:12px;color:var(--text3);margin-top:10px;padding-top:8px;border-top:1px solid var(--border2); }
@@ -69,14 +71,16 @@ let sessionExpired = false;
 function getProxy() { return window.location.origin; }
 
 // ── Routeur ────────────────────────────────────────────────
-const ROUTE_TO_TAB = { '/accueil': 'accueil', '/edt': 'edt', '/notes': 'notes', '/devoirs': 'devoirs', '/seances': 'seances', '/messages': 'messages', '/vie-scolaire': 'absences', '/memos': 'memos', '/vie-scolaire-parent': 'viescolaire-parent', '/administratif': 'administratif' };
-const TAB_TO_ROUTE = { 'accueil': '/accueil', 'edt': '/edt', 'notes': '/notes', 'devoirs': '/devoirs', 'seances': '/seances', 'messages': '/messages', 'absences': '/vie-scolaire', 'memos': '/memos', 'viescolaire-parent': '/vie-scolaire-parent', 'administratif': '/administratif' };
+const ROUTE_TO_TAB = { '/accueil': 'accueil', '/edt': 'edt', '/notes': 'notes', '/devoirs': 'devoirs', '/seances': 'seances', '/messages': 'messages', '/vie-scolaire': 'absences', '/memos': 'memos', '/documents-parent': 'documents-parent', '/finances-parent': 'finances-parent', '/vie-scolaire-parent': 'viescolaire-parent' };
+const TAB_TO_ROUTE = { 'accueil': '/accueil', 'edt': '/edt', 'notes': '/notes', 'devoirs': '/devoirs', 'seances': '/seances', 'messages': '/messages', 'absences': '/vie-scolaire', 'memos': '/memos', 'documents-parent': '/documents-parent', 'finances-parent': '/finances-parent', 'viescolaire-parent': '/vie-scolaire-parent' };
 
 // Paramètres utilisateur — onglets courants + compte actif
 let _currentTabs = [];
 let _currentAccountId = '';
 let _settingsPendingDefault = 'accueil';
 let _settingsOverlayEl = null;
+// Vue enfant (compte parent visualisant un élève associé)
+let _childEleveView = null; // null | { id, nom, prenom }
 function getTabFromPath() { return ROUTE_TO_TAB[location.pathname] || null; }
 window.addEventListener('popstate', () => { const t = getTabFromPath(); if (t) switchTab(t, true); });
 function getCurrentAnnee() {
@@ -443,7 +447,23 @@ const ROUTES = [
   { label: 'Infos compte',    method: 'POST', path: '/v3/eleves/{id}/infos.awp?verbe=get',        body: 'data={}' },
 ];
 
+function _rebuildTabBar(tabs) {
+  _currentTabs = tabs;
+  const bar = document.getElementById('tab-bar');
+  bar.innerHTML = '';
+  tabs.forEach((t, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'tab' + (i === 0 ? ' active' : '');
+    btn.textContent = t.label;
+    btn.dataset.label = t.label;
+    btn.dataset.tab = t.id;
+    btn.onclick = () => switchTab(t.id);
+    bar.appendChild(btn);
+  });
+}
+
 function onLoggedIn(data) {
+  _childEleveView = null;
   document.getElementById('login-card').style.display = 'none';
   document.getElementById('api-card').classList.add('active-card');
   const acc = data.accounts ? data.accounts[0] : data;
@@ -469,28 +489,38 @@ function onLoggedIn(data) {
     { id: 'absences', label: 'Vie scolaire' },
     { id: 'memos',    label: 'Mémos' },
   ] : [
-    { id: 'accueil',             label: 'Accueil' },
-    { id: 'messages',            label: 'Messages' },
-    { id: 'viescolaire-parent',  label: 'Vie scolaire' },
-    { id: 'administratif',       label: 'Administratif' },
+    { id: 'accueil',            label: 'Accueil' },
+    { id: 'messages',           label: 'Messages' },
+    { id: 'documents-parent',   label: 'Documents' },
+    { id: 'finances-parent',    label: 'Situation financière' },
+    { id: 'viescolaire-parent', label: 'Vie scolaire' },
   ];
-  _currentTabs = TABS;
   _currentAccountId = acc.id || acc.idLogin || 'default';
-  const bar = document.getElementById('tab-bar');
-  bar.innerHTML = '';
-  TABS.forEach((t, i) => {
-    const btn = document.createElement('button');
-    btn.className = 'tab' + (i === 0 ? ' active' : '');
-    btn.textContent = t.label;
-    btn.dataset.label = t.label;
-    btn.dataset.tab = t.id;
-    btn.onclick = () => switchTab(t.id);
-    bar.appendChild(btn);
-  });
+  _rebuildTabBar(TABS);
   if (isEleve) updateDevoirsTabCount();
-  // Masquer le sous-onglet Correspondances pour les comptes parents
+  // Masquer le sous-onglet Correspondances pour les comptes parents (hors vue enfant)
   const corrTabBtn = document.querySelector('#panel-messages .sub-tab[data-tab="correspondance"]');
   if (corrTabBtn) corrTabBtn.style.display = isEleve ? '' : 'none';
+  // Sélecteur compte enfant (compte parent uniquement)
+  const childBar = document.getElementById('child-account-bar');
+  const childSel = document.getElementById('child-account-selector');
+  const childSchool = document.getElementById('child-account-school');
+  if (!isEleve && childBar && childSel) {
+    const eleves = acc.profile?.eleves || acc.eleves || [];
+    childSel.innerHTML = '<option value="">Compte parent</option>';
+    eleves.forEach(e => {
+      const opt = document.createElement('option');
+      opt.value = e.id;
+      opt.textContent = e.prenom ? `${e.prenom} ${e.nom || ''}`.trim() : (e.login || `Élève ${e.id}`);
+      childSel.appendChild(opt);
+    });
+    if (childSchool) childSchool.textContent = schoolName;
+    // Pour le compte parent, le sélecteur ci-dessous suffit — user-meta masqué
+    if (metaEl) metaEl.textContent = '';
+    childBar.style.display = eleves.length ? 'flex' : 'none';
+  } else if (childBar) {
+    childBar.style.display = 'none';
+  }
   const validTabIds = new Set(TABS.map(t => t.id));
   const savedDefault = localStorage.getItem(`ed_default_tab_${_currentAccountId}`);
   const defaultTab = (savedDefault && validTabIds.has(savedDefault)) ? savedDefault : 'accueil';
@@ -499,6 +529,77 @@ function onLoggedIn(data) {
   switchTab((urlTab && validTabIds.has(urlTab)) ? urlTab : defaultTab);
 
   // EDT : géré par edtWeekOffset
+}
+
+// ── Vue enfant depuis compte parent ────────────────────────────────────────
+
+const _CHILD_VIEW_TABS = [
+  { id: 'edt',      label: 'Emploi du temps' },
+  { id: 'notes',    label: 'Notes' },
+  { id: 'devoirs',  label: 'Devoirs' },
+  { id: 'absences', label: 'Vie scolaire' },
+  { id: 'messages', label: 'Messages' },
+];
+
+function switchChildAccountView(eleveId) {
+  const acc = accountData?.accounts ? accountData.accounts[0] : accountData;
+  if (!eleveId) {
+    // Retour au compte parent
+    _childEleveView = null;
+    const PARENT_TABS = [
+      { id: 'accueil',            label: 'Accueil' },
+      { id: 'messages',           label: 'Messages' },
+      { id: 'documents-parent',   label: 'Documents' },
+      { id: 'finances-parent',    label: 'Situation financière' },
+      { id: 'viescolaire-parent', label: 'Vie scolaire' },
+    ];
+    // Restaurer masquage correspondances
+    const corrTabBtn = document.querySelector('#panel-messages .sub-tab[data-tab="correspondance"]');
+    if (corrTabBtn) corrTabBtn.style.display = 'none';
+    _rebuildTabBar(PARENT_TABS);
+    switchTab('accueil');
+  } else {
+    const eleves = acc?.profile?.eleves || acc?.eleves || [];
+    const eleve = eleves.find(e => String(e.id) === String(eleveId));
+    if (!eleve) return;
+    _childEleveView = { id: eleve.id, nom: eleve.nom || '', prenom: eleve.prenom || '' };
+    // Afficher le sous-onglet Correspondances dans Messages
+    const corrTabBtn = document.querySelector('#panel-messages .sub-tab[data-tab="correspondance"]');
+    if (corrTabBtn) corrTabBtn.style.display = '';
+    _rebuildTabBar(_CHILD_VIEW_TABS);
+    switchTab('edt');
+  }
+}
+
+function _loadChildViewTab(id) {
+  const childNom = `${_childEleveView.prenom} ${_childEleveView.nom}`.trim();
+  const stub = `<div style="padding:40px 24px;text-align:center;color:var(--text3);font-size:14px">
+    <div style="font-size:36px;margin-bottom:14px">🔧</div>
+    <div style="font-weight:500;margin-bottom:6px">Fonctionnalité en cours de développement</div>
+    <div style="font-size:12px">Données de <strong style="color:var(--text2)">${childNom}</strong> — bientôt disponible</div>
+  </div>`;
+  const resultMap = {
+    edt:      'edt-result',
+    notes:    'notes-result',
+    devoirs:  'devoirs-result',
+    absences: 'absences-result',
+    messages: 'messages-result',
+  };
+  // Masquer spinners
+  ['spin-edt','spin-notes','spin-devoirs','spin-absences','spin-messages'].forEach(sid => {
+    const el = document.getElementById(sid); if (el) el.style.display = 'none';
+  });
+  // Vider le panneau de détail si présent
+  const detailPanels = ['devoir-detail-panel', 'message-detail-panel'];
+  detailPanels.forEach(did => {
+    const el = document.getElementById(did);
+    if (el) el.innerHTML = '';
+  });
+  const resultId = resultMap[id];
+  if (resultId) {
+    const el = document.getElementById(resultId);
+    if (el) el.innerHTML = stub;
+  }
 }
 
 function formatFrPhone(raw) {
@@ -526,6 +627,7 @@ function normalizeFrPhone(display) {
 async function openProfile() {
   const acc = accountData?.accounts ? accountData.accounts[0] : accountData;
   if (!acc) return;
+  const isParent = acc.typeCompte !== 'E';
   const loginId = acc.idLogin || acc.id || '';
   const dark = document.body.classList.contains('dark');
   const dlgBg   = dark ? '#242424' : '#fff';
@@ -539,6 +641,7 @@ async function openProfile() {
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1000;display:flex;align-items:center;justify-content:center;padding:1.5rem;overflow-y:auto';
   overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+  overlay.classList.add('dlg-overlay');
 
   const dialog = document.createElement('div');
   dialog.style.cssText = `background:${dlgBg};color:${dlgText};border-radius:12px;padding:1.5rem;max-width:480px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.35);position:relative;margin:auto`;
@@ -557,14 +660,27 @@ async function openProfile() {
   document.body.appendChild(overlay);
 
   let profileData = {};
+  let coordsData  = null;
   try {
-    const resp = await fetch(`${getProxy()}/v3/logins/${loginId}.awp?verbe=get&v=4.97.2`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' },
-      body: 'data={}'
-    });
+    const fetches = [
+      fetch(`${getProxy()}/v3/logins/${loginId}.awp?verbe=get&v=4.97.2`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' },
+        body: 'data={}'
+      }),
+      isParent ? fetch(`${getProxy()}/v3/famillecoordonnees.awp?verbe=get&v=4.98.0`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' },
+        body: 'data={}'
+      }) : Promise.resolve(null)
+    ];
+    const [resp, coordsResp] = await Promise.all(fetches);
     const json = await resp.json();
     if (json.code === 200) profileData = json.data || {};
+    if (coordsResp) {
+      const coordsJson = await coordsResp.json();
+      if (coordsJson.code === 200) coordsData = coordsJson.data || null;
+    }
   } catch(e) { console.error('[profile] fetch error:', e); }
 
   // Fallback sur les données déjà disponibles dans accountData
@@ -593,6 +709,7 @@ async function openProfile() {
     <div class="sub-tabs" style="margin-bottom:16px">
       <button id="pf-tab-compte"   class="sub-tab active"  onclick="switchProfileTab('compte')">Compte</button>
       <button id="pf-tab-securite" class="sub-tab"         onclick="switchProfileTab('securite')">Sécurité</button>
+      ${isParent ? '<button id="pf-tab-infos" class="sub-tab" onclick="switchProfileTab(\'infos\')">Informations personnelles</button>' : ''}
     </div>
 
     <!-- Section Compte -->
@@ -643,14 +760,16 @@ async function openProfile() {
         <div id="pf-err-pf-reponse" style="font-size:12px;color:#dc2626;margin-top:3px;display:none"></div>
       </div>
     </div>
+    ${isParent ? '<div id="pf-section-infos" style="display:none;overflow-y:auto;max-height:420px"></div>' : ''}
     </div>
 
     <!-- Statut + boutons communs, toujours en bas -->
     <div id="pf-status-compte"   style="font-size:13px;min-height:18px;margin-top:14px"></div>
     <div id="pf-status-securite" style="font-size:13px;min-height:18px;margin-top:14px;display:none"></div>
+    ${isParent ? '<div id="pf-status-infos" style="font-size:13px;min-height:18px;margin-top:14px;display:none"></div>' : ''}
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
-      <button onclick="this.closest('[style*=fixed]').remove()" style="padding:8px 22px;border-radius:8px;border:1px solid ${inputBorder};background:${inputBg};color:${dlgText};font-size:14px;cursor:pointer;font-weight:500">Annuler</button>
-      <button id="pf-save-btn" onclick="saveProfile(${loginId}, document.getElementById('pf-tab-compte').classList.contains('active')?'compte':'securite')" style="padding:8px 22px;border-radius:8px;border:none;background:#4f46e5;color:#fff;font-size:14px;cursor:pointer;font-weight:600">Valider</button>
+      <button id="pf-cancel-btn" onclick="this.closest('[style*=fixed]').remove()" style="padding:8px 22px;border-radius:8px;border:1px solid ${inputBorder};background:${inputBg};color:${dlgText};font-size:14px;cursor:pointer;font-weight:500">Annuler</button>
+      <button id="pf-save-btn" onclick="const _t=document.getElementById('pf-tab-compte')?.classList.contains('active')?'compte':document.getElementById('pf-tab-securite')?.classList.contains('active')?'securite':null;if(_t)saveProfile(${loginId},_t)" style="padding:8px 22px;border-radius:8px;border:none;background:#4f46e5;color:#fff;font-size:14px;cursor:pointer;font-weight:600">Valider</button>
     </div>`;
 
   // Fixer la hauteur du wrapper à la plus grande section pour éviter le saut
@@ -666,6 +785,63 @@ async function openProfile() {
   if (_customWasHidden) _customWrap.style.display = 'none';
   _sec.style.display = 'none';
   document.getElementById('pf-sections-wrapper').style.minHeight = _maxH + 'px';
+
+  // ── Informations personnelles (parent uniquement) ────────────────────
+  if (isParent) {
+    const infosEl = document.getElementById('pf-section-infos');
+    if (infosEl) {
+      if (coordsData) {
+        const r       = coordsData.responsable || {};
+        const eleves  = coordsData.eleves || [];
+        const regimes = coordsData.parametrages?.regimesScolaire || [];
+
+        function _pfInfoRow(label, value) {
+          if (!value) return '';
+          return `<div style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">
+            <span style="font-size:12px;color:var(--text3);min-width:150px;flex-shrink:0">${label}</span>
+            <span style="font-size:13px;color:var(--text)">${value}</span>
+          </div>`;
+        }
+
+        const addr = [coordsData.adresseLigne1, coordsData.adresseLigne2, coordsData.adresseLigne3].filter(Boolean).join(', ');
+        const ville = [coordsData.codePostal, coordsData.ville].filter(Boolean).join(' ');
+
+        let ih = `<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">Responsable</div>`;
+        ih += _pfInfoRow('Nom',                  r.nom || '');
+        ih += _pfInfoRow('Email',                r.mailPerso || '');
+        ih += _pfInfoRow('Email professionnel',  r.mailTravail || '');
+        ih += _pfInfoRow('Tél. mobile',          r.telMobile || '');
+        ih += _pfInfoRow('Tél. domicile',        r.telDomicile || '');
+        ih += _pfInfoRow('Tél. travail',         r.telTravail || '');
+        ih += _pfInfoRow('Profession',           r.profession || '');
+        ih += _pfInfoRow('Société',              r.societe || '');
+        ih += _pfInfoRow('CSP',                  r.csp?.libelle || '');
+
+        if (addr || ville) {
+          ih += `<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;margin:14px 0 6px">Adresse</div>`;
+          ih += _pfInfoRow('Adresse', addr);
+          ih += _pfInfoRow('Ville',   ville);
+        }
+
+        if (eleves.length) {
+          ih += `<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;margin:14px 0 6px">Enfants</div>`;
+          eleves.forEach(elv => {
+            const regime = regimes.find(rg => rg.id === elv.idRegime);
+            ih += `<div style="padding:8px 0;border-bottom:1px solid var(--border)">
+              <div style="font-size:14px;font-weight:600;margin-bottom:4px">${elv.prenom || ''}</div>
+              ${_pfInfoRow('Tél. mobile',     elv.telMobile || '')}
+              ${_pfInfoRow('Email',           elv.email     || '')}
+              ${_pfInfoRow('Régime scolaire', regime?.libelle || '')}
+            </div>`;
+          });
+        }
+
+        infosEl.innerHTML = ih;
+      } else {
+        infosEl.innerHTML = `<div style="font-size:13px;color:var(--text3);padding:12px 0">Impossible de charger les informations personnelles.</div>`;
+      }
+    }
+  }
 
   // Formatage téléphone au blur
   const telEl = document.getElementById('pf-tel');
@@ -820,12 +996,22 @@ async function openProfile() {
 }
 
 function switchProfileTab(section) {
-  document.getElementById('pf-section-compte').style.display   = section === 'compte'   ? 'grid' : 'none';
-  document.getElementById('pf-section-securite').style.display = section === 'securite' ? 'grid' : 'none';
-  document.getElementById('pf-status-compte').style.display    = section === 'compte'   ? ''     : 'none';
-  document.getElementById('pf-status-securite').style.display  = section === 'securite' ? ''     : 'none';
+  document.getElementById('pf-section-compte').style.display    = section === 'compte'   ? 'grid' : 'none';
+  document.getElementById('pf-section-securite').style.display  = section === 'securite' ? 'grid' : 'none';
+  const infosEl = document.getElementById('pf-section-infos');
+  if (infosEl) infosEl.style.display = section === 'infos' ? '' : 'none';
+  document.getElementById('pf-status-compte').style.display     = section === 'compte'   ? ''     : 'none';
+  document.getElementById('pf-status-securite').style.display   = section === 'securite' ? ''     : 'none';
+  const infosStatus = document.getElementById('pf-status-infos');
+  if (infosStatus) infosStatus.style.display = section === 'infos' ? '' : 'none';
   document.getElementById('pf-tab-compte').classList.toggle('active',   section === 'compte');
   document.getElementById('pf-tab-securite').classList.toggle('active', section === 'securite');
+  document.getElementById('pf-tab-infos')?.classList.toggle('active', section === 'infos');
+  // Masquer le bouton Valider et adapter le libellé Annuler/Fermer pour l'onglet lecture seule
+  const saveBtn   = document.getElementById('pf-save-btn');
+  const cancelBtn = document.getElementById('pf-cancel-btn');
+  if (saveBtn)   saveBtn.style.display = section === 'infos' ? 'none' : '';
+  if (cancelBtn) cancelBtn.textContent  = section === 'infos' ? 'Fermer' : 'Annuler';
   window._pfCheckDirty?.();
 }
 
@@ -901,8 +1087,13 @@ function logout() {
   sessionExpired = false;
   token = ''; accountData = null;
   notesData = null; notesPeriod = null;
+  _childEleveView = null;
   const pbc = document.getElementById('notes-period-btns');
   if (pbc) pbc.innerHTML = '';
+  const childBar = document.getElementById('child-account-bar');
+  if (childBar) childBar.style.display = 'none';
+  const childSel = document.getElementById('child-account-selector');
+  if (childSel) childSel.innerHTML = '';
   localStorage.removeItem('ed_session');
   history.replaceState({}, '', '/');
   document.getElementById('login-card').style.display = 'block';
@@ -934,6 +1125,7 @@ function openEdtDialog(encodedData) {
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1000;display:flex;align-items:center;justify-content:center;padding:2rem';
   overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+  overlay.classList.add('dlg-overlay');
 
   const dot = `<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${c.color};margin-right:8px;flex-shrink:0"></span>`;
 
@@ -1070,7 +1262,7 @@ function openNoteDialog(encodedData) {
     ${rowsHtml}
     ${compsHtml}`;
 
-  overlay.classList.add('note-dialog-overlay');
+  overlay.classList.add('note-dialog-overlay', 'dlg-overlay');
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
 }
@@ -1340,8 +1532,11 @@ async function loadMessages() {
     const [dataReceived, dataSent, dataDraft, dataArchived] = await Promise.all([
       fetchTab('received'), fetchTab('sent'), fetchTab('draft'), fetchTab('archived')
     ]);
+    // Si la réponse principale (Reçus) est non-200, c'est une erreur de session → lever une exception
+    // pour ne pas cacher de données vides qui masqueraient les vrais messages au chargement suivant
+    if (dataReceived.code !== 200) throw new Error(dataReceived.message || `Session expirée (code ${dataReceived.code})`);
     return {
-      received: dataReceived.code === 200 ? (dataReceived.data?.messages?.received || []) : [],
+      received: dataReceived.data?.messages?.received || [],
       sent:     dataSent.code === 200     ? (dataSent.data?.messages?.sent || [])         : [],
       draft:    dataDraft.code === 200    ? (dataDraft.data?.messages?.draft || dataDraft.data?.messages?.received || []) : [],
       archived: dataArchived.code === 200 ? (dataArchived.data?.messages?.archived || dataArchived.data?.messages?.received || []) : [],
@@ -3173,6 +3368,7 @@ function openSettingsDialog() {
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1000;display:flex;align-items:center;justify-content:center;padding:1.5rem';
   overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+  overlay.classList.add('dlg-overlay');
   _settingsOverlayEl = overlay;
 
   const tabBtns = _currentTabs.map(t => {
@@ -3279,24 +3475,26 @@ async function forceRefresh(tab) {
     }
   } else if (tab === 'memos') {
     renderMemosFromCache();
+  } else if (tab === 'documents-parent') {
+    await edCache.delete(`documents-parent:${eleveId}`);
+    _vspDocsData = null; _selectedVspDocKey = null;
+    await loadVspDocuments();
+  } else if (tab === 'finances-parent') {
+    if (_VSP_FINANCE_TABS.has(_finActiveTab)) {
+      await edCache.delete(`finances-parent:${eleveId}`);
+      _vspFinancesData = null;
+      await loadVspFinances(_finActiveTab);
+    } else if (_finActiveTab === 'modeReglement') {
+      await edCache.delete(`mode-reglement:${eleveId}`);
+      await loadVspModeReglement();
+    }
   } else if (tab === 'viescolaire-parent') {
-    if (_vspActiveTab === 'documents') {
-      await edCache.delete(`documents-parent:${eleveId}`);
-      _vspDocsData = null; _selectedVspDocKey = null;
-      await loadVspDocuments();
-    } else if (_vspActiveTab === 'dossier') {
+    if (_vspActiveTab === 'dossier') {
       await edCache.delete(`dossier-inscription:${eleveId}`);
       await loadDossierInscription();
     } else if (_vspActiveTab === 'sondages') {
       await edCache.delete(`sondages-parent:${eleveId}`);
       await loadVspSondages();
-    } else if (_VSP_FINANCE_TABS.has(_vspActiveTab)) {
-      await edCache.delete(`finances-parent:${eleveId}`);
-      _vspFinancesData = null;
-      await loadVspFinances(_vspActiveTab);
-    } else if (_vspActiveTab === 'modeReglement') {
-      await edCache.delete(`mode-reglement:${eleveId}`);
-      await loadVspModeReglement();
     }
   }
 
@@ -3469,6 +3667,11 @@ function switchTab(id, fromPopstate = false) {
   if (refreshBtn) {
     refreshBtn.onclick = () => forceRefresh(id);
   }
+  // Mode vue enfant (compte parent visualisant un élève) — afficher stubs
+  if (_childEleveView) {
+    _loadChildViewTab(id);
+    return;
+  }
   if (id === 'accueil') loadAccueil();
   else if (id === 'edt') runEdt();
   else if (id === 'notes') loadNotes();
@@ -3496,40 +3699,41 @@ function switchTab(id, fromPopstate = false) {
   }
   else if (id === 'messages') loadMessages();
   else if (id === 'memos') loadMemos();
+  else if (id === 'documents-parent') loadVspDocuments();
+  else if (id === 'finances-parent') switchFinancesTab(_finActiveTab);
   else if (id === 'viescolaire-parent') switchVspTab(_vspActiveTab);
-  // else if (id === 'administratif') { /* TODO */ }
 }
 
 // ── Vie scolaire parent ────────────────────────────────────────────────────
-let _vspActiveTab = 'documents';
+let _vspActiveTab = 'dossier';
 let _vspDocsData = null;
 let _selectedVspDocKey = null;
 let _vspDocFilter = null; // null = toutes catégories, string = clé de catégorie filtrée
 let _vspFinancesData = null;
+let _finActiveTab = 'situation';
 
 const _VSP_FINANCE_TABS = new Set(['situation', 'portemonnaie-parent']);
 
 function switchVspTab(tab) {
   _vspActiveTab = tab;
   document.querySelectorAll('#vsp-tabs .sub-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-  const isDoc = tab === 'documents';
-  const resultEl  = document.getElementById('vsp-result');
-  const docPanel  = document.getElementById('vsp-doc-panel');
-  if (resultEl) resultEl.style.display  = isDoc ? 'none' : '';
-  if (docPanel) docPanel.style.display  = isDoc ? 'flex' : 'none';
-  if (tab === 'documents')             { _vspDocFilter = null; loadVspDocuments(); }
-  else if (tab === 'dossier')          loadDossierInscription();
-  else if (tab === 'sondages')         loadVspSondages();
-  else if (_VSP_FINANCE_TABS.has(tab)) loadVspFinances(tab);
-  else if (tab === 'modeReglement')    loadVspModeReglement();
+  if (tab === 'dossier')  loadDossierInscription();
+  else if (tab === 'sondages') loadVspSondages();
+}
+
+function switchFinancesTab(tab) {
+  _finActiveTab = tab;
+  document.querySelectorAll('#finances-tabs .sub-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  if (_VSP_FINANCE_TABS.has(tab)) loadVspFinances(tab);
+  else if (tab === 'modeReglement') loadVspModeReglement();
 }
 
 async function loadVspFinances(tab) {
   const eleveId = getEleveId();
   if (!eleveId) return;
   const cacheKey = `finances-parent:${eleveId}`;
-  const resultEl = document.getElementById('vsp-result');
-  const spinEl   = document.getElementById('spin-vsp');
+  const resultEl = document.getElementById('finances-result');
+  const spinEl   = document.getElementById('spin-finances-parent');
   if (!resultEl) return;
 
   const renderForTab = data => {
@@ -3555,8 +3759,8 @@ async function loadVspFinances(tab) {
     return d.data;
   }, {
     onSpinner: () => { spinEl.style.display = 'inline'; resultEl.innerHTML = centeredSpinner(); },
-    onCached:  (data, ts) => { spinEl.style.display = 'none'; _vspFinancesData = data; resultEl.innerHTML = renderForTab(data); updateFreshnessLabel('viescolaire-parent', ts || Date.now()); },
-    onFresh:   (data)     => { spinEl.style.display = 'none'; _vspFinancesData = data; resultEl.innerHTML = renderForTab(data); updateFreshnessLabel('viescolaire-parent', Date.now()); },
+    onCached:  (data, ts) => { spinEl.style.display = 'none'; _vspFinancesData = data; resultEl.innerHTML = renderForTab(data); updateFreshnessLabel('finances-parent', ts || Date.now()); },
+    onFresh:   (data)     => { spinEl.style.display = 'none'; _vspFinancesData = data; resultEl.innerHTML = renderForTab(data); updateFreshnessLabel('finances-parent', Date.now()); },
     diffFn:    edCache.defaultDiff,
   }).catch(e => {
     resultEl.innerHTML = `<p style="color:#b91c1c;font-size:14px">Erreur : ${e.message}</p>`;
@@ -3686,8 +3890,8 @@ async function loadVspModeReglement() {
   const eleveId = getEleveId();
   if (!eleveId) return;
   const cacheKey = `mode-reglement:${eleveId}`;
-  const resultEl = document.getElementById('vsp-result');
-  const spinEl   = document.getElementById('spin-vsp');
+  const resultEl = document.getElementById('finances-result');
+  const spinEl   = document.getElementById('spin-finances-parent');
   if (!resultEl) return;
 
   await edCache.load(cacheKey, async () => {
@@ -3701,8 +3905,8 @@ async function loadVspModeReglement() {
     return d.data;
   }, {
     onSpinner: () => { spinEl.style.display = 'inline'; resultEl.innerHTML = centeredSpinner(); },
-    onCached:  (data, ts) => { spinEl.style.display = 'none'; resultEl.innerHTML = renderVspModeReglement(data); updateFreshnessLabel('viescolaire-parent', ts || Date.now()); },
-    onFresh:   (data)     => { spinEl.style.display = 'none'; resultEl.innerHTML = renderVspModeReglement(data); updateFreshnessLabel('viescolaire-parent', Date.now()); },
+    onCached:  (data, ts) => { spinEl.style.display = 'none'; resultEl.innerHTML = renderVspModeReglement(data); updateFreshnessLabel('finances-parent', ts || Date.now()); },
+    onFresh:   (data)     => { spinEl.style.display = 'none'; resultEl.innerHTML = renderVspModeReglement(data); updateFreshnessLabel('finances-parent', Date.now()); },
     diffFn:    edCache.defaultDiff,
   }).catch(e => {
     resultEl.innerHTML = `<p style="color:#b91c1c;font-size:14px">Erreur : ${e.message}</p>`;
@@ -3797,7 +4001,7 @@ async function loadVspDocuments() {
   if (!eleveId) return;
   const cacheKey = `documents-parent:${eleveId}`;
   const listEl = document.getElementById('vsp-doc-list');
-  const spinEl = document.getElementById('spin-vsp');
+  const spinEl = document.getElementById('spin-documents-parent');
   if (!listEl) return;
 
   await edCache.load(cacheKey, async () => {
@@ -3811,8 +4015,8 @@ async function loadVspDocuments() {
     return d.data;
   }, {
     onSpinner: () => { spinEl.style.display = 'inline'; listEl.innerHTML = centeredSpinner(); },
-    onCached:  (data, ts) => { spinEl.style.display = 'none'; _vspDocsData = data; renderVspDocToolbar(data); listEl.innerHTML = renderVspDocList(data); updateFreshnessLabel('viescolaire-parent', ts || Date.now()); },
-    onFresh:   (data)     => { spinEl.style.display = 'none'; _vspDocsData = data; renderVspDocToolbar(data); listEl.innerHTML = renderVspDocList(data); updateFreshnessLabel('viescolaire-parent', Date.now()); },
+    onCached:  (data, ts) => { spinEl.style.display = 'none'; _vspDocsData = data; renderVspDocToolbar(data); listEl.innerHTML = renderVspDocList(data); updateFreshnessLabel('documents-parent', ts || Date.now()); },
+    onFresh:   (data)     => { spinEl.style.display = 'none'; _vspDocsData = data; renderVspDocToolbar(data); listEl.innerHTML = renderVspDocList(data); updateFreshnessLabel('documents-parent', Date.now()); },
     diffFn:    edCache.defaultDiff,
   }).catch(e => {
     listEl.innerHTML = `<p style="color:#b91c1c;font-size:14px">Erreur : ${e.message}</p>`;
@@ -5054,6 +5258,7 @@ function openNewMessageDialog({ initialRecipient = null, mode = null, subject = 
   overlay.id = 'new-msg-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:1rem';
   overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+  overlay.classList.add('dlg-overlay');
 
   const dlg = document.createElement('div');
   dlg.style.cssText = `background:${dark?'#242424':'#fff'};color:${dark?'#f0f0ee':'#1a1a1a'};border-radius:12px;padding:20px;width:100%;max-width:680px;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,0.25)`;
@@ -5202,6 +5407,7 @@ async function openContactPicker() {
   overlay.id = 'contact-picker-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1100;display:flex;align-items:center;justify-content:center;padding:1rem';
   overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+  overlay.classList.add('dlg-overlay');
 
   const dlg = document.createElement('div');
   dlg.style.cssText = `background:${dark?'#242424':'#fff'};color:${dark?'#f0f0ee':'#1a1a1a'};border-radius:12px;padding:20px;width:100%;max-width:480px;max-height:80vh;display:flex;flex-direction:column;gap:10px;box-shadow:0 8px 32px rgba(0,0,0,0.25)`;
@@ -5444,15 +5650,23 @@ window.addEventListener('DOMContentLoaded', function restoreSession() {
     accountData = s.accountData;
     onLoggedIn(s.accountData);
     // Vérification silencieuse après 1s — le proxy a eu le temps de démarrer
-    // Si le cache absences est encore frais (< 30 min), le token était valide récemment → on saute la vérification réseau
+    // Si le cache approprié est encore frais (< 30 min), le token était valide récemment → on saute la vérification réseau
     setTimeout(async () => {
-      const eleveId = s.accountData.accounts ? s.accountData.accounts[0].id : (s.accountData.id || '');
+      const _acc = s.accountData.accounts ? s.accountData.accounts[0] : s.accountData;
+      const eleveId = _acc?.id || '';
       if (!eleveId) return;
-      const cached = await edCache.get(`absences:${eleveId}`).catch(() => null);
+      const isEleve = _acc?.typeCompte === 'E';
+      // Clé de cache à vérifier : absences pour élève, accueil pour parent
+      const skipCacheKey = isEleve ? `absences:${eleveId}` : `accueil:${eleveId}`;
+      const cached = await edCache.get(skipCacheKey).catch(() => null);
       if (cached && !edCache.isStale(cached)) return;
-      fetch(`${getProxy()}/v3/eleves/${eleveId}/viescolaire.awp?verbe=get`, {
+      // Endpoint de validation : viescolaire pour élève, accueil pour parent
+      const validationUrl = isEleve
+        ? `${getProxy()}/v3/eleves/${eleveId}/viescolaire.awp?verbe=get`
+        : `${getProxy()}/v3/1/${eleveId}/timelineAccueilCommun.awp?verbe=get&v=4.98.0`;
+      fetch(validationUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': s.token, 'X-ApisVer': '4.75.0' },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': s.token, 'X-ApisVer': '4.98.0' },
         body: 'data={}'
       }).then(r => r.json()).then(data => {
         if (data.code !== 200) { silentReauth(s); }
@@ -5716,6 +5930,7 @@ function openNewMemoDialog() {
   overlay.id = 'memo-dlg-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:1rem';
   overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+  overlay.classList.add('dlg-overlay');
 
   const dlg = document.createElement('div');
   dlg.style.cssText = `background:${dark?'#242424':'#fff'};color:${dark?'#f0f0ee':'#1a1a1a'};border-radius:12px;padding:20px;width:100%;max-width:680px;max-height:90vh;overflow-y:auto;display:flex;flex-direction:column;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,0.25)`;
@@ -5766,6 +5981,7 @@ function openEditMemoDialog(idEnc) {
   overlay.id = 'memo-dlg-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:1rem';
   overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+  overlay.classList.add('dlg-overlay');
 
   const dlg = document.createElement('div');
   dlg.style.cssText = `background:${dark?'#242424':'#fff'};color:${dark?'#f0f0ee':'#1a1a1a'};border-radius:12px;padding:20px;width:100%;max-width:680px;max-height:90vh;overflow-y:auto;display:flex;flex-direction:column;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,0.25)`;
@@ -5949,6 +6165,7 @@ function _showMemoConflictDialog(imp, existing, callback) {
   const dark = document.body.classList.contains('dark');
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:2000;display:flex;align-items:center;justify-content:center;padding:1rem';
+  overlay.classList.add('dlg-overlay');
 
   const titreH = (imp.titre||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const dlg = document.createElement('div');

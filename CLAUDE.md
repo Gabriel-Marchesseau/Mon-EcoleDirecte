@@ -21,7 +21,7 @@ proxy.js                    # Proxy HTTPS Node.js — cœur du serveur
 ecoledirecte.html           # HTML + cache IndexedDB inline (objet edCache) + dark mode init
 app.js                      # Toute la logique UI (~3300 lignes) — fichier principal
 style.css                   # Thème light/dark via CSS variables
-generate-cert.js            # Génère cert.pem / key.pem (SSL auto-signé, couvre monecoledirecte.local)
+generate-cert.js            # Génère CA locale (ca.pem/ca-key.pem) + cert serveur signé (cert.pem/key.pem)
 package.json                # node-forge, nodemon
 install.ps1                 # Script d'installation PowerShell (configure hosts + portproxy)
 run.ps1                     # Script de lancement PowerShell
@@ -46,11 +46,13 @@ CLAUDE.md                   # Ce fichier
 | Messages — Contacts | Liste contacts (Professeurs / Personnels / Autres), bouton "Écrire" → ouvre composition avec destinataire pré-rempli |
 | Nouveau message | Dialog composition : éditeur enrichi (contenteditable), PJ drop zone, sélecteur destinataires (contact picker tabulé), modes Répondre / Transférer avec message cité |
 | Vie scolaire | Cinq onglets : Absences (liste avec justificatifs) + Sanctions/Encouragements + QCM + Sondages + **Porte-monnaie** (soldes et historique des écritures) |
-| Vie scolaire (parent) | Six sous-onglets : **Documents** (liste par catégorie avec filtre, détail et téléchargement) + **Dossier d'inscription** + **Sondages** + **Situation financière** (compte standard : solde, avenir, historique hors factures) + **Porte-monnaie** (comptes portemonnaie/pmactivite avec sous-écritures) + **Mode de règlement** (mode, IBAN, titulaire, prochains prélèvements) |
+| Documents (parent) | Page autonome : liste par catégorie avec filtre, détail et téléchargement (`familledocuments.awp`) |
+| Situation financière (parent) | Trois sous-onglets : **Factures** (compte standard : solde, avenir, historique hors factures) + **Porte-monnaie** (comptes portemonnaie/pmactivite avec sous-écritures) + **Mode de règlement** (mode, IBAN, titulaire) |
+| Vie scolaire (parent) | Deux sous-onglets : **Dossier d'inscription** + **Sondages** |
 | Mémos | Notes locales (IndexedDB), éditeur rich-text, date d'échéance, tri colonnes, filtres "Faits"/"Expirés", export/import CSV, résolution de conflits d'import |
 | Onglet ··· | Appel API manuel libre |
 
-Fonctionnalités transversales : dark mode, cache IndexedDB stale-while-revalidate (TTL 30 min), badges nouveautés, mode hors-ligne (session expirée → reconnexion silencieuse automatique ou cache conservé + bannière reconnexion), routeur SPA (URL par onglet), label fraîcheur, refresh forcé, arrêt proxy, double auth 2FA avec QCM et réponses automatiques configurables + sauvegarde auto des réponses manuelles, **paramètres page par défaut** (dialog engrenage, configurable par compte), **support compte parent** (jeu d'onglets adapté à `typeCompte`).
+Fonctionnalités transversales : dark mode, cache IndexedDB stale-while-revalidate (TTL 30 min), badges nouveautés, mode hors-ligne (session expirée → reconnexion silencieuse automatique ou cache conservé + bannière reconnexion), routeur SPA (URL par onglet), label fraîcheur, refresh forcé, arrêt proxy, double auth 2FA avec QCM et réponses automatiques configurables + sauvegarde auto des réponses manuelles, **paramètres page par défaut** (dialog engrenage, configurable par compte), **support compte parent** (5 onglets : Accueil, Messages, Documents, Situation financière, Vie scolaire), **sélecteur compte enfant** (vue élève depuis compte parent).
 
 ---
 
@@ -92,7 +94,7 @@ Fonctionnalités transversales : dark mode, cache IndexedDB stale-while-revalida
 - Endpoint `GET /cas-redirect?url=...` — suit la redirection CAS authentifiée (headers X-Token, 2fa-token, X-Gtk transmis), gère les redirections HTML (`<meta refresh>`, `window.location`)
 - Endpoint `GET /collabora-url` — fetche `libreoffice.ecoledirecte.com/hosting/discovery`, extrait l'URL `cool.html` et la renvoie en JSON (`{ viewUrl }`)
 - Header `WOPI-Token` retransmis au client via `Access-Control-Expose-Headers` (nécessaire pour construire l'access_token Collabora)
-- Routes SPA `/accueil`, `/vie-scolaire-parent`, `/administratif` ajoutées (servent l'app HTML pour le routeur client)
+- Routes SPA `/accueil`, `/documents-parent`, `/finances-parent`, `/vie-scolaire-parent` ajoutées (servent l'app HTML pour le routeur client)
 - Page 404 personnalisée en français pour les chemins inconnus (hors `/v3/` et fichiers statiques)
 
 ---
@@ -136,20 +138,29 @@ let memosSortDir = 'desc';         // 'asc' | 'desc'
 // Routeur SPA
 const ROUTE_TO_TAB = { '/accueil': 'accueil', '/edt': 'edt', '/notes': 'notes', '/devoirs': 'devoirs',
   '/seances': 'seances', '/messages': 'messages', '/vie-scolaire': 'absences',
-  '/perso': 'perso', '/memos': 'memos', '/vie-scolaire-parent': 'viescolaire-parent', '/administratif': 'administratif' };
-const TAB_TO_ROUTE = { 'accueil': '/accueil', 'edt': '/edt', ... , 'absences': '/vie-scolaire', 'memos': '/memos', 'viescolaire-parent': '/vie-scolaire-parent', 'administratif': '/administratif' };
+  '/memos': 'memos', '/documents-parent': 'documents-parent', '/finances-parent': 'finances-parent',
+  '/vie-scolaire-parent': 'viescolaire-parent' };
+const TAB_TO_ROUTE = { 'accueil': '/accueil', ... , 'absences': '/vie-scolaire', 'memos': '/memos',
+  'documents-parent': '/documents-parent', 'finances-parent': '/finances-parent', 'viescolaire-parent': '/vie-scolaire-parent' };
 
 // Onglets courants et compte actif (initialisés dans onLoggedIn)
 let _currentTabs = [];
 let _currentAccountId = '';
 let _settingsPendingDefault = 'accueil';
 let _settingsOverlayEl = null;
+let _childEleveView = null;        // null | { id, nom, prenom } — vue élève depuis compte parent
 
-// Onglet Vie scolaire parent
-let _vspActiveTab = 'documents';   // 'documents' | 'dossier' | 'sondages'
+// Page Documents (parent)
 let _vspDocsData = null;           // données brutes documents famille
 let _selectedVspDocKey = null;     // clé du document sélectionné
 let _vspDocFilter = null;          // null = toutes catégories | string = catégorie filtrée
+
+// Page Situation financière (parent)
+let _finActiveTab = 'situation';   // 'situation' | 'portemonnaie-parent' | 'modeReglement'
+let _vspFinancesData = null;       // données comptes/detail.awp (partagé entre Factures et Porte-monnaie)
+
+// Page Vie scolaire parent
+let _vspActiveTab = 'dossier';     // 'dossier' | 'sondages'
 
 // Nouveau message — modes
 let _newMsgMode = null;            // null | 'reply' | 'forward'
@@ -226,8 +237,7 @@ saveSettingsDefault()         // persiste dans `localStorage` clé `ed_default_t
 loadPorteMonnaie()            // charge soldes + écritures (`comptes/detail.awp`) depuis edCache
 renderPorteMonnaie(data)      // render les comptes avec solde coloré et historique
 
-// Vie scolaire parent
-switchVspTab(tab)             // 'documents'|'dossier'|'sondages'|'situation'|'portemonnaie-parent'|'modeReglement'
+// Page Documents parent (autonome)
 loadVspDocuments()            // charge la liste des documents famille (`familledocuments.awp`) depuis edCache
 renderVspDocToolbar(data)     // render les boutons filtre par catégorie (only si > 1 catégorie peuplée)
 toggleVspDocFilter(key)       // active/désactive le filtre par catégorie VSP_DOC_CATEGORIES
@@ -241,6 +251,16 @@ renderVspPorteMonnaie(data)   // render comptes portemonnaie/pmactivite avec sou
 loadVspModeReglement()        // fetch `famillemodedereglement.awp` → cache `mode-reglement:{eleveId}`
 renderVspModeReglement(data)  // render mode, IBAN, titulaire, domiciliation, BIC + bannière si demande en cours
 _renderEcritureRow(e)         // → HTML d'une ligne d'écriture (libelle, date, montant coloré, bouton DL si idPieceJointe)
+
+// Page Situation financière parent (sous-onglets)
+switchFinancesTab(tab)        // 'situation' | 'portemonnaie-parent' | 'modeReglement'
+
+// Page Vie scolaire parent (sous-onglets)
+switchVspTab(tab)             // 'dossier' | 'sondages'
+
+// Compte parent — vue enfant
+_rebuildTabBar(tabs)          // reconstruit la barre d'onglets depuis un tableau { id, label }
+switchChildAccountView(eleveId) // bascule vers la vue élève (ou null → retour compte parent)
 
 // Espaces de travail
 _getFolderPath(folder)        // extrait le chemin d'un dossier depuis `folder.id` (après `\W\{espaceId}`)
@@ -342,9 +362,9 @@ contacts:{tab}:{eleveId}      ← tab = teachers | staff | tutors
 memos:{eleveId}               ← mémos locaux (pas d'API EcoleDirecte, stockage pur IndexedDB)
 accueil:{eleveId}             ← post-its de l'établissement
 portemonnaie:{eleveId}        ← soldes et écritures porte-monnaie
-documents-parent:{eleveId}    ← documents famille (onglet Vie scolaire parent)
-sondages-parent:{eleveId}     ← sondages parent (onglet Vie scolaire parent)
-dossier-inscription:{eleveId} ← dossier d'inscription (onglet Vie scolaire parent)
+documents-parent:{eleveId}    ← documents famille (page Documents parent)
+sondages-parent:{eleveId}     ← sondages parent (page Vie scolaire parent)
+dossier-inscription:{eleveId} ← dossier d'inscription (page Vie scolaire parent)
 finances-parent:{eleveId}     ← comptes/detail.awp data={} — partagé entre Situation financière et Porte-monnaie
 mode-reglement:{eleveId}      ← famillemodedereglement.awp — Mode de règlement parent
 ```
@@ -614,7 +634,7 @@ Tous ces éléments sont intégrés dans les fichiers actuels :
 - Icône filtre SVG (entonnoir) ajoutée dans les toolbars Devoirs, Séances, Messages (cohérence visuelle)
 - Onglet "Accueil" — post-its établissement (`timelineAccueilCommun.awp`), types info/alerte/urgence colorés, `loadAccueil()` / `renderAccueil()` / `renderPostit()`
 - Porte-monnaie (sous-onglet Vie scolaire) — `loadPorteMonnaie()` / `renderPorteMonnaie()` : soldes et historique écritures via `comptes/detail.awp`
-- Support compte parent — `onLoggedIn()` détecte `typeCompte === 'E'` (élève) vs parent et génère un jeu d'onglets différent (Accueil + Messages + Vie scolaire + Administratif)
+- Support compte parent — `onLoggedIn()` détecte `typeCompte === 'E'` (élève) vs parent et génère un jeu d'onglets différent (Accueil + Messages + Documents + Situation financière + Vie scolaire)
 - Paramètres page par défaut — `openSettingsDialog()` (bouton engrenage en header) permet de choisir l'onglet d'accueil par compte (`ed_default_tab_{accountId}`)
 - Startup : priorité URL > page par défaut configurée (l'ancienne clé `ed_last_tab` ignorée)
 - Espaces de travail : `navigateEspaceInto()` est désormais async — lazy-load des sous-dossiers vides via `idFolder` param ; `_getFolderPath()` extrait le chemin depuis `folder.id`
@@ -626,7 +646,6 @@ Tous ces éléments sont intégrés dans les fichiers actuels :
 - `_syncRteToolbar(toolbarId)` — synchronise l'état visuel bold/italic/underline/fontSize dans les toolbars RTE (mémos + nouveau message)
 - Toolbar RTE — bouton "liste à puces" avec icône SVG, état actif reflété pour tous les boutons, liste `ul/ol` stylée dans `[contenteditable]` et panels detail
 - Mémos CSV — colonne renommée `contenu_html` (préserve le HTML rich-text à l'export/import)
-- Onglet Vie scolaire parent — `switchVspTab()` + six sous-onglets : Documents, Dossier d'inscription, Sondages, **Situation financière**, **Porte-monnaie**, **Mode de règlement** (3 nouveaux onglets financiers ajoutés à la session suivante)
 - `renderVspDocToolbar()` / `toggleVspDocFilter()` — filtre catégories documents famille (`VSP_DOC_CATEGORIES`) avec badge signature en attente
 - `getCurrentAnnee()` / `getChildEleveId()` — nouveaux utilitaires (année scolaire courante, ID élève depuis compte parent)
 - `onLoggedIn()` — `#user-meta` affiche maintenant le type de compte + nom de l'établissement + classe
@@ -634,5 +653,13 @@ Tous ces éléments sont intégrés dans les fichiers actuels :
 - QCM — propositions triées alphabétiquement (numériques : ordre numérique ; texte : `localeCompare`)
 - Profil — questions secrètes triées alphabétiquement dans le `<select>`
 - Messages parent — marquage lu corrigé : le fetch du contenu utilise `verbe=post` (au lieu de `verbe=get`) pour les comptes parent ; le `verbe=put` séparé n'est envoyé que pour les comptes élève
-- Vie scolaire parent — onglet Administratif simplifié (Documents et Factures supprimés car accessibles depuis Vie scolaire) ; 3 nouveaux onglets financiers dans Vie scolaire : Situation financière (`comptes/detail.awp` `data={}`), Porte-monnaie (portemonnaie/pmactivite avec sous-écritures), Mode de règlement (`famillemodedereglement.awp`)
-- Situation financière — les écritures avec `idPieceJointe` (factures téléchargeables) sont filtrées de l'historique (accessibles depuis l'onglet Documents)
+- Situation financière — les écritures avec `idPieceJointe` (factures téléchargeables) sont filtrées de l'historique (accessibles depuis la page Documents)
+- `generate-cert.js` — génère désormais une CA locale (`ca.pem`) + certificat serveur signé par la CA (supprime l'avertissement navigateur si CA installée dans Windows)
+- `install.ps1` — vérifie les droits admin au démarrage, installe `ca.pem` dans le magasin de confiance Windows (`Cert:\LocalMachine\Root`)
+- `_rebuildTabBar(tabs)` — centralise la création des onglets (utilisé par `onLoggedIn` et `switchChildAccountView`)
+- `switchChildAccountView(eleveId)` — bascule entre vue parent (5 onglets) et vue élève associé (EDT, Notes, Devoirs, Vie scolaire, Messages)
+- Sélecteur compte enfant — `#child-account-bar` avec `#child-account-selector` (compte parent uniquement) ; classe `.child-account-select` dans style.css
+- Réorganisation pages compte parent : **Documents** (page autonome, `/documents-parent`) + **Situation financière** (page autonome `/finances-parent` avec sous-onglets Factures/Porte-monnaie/Mode de règlement) + **Vie scolaire** réduit à Dossier d'inscription + Sondages
+- `switchFinancesTab(tab)` — gère les sous-onglets de la page Situation financière
+- `_finActiveTab` — onglet actif de la page finances (défaut `'situation'`)
+- Dark mode — `body.dark .child-account-select` + `body.dark .postit-content [style*="background"]` transparent

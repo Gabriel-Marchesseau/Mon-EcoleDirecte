@@ -66,9 +66,15 @@
   <div class="card" id="api-card">
     <div class="profile-bar">
       <div class="avatar" id="user-avatar" onclick="openProfile()" style="cursor:pointer" title="Mon profil">?</div>
-      <div class="profile-info" style="flex:1;cursor:pointer" onclick="openProfile()" title="Mon profil">
-        <p style="font-size:15px;font-weight:500;" id="user-name">—</p>
-        <p style="font-size:12px;color:#888;margin-top:1px" id="user-meta">—</p>
+      <div class="profile-info" style="flex:1">
+        <div style="cursor:pointer" onclick="openProfile()" title="Mon profil">
+          <p style="font-size:15px;font-weight:500;" id="user-name">—</p>
+          <p style="font-size:12px;color:#888;margin-top:1px" id="user-meta">—</p>
+        </div>
+        <div id="child-account-bar" style="display:none;align-items:center;gap:10px;margin-top:4px">
+          <select id="child-account-selector" class="child-account-select" onchange="switchChildAccountView(this.value)"></select>
+          <span id="child-account-school" style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.04em;white-space:nowrap"></span>
+        </div>
       </div>
       <div style="display:flex;align-items:center;gap:4px">
         <span style="font-size:14px;font-weight:500;color:#aaa">Mon EcoleDirecte</span>
@@ -242,24 +248,13 @@
       <div id="absences-result" style="flex:1;overflow-y:auto;min-height:0"></div>
     </div>
 
-    <!-- Panel Vie scolaire (compte parent) -->
-    <div class="tab-panel" id="panel-viescolaire-parent">
+    <!-- Panel Documents (compte parent) -->
+    <div class="tab-panel" id="panel-documents-parent">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-        <div class="sub-tabs" id="vsp-tabs">
-          <button class="sub-tab active" data-tab="documents" onclick="switchVspTab('documents')">Documents</button>
-          <button class="sub-tab" data-tab="dossier" onclick="switchVspTab('dossier')">Dossier d'inscription</button>
-          <button class="sub-tab" data-tab="sondages" onclick="switchVspTab('sondages')">Sondages</button>
-          <button class="sub-tab" data-tab="situation" onclick="switchVspTab('situation')">Situation financière</button>
-          <button class="sub-tab" data-tab="portemonnaie-parent" onclick="switchVspTab('portemonnaie-parent')">Porte-monnaie</button>
-          <button class="sub-tab" data-tab="modeReglement" onclick="switchVspTab('modeReglement')">Mode de règlement</button>
-        </div>
-        <span id="spin-vsp" style="display:none"><span class="spinner"></span></span>
-        <span id="freshness-viescolaire-parent" style="font-size:11px;color:var(--text4);margin-left:auto"></span>
+        <span id="spin-documents-parent" style="display:none"><span class="spinner"></span></span>
+        <span id="freshness-documents-parent" style="font-size:11px;color:var(--text4);margin-left:auto"></span>
       </div>
-      <!-- Panneau simple (dossier, sondages, finances) -->
-      <div id="vsp-result" style="flex:1;overflow-y:auto;min-height:0;display:none"></div>
-      <!-- Panneau deux colonnes (documents) -->
-      <div id="vsp-doc-panel" style="display:flex;flex-direction:column;flex:1;min-height:0">
+      <div style="display:flex;flex-direction:column;flex:1;min-height:0">
         <div id="vsp-doc-toolbar" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px"></div>
         <div style="display:flex;gap:12px;flex:1;min-height:0">
           <div id="vsp-doc-list" style="flex:1;overflow-y:auto;min-height:0"></div>
@@ -270,14 +265,31 @@
       </div>
     </div>
 
-    <!-- Panel Administratif (compte parent) -->
-    <div class="tab-panel" id="panel-administratif">
-      <div class="sub-tabs" style="margin-bottom:14px">
-        <button class="sub-tab active">Paiements en ligne</button>
+    <!-- Panel Situation financière (compte parent) -->
+    <div class="tab-panel" id="panel-finances-parent">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <div class="sub-tabs" id="finances-tabs">
+          <button class="sub-tab active" data-tab="situation" onclick="switchFinancesTab('situation')">Factures</button>
+          <button class="sub-tab" data-tab="portemonnaie-parent" onclick="switchFinancesTab('portemonnaie-parent')">Porte-monnaie</button>
+          <button class="sub-tab" data-tab="modeReglement" onclick="switchFinancesTab('modeReglement')">Mode de règlement</button>
+        </div>
+        <span id="spin-finances-parent" style="display:none"><span class="spinner"></span></span>
+        <span id="freshness-finances-parent" style="font-size:11px;color:var(--text4);margin-left:auto"></span>
       </div>
-      <div style="flex:1;overflow-y:auto;min-height:0;display:flex;align-items:center;justify-content:center">
-        <span style="color:var(--text4);font-size:13px">Contenu à venir</span>
+      <div id="finances-result" style="flex:1;overflow-y:auto;min-height:0"></div>
+    </div>
+
+    <!-- Panel Vie scolaire (compte parent) -->
+    <div class="tab-panel" id="panel-viescolaire-parent">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <div class="sub-tabs" id="vsp-tabs">
+          <button class="sub-tab active" data-tab="dossier" onclick="switchVspTab('dossier')">Dossier d'inscription</button>
+          <button class="sub-tab" data-tab="sondages" onclick="switchVspTab('sondages')">Sondages</button>
+        </div>
+        <span id="spin-vsp" style="display:none"><span class="spinner"></span></span>
+        <span id="freshness-viescolaire-parent" style="font-size:11px;color:var(--text4);margin-left:auto"></span>
       </div>
+      <div id="vsp-result" style="flex:1;overflow-y:auto;min-height:0"></div>
     </div>
 
     <!-- Panel Mémos -->
