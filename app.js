@@ -3487,6 +3487,9 @@ async function forceRefresh(tab) {
     } else if (_finActiveTab === 'modeReglement') {
       await edCache.delete(`mode-reglement:${eleveId}`);
       await loadVspModeReglement();
+    } else if (_finActiveTab === 'paiementsenligne') {
+      await edCache.delete(`paiements-enligne:${eleveId}`);
+      await loadVspPaiementsEnLigne();
     }
   } else if (tab === 'viescolaire-parent') {
     if (_vspActiveTab === 'dossier') {
@@ -3726,6 +3729,7 @@ function switchFinancesTab(tab) {
   document.querySelectorAll('#finances-tabs .sub-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   if (_VSP_FINANCE_TABS.has(tab)) loadVspFinances(tab);
   else if (tab === 'modeReglement') loadVspModeReglement();
+  else if (tab === 'paiementsenligne') loadVspPaiementsEnLigne();
 }
 
 async function loadVspFinances(tab) {
@@ -3944,6 +3948,80 @@ function renderVspModeReglement(data) {
   return html;
 }
 
+async function loadVspPaiementsEnLigne() {
+  const eleveId = getEleveId();
+  if (!eleveId) return;
+  const cacheKey = `paiements-enligne:${eleveId}`;
+  const resultEl = document.getElementById('finances-result');
+  const spinEl   = document.getElementById('spin-finances-parent');
+  if (!resultEl) return;
+
+  await edCache.load(cacheKey, async () => {
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' };
+    if (twoFaToken) headers['2fa-token'] = twoFaToken;
+    const resp = await fetch(`${getProxy()}/v3/boutique/paiementsenligne.awp?verbe=get&v=4.98.0`, {
+      method: 'POST', headers, body: 'data={}'
+    });
+    const d = await resp.json();
+    if (d.code !== 200) throw new Error(d.message || `Code ${d.code}`);
+    return d.data;
+  }, {
+    onSpinner: () => { spinEl.style.display = 'inline'; resultEl.innerHTML = centeredSpinner(); },
+    onCached:  (data, ts) => { spinEl.style.display = 'none'; resultEl.innerHTML = renderVspPaiementsEnLigne(data); updateFreshnessLabel('finances-parent', ts || Date.now()); },
+    onFresh:   (data)     => { spinEl.style.display = 'none'; resultEl.innerHTML = renderVspPaiementsEnLigne(data); updateFreshnessLabel('finances-parent', Date.now()); },
+    diffFn:    edCache.defaultDiff,
+  }).catch(e => {
+    resultEl.innerHTML = `<p style="color:#b91c1c;font-size:14px">Erreur : ${e.message}</p>`;
+    spinEl.style.display = 'none';
+  });
+}
+
+function renderVspPaiementsEnLigne(data) {
+  if (!Array.isArray(data) || !data.length) return '<p style="color:var(--text3);font-size:14px">Aucun paiement en ligne disponible.</p>';
+
+  let html = '';
+  data.forEach(group => {
+    html += `<div style="margin-bottom:20px">
+      <div style="font-size:13px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">${group.libelle || ''}</div>`;
+
+    (group.paiements || []).forEach(p => {
+      const montant = typeof p.montant === 'number' ? p.montant : 0;
+      const typeBadge = p.typePaiement === 'pm'
+        ? `<span style="font-size:11px;background:#eff6ff;color:#1d4ed8;padding:2px 8px;border-radius:10px;font-weight:500">Porte-monnaie</span>`
+        : `<span style="font-size:11px;background:#f0fdf4;color:#15803d;padding:2px 8px;border-radius:10px;font-weight:500">Service</span>`;
+      const imgUrl = p.img ? `https:${p.img}` : '';
+      const imgHtml = imgUrl
+        ? `<img src="${imgUrl}" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:8px;flex-shrink:0" onerror="this.style.display='none'">`
+        : `<div style="width:48px;height:48px;border-radius:8px;background:var(--bg4);flex-shrink:0"></div>`;
+      let detail = '';
+      if (p.detail) {
+        try { detail = b64d(p.detail.replace(/\n/g, '')); } catch(e) { detail = ''; }
+      }
+      const montantLabel = p.montantModifiable
+        ? `<span style="font-size:11px;color:var(--text3)">Montant libre</span>`
+        : '';
+
+      html += `<div style="background:var(--bg3);border-radius:10px;padding:12px 14px;margin-bottom:8px;display:flex;gap:12px;align-items:flex-start">
+        ${imgHtml}
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+            <span style="font-weight:600;font-size:14px;color:var(--text)">${p.libelle || '—'}</span>
+            ${typeBadge}
+          </div>
+          ${detail ? `<div style="font-size:12px;color:var(--text3);margin-bottom:6px;white-space:pre-line">${detail}</div>` : ''}
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="font-size:16px;font-weight:700;color:var(--text)">${montant.toFixed(2)} €</span>
+            ${montantLabel}
+          </div>
+        </div>
+      </div>`;
+    });
+
+    html += '</div>';
+  });
+  return html;
+}
+
 async function loadVspSondages() {
   const eleveId = getEleveId();
   if (!eleveId) return;
@@ -4139,8 +4217,12 @@ function openVspDocDetail(category, idx) {
       <span style="font-size:13px;font-weight:600;color:#15803d">✓ Signé le ${sigDate}${tel}</span>
     </div>`;
   } else if (needsSig) {
-    sigHtml = `<div style="margin-top:14px;padding:10px 14px;border-radius:8px;background:#fffbeb;border:1px solid #fde68a">
+    sigHtml = `<div style="margin-top:14px;padding:10px 14px;border-radius:8px;background:#fffbeb;border:1px solid #fde68a;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
       <span style="font-size:13px;font-weight:600;color:#b45309">● Signature électronique demandée</span>
+      <button onclick="signVspDocument('${category}',${idx})"
+        style="padding:6px 16px;border-radius:8px;border:none;background:#b45309;color:#fff;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">
+        Signer
+      </button>
     </div>`;
   }
 
@@ -4181,6 +4263,264 @@ async function downloadVspFile(fileId, filenameEnc, leTypeDeFichier) {
   } catch(e) {
     alert(`Erreur téléchargement : ${e.message}`);
   }
+}
+
+function _generateSignatureCanvas(name) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 532;
+  canvas.height = 150;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // Try cursive fonts in order
+  const fonts = ['"Brush Script MT"', '"Segoe Script"', '"Comic Sans MS"', 'cursive'];
+  ctx.font = `italic 56px ${fonts.join(', ')}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#1a1a1a';
+  // Scale text to fit
+  let fontSize = 56;
+  while (ctx.measureText(name).width > canvas.width - 40 && fontSize > 20) {
+    fontSize -= 4;
+    ctx.font = `italic ${fontSize}px ${fonts.join(', ')}`;
+  }
+  ctx.fillText(name, canvas.width / 2, canvas.height / 2);
+  return canvas.toDataURL('image/png');
+}
+
+async function signVspDocument(category, idx) {
+  const doc = (_vspDocsData[category] || [])[idx];
+  if (!doc) return;
+  const acc = accountData?.accounts ? accountData.accounts[0] : accountData;
+  if (!acc) return;
+
+  const dark = document.body.classList.contains('dark');
+  const dlgBg   = dark ? '#1e1e1e' : '#fff';
+  const dlgText = dark ? '#f0f0ee' : '#1a1a1a';
+  const inpBg   = dark ? '#2a2a2a' : '#fff';
+  const inpBord = dark ? '#555' : '#ccc';
+
+  const sigNom  = `${acc.prenom || ''} ${acc.nom || ''}`.trim().toUpperCase();
+  const sigMail = acc.email || '';
+  const sigId   = acc.id || acc.idLogin || 0;
+
+  const signatureCanvas = _generateSignatureCanvas(sigNom);
+
+  // Build OTP inputs (hidden initially)
+  const otpInputs = Array.from({length: 6}, (_, i) => {
+    const firstStyle = i === 0 ? `border:2px solid #3b82f6` : `border:1px solid ${inpBord}`;
+    return `<input type="text" inputmode="numeric" maxlength="1" data-otp-idx="${i}"
+      style="width:40px;height:44px;text-align:center;font-size:20px;font-weight:700;border-radius:6px;background:${inpBg};color:${dlgText};outline:none;${firstStyle}">`;
+  }).join('');
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:2000;display:flex;align-items:center;justify-content:center;padding:1.5rem';
+
+  const dialog = document.createElement('div');
+  dialog.style.cssText = `background:${dlgBg};color:${dlgText};border-radius:12px;padding:1.5rem;max-width:480px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.35);position:relative;font-family:inherit`;
+  dialog.innerHTML = `
+    <button id="sig-close-btn" style="position:absolute;top:10px;right:12px;background:none;border:none;cursor:pointer;font-size:20px;color:${dark?'#666':'#aaa'}">×</button>
+    <h3 style="margin:0 0 12px;font-size:14px;font-weight:700;letter-spacing:.04em;text-transform:uppercase">CONFIRMATION DE LECTURE DU DOCUMENT</h3>
+    <p style="font-size:13px;margin:0 0 14px;line-height:1.55;color:${dlgText}">Pour certifier que vous avez bien <strong>pris connaissance du document</strong>, nous vous demandons de <strong>confirmer votre identité par SMS.</strong></p>
+    <div style="border:1px solid ${inpBord};border-radius:8px;padding:12px;margin-bottom:16px;background:${dark?'#2a2a2a':'#fff'};display:flex;align-items:center;justify-content:center;min-height:90px">
+      <img src="${signatureCanvas}" style="max-width:100%;max-height:82px;display:block" alt="Signature">
+    </div>
+
+    <!-- Étape 1 : validation du numéro -->
+    <div id="sig-step-phone">
+      <div id="sig-phone-loading" style="font-size:13px;color:var(--text3);display:flex;align-items:center;gap:6px;margin-bottom:12px">
+        <span class="spinner" style="width:13px;height:13px"></span> Récupération du numéro…
+      </div>
+      <div id="sig-phone-form" style="display:none">
+        <label style="font-size:13px;font-weight:600;color:${dlgText};display:block;margin-bottom:6px">Numéro de téléphone pour recevoir le code SMS</label>
+        <input id="sig-tel-input" type="tel" autocomplete="tel"
+          style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid ${inpBord};border-radius:8px;background:${inpBg};color:${dlgText};font-size:14px;outline:none;margin-bottom:6px">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:14px">Vérifiez que ce numéro est correct avant d'envoyer le code.</div>
+        <div id="sig-phone-error" style="display:none;color:#b91c1c;font-size:13px;margin-bottom:10px"></div>
+        <div style="display:flex;justify-content:space-between;gap:8px">
+          <button id="sig-cancel-btn" style="padding:8px 20px;border-radius:8px;border:1px solid ${inpBord};background:${dark?'#2a2a2a':'#f3f4f6'};color:${dlgText};font-size:14px;font-weight:500;cursor:pointer">Annuler</button>
+          <button id="sig-send-btn" style="padding:8px 20px;border-radius:8px;border:none;background:#1d4ed8;color:#fff;font-size:14px;font-weight:600;cursor:pointer">Envoyer le code</button>
+        </div>
+      </div>
+      <div id="sig-phone-fetch-error" style="display:none;color:#b91c1c;font-size:13px;margin-bottom:10px"></div>
+    </div>
+
+    <!-- Étape 2 : saisie du code OTP -->
+    <div id="sig-step-otp" style="display:none">
+      <div id="sig-otp-label" style="font-size:13px;font-weight:600;margin-bottom:10px;color:${dlgText}"></div>
+      <div id="sig-otp-inputs" style="display:flex;gap:8px;margin-bottom:10px">${otpInputs}</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:16px">Saisissez le code reçu par SMS pour vous authentifier</div>
+      <div id="sig-error" style="display:none;color:#b91c1c;font-size:13px;margin-bottom:10px"></div>
+      <div style="display:flex;justify-content:space-between;gap:8px">
+        <button id="sig-cancel-btn2" style="padding:8px 20px;border-radius:8px;border:1px solid ${inpBord};background:${dark?'#2a2a2a':'#f3f4f6'};color:${dlgText};font-size:14px;font-weight:500;cursor:pointer">Annuler</button>
+        <button id="sig-confirm-btn" disabled style="padding:8px 20px;border-radius:8px;border:none;background:#1d4ed8;color:#fff;font-size:14px;font-weight:600;cursor:pointer;opacity:.5">Confirmer</button>
+      </div>
+    </div>`;
+
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+
+  const closeBtn        = document.getElementById('sig-close-btn');
+  const cancelBtn       = document.getElementById('sig-cancel-btn');
+  const cancelBtn2      = document.getElementById('sig-cancel-btn2');
+  const sendBtn         = document.getElementById('sig-send-btn');
+  const confirmBtn      = document.getElementById('sig-confirm-btn');
+  const stepPhone       = document.getElementById('sig-step-phone');
+  const stepOtp         = document.getElementById('sig-step-otp');
+  const phoneLoading    = document.getElementById('sig-phone-loading');
+  const phoneForm       = document.getElementById('sig-phone-form');
+  const phoneFetchError = document.getElementById('sig-phone-fetch-error');
+  const phoneError      = document.getElementById('sig-phone-error');
+  const telInput        = document.getElementById('sig-tel-input');
+  const otpLabel        = document.getElementById('sig-otp-label');
+  const errorEl         = document.getElementById('sig-error');
+  const otpEls          = Array.from(document.querySelectorAll('#sig-otp-inputs input'));
+
+  closeBtn.onclick   = () => overlay.remove();
+  cancelBtn.onclick  = () => overlay.remove();
+  cancelBtn2.onclick = () => overlay.remove();
+
+  // OTP input auto-advance
+  otpEls.forEach((inp, i) => {
+    inp.addEventListener('input', () => {
+      inp.value = inp.value.replace(/\D/g, '').slice(0, 1);
+      if (inp.value && i < otpEls.length - 1) otpEls[i + 1].focus();
+      confirmBtn.disabled = !otpEls.every(el => el.value);
+      confirmBtn.style.opacity = confirmBtn.disabled ? '.5' : '1';
+    });
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Backspace' && !inp.value && i > 0) { otpEls[i - 1].focus(); otpEls[i - 1].select(); }
+    });
+    inp.addEventListener('paste', e => {
+      e.preventDefault();
+      const digits = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '');
+      otpEls.forEach((el, j) => { el.value = digits[j] || ''; });
+      const next = otpEls.find(el => !el.value);
+      if (next) next.focus(); else otpEls[otpEls.length - 1].focus();
+      confirmBtn.disabled = !otpEls.every(el => el.value);
+      confirmBtn.style.opacity = confirmBtn.disabled ? '.5' : '1';
+    });
+  });
+
+  // ── Étape 1 : récupération du numéro via famillecoordonnees.awp ──────────
+  let sigTel = '';
+  try {
+    const cr = await fetch(`${getProxy()}/v3/famillecoordonnees.awp?verbe=get&v=4.98.0`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' },
+      body: 'data={}'
+    });
+    const cj = await cr.json();
+    if (cj.code === 200) sigTel = cj.data?.responsable?.telMobile || cj.data?.responsable?.tel || '';
+  } catch(_) {}
+
+  phoneLoading.style.display = 'none';
+  telInput.value = sigTel;
+  phoneForm.style.display = '';
+  telInput.focus();
+
+  // ── Envoi du SMS (étape 1 → 2) ──────────────────────────────────────────
+  sendBtn.onclick = async () => {
+    const tel = telInput.value.trim();
+    if (!tel) {
+      phoneError.textContent = 'Veuillez saisir un numéro de téléphone.';
+      phoneError.style.display = '';
+      return;
+    }
+    phoneError.style.display = 'none';
+    sendBtn.disabled = true;
+    sendBtn.textContent = '…';
+
+    try {
+      const signataire = { idSignataire: sigId, typeSignataire: '1', telephone: tel, email: sigMail, demandeMail: false, nom: sigNom };
+      const headers3ds = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' };
+      if (twoFaToken) headers3ds['2fa-token'] = twoFaToken;
+      const resp = await fetch(`${getProxy()}/v3/3DSecure.awp?verbe=get&v=4.98.0`, {
+        method: 'POST',
+        headers: headers3ds,
+        body: `data=${JSON.stringify({ signataire })}`
+      });
+      const json = await resp.json();
+      if (json.code === 200 || json.code === 201) {
+        sigTel = tel;
+        stepPhone.style.display = 'none';
+        otpLabel.textContent = `Code reçu par SMS au ${tel}`;
+        stepOtp.style.display = '';
+        otpEls[0].focus();
+      } else {
+        phoneError.textContent = json.message || 'Erreur lors de l\'envoi du SMS.';
+        phoneError.style.display = '';
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Envoyer le code';
+      }
+    } catch(e) {
+      phoneError.textContent = `Erreur réseau : ${e.message}`;
+      phoneError.style.display = '';
+      sendBtn.disabled = false;
+      sendBtn.textContent = 'Envoyer le code';
+    }
+  };
+
+  // ── Étape 2 : soumission du code et signature ────────────────────────────
+  confirmBtn.onclick = async () => {
+    const code = otpEls.map(el => el.value).join('');
+    if (code.length < 6) return;
+    errorEl.style.display = 'none';
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = '…';
+
+    const payload = {
+      doc: {
+        id: doc.id,
+        type: doc.type || 'Doc',
+        libelle: doc.libelle || '',
+        date: doc.date || '',
+        displayText: doc.displayText || doc.libelle || '',
+        signatureDemandee: true,
+        signature: doc.signature || {},
+        etatSignatures: doc.etatSignatures || [],
+        typeContexte: category,
+        idDepot: doc.idDepot || ''
+      },
+      codeSecure: parseInt(code, 10),
+      signatureCanvas
+    };
+
+    try {
+      const headersPut = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' };
+      if (twoFaToken) headersPut['2fa-token'] = twoFaToken;
+      const resp = await fetch(`${getProxy()}/v3/familledocuments/${doc.id}.awp?verbe=put&v=4.98.0`, {
+        method: 'POST',
+        headers: headersPut,
+        body: `data=${JSON.stringify(payload)}`
+      });
+      const json = await resp.json();
+      if (json.code === 200) {
+        overlay.remove();
+        // Update local cache so detail panel refreshes without re-fetching
+        const docInCache = (_vspDocsData[category] || [])[idx];
+        if (docInCache) {
+          const today = new Date().toISOString().substring(0, 10);
+          docInCache.signature = { dateValidation: today, tel: sigTel };
+        }
+        renderVspDocToolbar(_vspDocsData);
+        document.getElementById('vsp-doc-list').innerHTML = renderVspDocList(_vspDocsData);
+        openVspDocDetail(category, idx);
+      } else {
+        errorEl.textContent = json.message || 'Code incorrect ou expiré.';
+        errorEl.style.display = '';
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Confirmer';
+        confirmBtn.style.opacity = '1';
+      }
+    } catch(e) {
+      errorEl.textContent = `Erreur réseau : ${e.message}`;
+      errorEl.style.display = '';
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = 'Confirmer';
+      confirmBtn.style.opacity = '1';
+    }
+  };
 }
 
 async function loadDossierInscription() {
