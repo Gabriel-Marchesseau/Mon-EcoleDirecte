@@ -29,9 +29,10 @@
 - **Soldes porte-monnaie (sans détail)** : `POST /v3/comptes/sansdetails.awp?verbe=get&v=4.98.0` avec `data={}` → `{ comptes: [{typeCompte, idEleve, solde, …}] }` — utilisé pour afficher le solde pm à côté des items de paiement
 - **Documents famille** : `POST /v3/familledocuments.awp?archive=&verbe=get&v=4.98.0` → `{ administratifs, notes, factures, inscriptions, viescolaire, entreprises, listesPiecesAVerser }`
 - **Messages parent** : `/v3/familles/{eleveId}/messages.awp` (lecture et envoi) à la place de `/v3/eleves/{eleveId}/messages.awp`
-- **Marquage lu messages parent** : fetch du contenu avec `verbe=post` (marque comme lu simultanément) ; pas de requête `verbe=put` séparée contrairement au compte élève
+- **Marquage lu messages parent** : pas de requête `verbe=put` séparée (contrairement au compte élève) ; le fetch du contenu utilise `verbe=get` comme pour l'élève
 - **Autorisations de sortie** : `POST /v3/eleves/{eleveId}/niveaux/0/autorisationsSortie.awp?verbe=get&v=4.98.0` avec `data={}` → `{ autorisations: [{jour, autorisationsMatin:{arriveeTardive,intercours,sortieAnticipee:{etat}}, autorisationsApresMidi:{…}}], demandesFamille, demandesEtab, parametrage:{libellesAutorisations} }` — disponible uniquement en vue enfant depuis compte parent
 - **Porte-monnaie enfant (depuis compte parent)** : `POST /v3/comptes/detail.awp?verbe=get&v=4.98.0` avec `data={"eleveId": id}` → comptes de cet enfant uniquement (même endpoint que porte-monnaie élève mais appelé depuis `loadVspPorteMonnaieParent()` séparément)
+- **Vie de classe** : `POST /v3/Classes/{classeId}/viedelaclasse.awp?verbe=get&v=4.98.0` avec `data={}` → messages/actualités de la classe. `classeId` extrait de `eleve.classe.id` (profil) — stocké dans `_childEleveView.classeId` pour la vue enfant, ou via `getIdClasse()` pour un compte élève direct.
 
 ---
 
@@ -91,6 +92,7 @@ portemonnaie-parent:{eleveId} ← comptes/detail.awp data={eleveId} — onglet P
 mode-reglement:{eleveId}      ← famillemodedereglement.awp — Mode de règlement parent
 paiements-enligne:{eleveId}   ← { paiements, soldesParEleve } — boutique/paiementsenligne.awp + comptes/sansdetails.awp
 autorisations-sortie:{eleveId} ← autorisationsSortie.awp — vue enfant depuis compte parent
+viedeclasse:{eleveId}         ← viedelaclasse.awp — onglet Vie de classe (élève et vue enfant)
 ```
 
 ---

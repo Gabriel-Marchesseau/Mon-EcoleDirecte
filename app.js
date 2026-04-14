@@ -83,6 +83,9 @@ let sessionExpired = false;
 
 function getProxy() { return window.location.origin; }
 
+// ── Version API EcoleDirecte ────────────────────────────────
+const API_VERSION = '4.98.0';
+
 // ── Routeur ────────────────────────────────────────────────
 const ROUTE_TO_TAB = { '/accueil': 'accueil', '/edt': 'edt', '/notes': 'notes', '/devoirs': 'devoirs', '/seances': 'seances', '/messages': 'messages', '/vie-scolaire': 'absences', '/memos': 'memos', '/documents-parent': 'documents-parent', '/finances-parent': 'finances-parent', '/vie-scolaire-parent': 'viescolaire-parent' };
 const TAB_TO_ROUTE = { 'accueil': '/accueil', 'edt': '/edt', 'notes': '/notes', 'devoirs': '/devoirs', 'seances': '/seances', 'messages': '/messages', 'absences': '/vie-scolaire', 'memos': '/memos', 'documents-parent': '/documents-parent', 'finances-parent': '/finances-parent', 'viescolaire-parent': '/vie-scolaire-parent' };
@@ -93,7 +96,7 @@ let _currentAccountId = '';
 let _settingsPendingDefault = 'accueil';
 let _settingsOverlayEl = null;
 // Vue enfant (compte parent visualisant un élève associé)
-let _childEleveView = null; // null | { id, nom, prenom }
+let _childEleveView = null; // null | { id, nom, prenom, classeId }
 function getTabFromPath() { return ROUTE_TO_TAB[location.pathname] || null; }
 window.addEventListener('popstate', () => { const t = getTabFromPath(); if (t) switchTab(t, true); });
 function getCurrentAnnee() {
@@ -122,7 +125,7 @@ async function checkProxy() {
   badge.className = 'badge pending'; badge.textContent = 'Vérification…';
   try {
     // Utilise un OPTIONS pour vérifier que le proxy répond sans déclencher initSession
-    const r = await fetch(`${getProxy()}/v3/login.awp?v=4.75.0`, { method: 'OPTIONS' });
+    const r = await fetch(`${getProxy()}/v3/login.awp?v=${API_VERSION}`, { method: 'OPTIONS' });
     badge.className = 'badge ok'; badge.textContent = 'Connecté ✓';
   } catch(e) {
     badge.className = 'badge ko'; badge.textContent = 'Injoignable';
@@ -131,7 +134,7 @@ async function checkProxy() {
 
 async function getGtk() {
   try {
-    const r = await fetch(`${getProxy()}/v3/login.awp?gtk=1&v=4.75.0`);
+    const r = await fetch(`${getProxy()}/v3/login.awp?gtk=1&v=${API_VERSION}`);
     const gtk = r.headers.get('X-Gtk-Value') || '';
     return gtk;
   } catch { return ''; }
@@ -151,9 +154,9 @@ async function doLogin() {
     const gtk = await getGtk();
     const payload = { identifiant: u, motdepasse: p, isReLogin: false, uuid: '', fa: [] };
     const body = `data=${encodeURIComponent(JSON.stringify(payload))}`;
-    const resp = await fetch(`${getProxy()}/v3/login.awp?v=4.75.0`, {
+    const resp = await fetch(`${getProxy()}/v3/login.awp?v=${API_VERSION}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-ApisVer': '4.75.0', 'X-Gtk': gtk },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-ApisVer': API_VERSION, 'X-Gtk': gtk },
       body
     });
     const data = await resp.json();
@@ -181,7 +184,7 @@ async function loadDoubleAuth(twoFaTokenValue) {
   const statusEl = document.getElementById('login-status');
   showStatus(statusEl, 'Chargement de la question de sécurité…', 'info');
   try {
-    const resp = await fetch(`${getProxy()}/v3/connexion/doubleauth.awp?verbe=get&v=4.75.0`, {
+    const resp = await fetch(`${getProxy()}/v3/connexion/doubleauth.awp?verbe=get&v=${API_VERSION}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -280,7 +283,7 @@ async function submitDoubleAuth(choice, twoFaTokenValue, question = null, choice
   showStatus(statusEl, 'Vérification…', 'info');
   try {
     const body = `data=${encodeURIComponent(JSON.stringify({ choix: choice }))}`;
-    const resp = await fetch(`${getProxy()}/v3/connexion/doubleauth.awp?verbe=post&v=4.75.0`, {
+    const resp = await fetch(`${getProxy()}/v3/connexion/doubleauth.awp?verbe=post&v=${API_VERSION}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -328,9 +331,9 @@ async function loginWithFa(fa) {
     const gtk = await getGtk();
     const payload = { identifiant: u, motdepasse: p, isReLogin: false, uuid: '', fa };
     const body = `data=${encodeURIComponent(JSON.stringify(payload))}`;
-    const resp = await fetch(`${getProxy()}/v3/login.awp?v=4.75.0`, {
+    const resp = await fetch(`${getProxy()}/v3/login.awp?v=${API_VERSION}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-ApisVer': '4.75.0', 'X-Gtk': gtk },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-ApisVer': API_VERSION, 'X-Gtk': gtk },
       body
     });
     const data = await resp.json();
@@ -354,9 +357,9 @@ async function silentReauth(savedSession) {
     const fa = savedSession.fa || [];
     const payload = { identifiant: savedSession.u, motdepasse: savedSession.p, isReLogin: false, uuid: '', fa };
     const body = `data=${encodeURIComponent(JSON.stringify(payload))}`;
-    const resp = await fetch(`${getProxy()}/v3/login.awp?v=4.75.0`, {
+    const resp = await fetch(`${getProxy()}/v3/login.awp?v=${API_VERSION}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-ApisVer': '4.75.0', 'X-Gtk': gtk },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-ApisVer': API_VERSION, 'X-Gtk': gtk },
       body
     });
     const data = await resp.json();
@@ -375,7 +378,7 @@ async function silentReauth(savedSession) {
 
 async function silentDoubleAuth(twoFaTokenValue, savedSession) {
   try {
-    const resp = await fetch(`${getProxy()}/v3/connexion/doubleauth.awp?verbe=get&v=4.75.0`, {
+    const resp = await fetch(`${getProxy()}/v3/connexion/doubleauth.awp?verbe=get&v=${API_VERSION}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', '2fa-token': twoFaTokenValue, 'X-Token': twoFaTokenValue },
       body: 'data={}'
@@ -413,7 +416,7 @@ async function silentDoubleAuth(twoFaTokenValue, savedSession) {
 async function silentSubmitDoubleAuth(choice, twoFaTokenValue, savedSession) {
   try {
     const body = `data=${encodeURIComponent(JSON.stringify({ choix: choice }))}`;
-    const resp = await fetch(`${getProxy()}/v3/connexion/doubleauth.awp?verbe=post&v=4.75.0`, {
+    const resp = await fetch(`${getProxy()}/v3/connexion/doubleauth.awp?verbe=post&v=${API_VERSION}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', '2fa-token': twoFaTokenValue, 'X-Token': twoFaTokenValue },
       body
@@ -434,9 +437,9 @@ async function silentLoginWithFa(fa, twoFaTokenValue, savedSession) {
     const gtk = await getGtk();
     const payload = { identifiant: savedSession.u, motdepasse: savedSession.p, isReLogin: false, uuid: '', fa };
     const body = `data=${encodeURIComponent(JSON.stringify(payload))}`;
-    const resp = await fetch(`${getProxy()}/v3/login.awp?v=4.75.0`, {
+    const resp = await fetch(`${getProxy()}/v3/login.awp?v=${API_VERSION}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-ApisVer': '4.75.0', 'X-Gtk': gtk },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-ApisVer': API_VERSION, 'X-Gtk': gtk },
       body
     });
     const data = await resp.json();
@@ -574,6 +577,14 @@ const _CHILD_VIEW_TABS = [
 
 function switchChildAccountView(eleveId, initialTab) {
   const acc = accountData?.accounts ? accountData.accounts[0] : accountData;
+  // Vider le panneau de détail message lors du changement de compte enfant
+  const detailEl = document.getElementById('message-detail-panel');
+  if (detailEl) {
+    detailEl.style.alignItems = 'center';
+    detailEl.style.justifyContent = 'center';
+    detailEl.innerHTML = `<span style="color:var(--text4);font-size:13px;text-align:center">Sélectionne un message<br>pour voir le contenu ici</span>`;
+  }
+  selectedMessageId = null;
   // Onglet actif au moment du changement de compte
   const activeTabEl = document.querySelector('.tab.active');
   const activeTabId = activeTabEl?.dataset?.tab || null;
@@ -609,7 +620,7 @@ function switchChildAccountView(eleveId, initialTab) {
     const eleve = eleves.find(e => String(e.id) === String(eleveId));
     if (!eleve) return;
     notesData = null; notesPeriod = null;
-    _childEleveView = { id: eleve.id, nom: eleve.nom || '', prenom: eleve.prenom || '' };
+    _childEleveView = { id: eleve.id, nom: eleve.nom || '', prenom: eleve.prenom || '', classeId: eleve.classe?.id || eleve.idClasse || '' };
     localStorage.setItem(`ed_child_view_${_currentAccountId}`, String(eleveId));
     // Afficher le sous-onglet Correspondances dans Messages
     const corrTabBtn = document.querySelector('#panel-messages .sub-tab[data-tab="correspondance"]');
@@ -722,14 +733,14 @@ async function openProfile() {
   let coordsData  = null;
   try {
     const fetches = [
-      fetch(`${getProxy()}/v3/logins/${loginId}.awp?verbe=get&v=4.97.2`, {
+      fetch(`${getProxy()}/v3/logins/${loginId}.awp?verbe=get&v=${API_VERSION}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION },
         body: 'data={}'
       }),
-      isParent ? fetch(`${getProxy()}/v3/famillecoordonnees.awp?verbe=get&v=4.98.0`, {
+      isParent ? fetch(`${getProxy()}/v3/famillecoordonnees.awp?verbe=get&v=${API_VERSION}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION },
         body: 'data={}'
       }) : Promise.resolve(null)
     ];
@@ -1110,9 +1121,9 @@ async function saveProfile(loginId, section) {
   status.textContent = 'Enregistrement…';
 
   try {
-    const resp = await fetch(`${getProxy()}/v3/logins/${loginId}.awp?verbe=put&v=4.97.2`, {
+    const resp = await fetch(`${getProxy()}/v3/logins/${loginId}.awp?verbe=put&v=${API_VERSION}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION },
       body: 'data=' + encodeURIComponent(JSON.stringify(payload))
     });
     const json = await resp.json();
@@ -1461,9 +1472,9 @@ async function openDevoirDialog(encodedData, triggerEl) {
   };
 
   await edCache.load(cacheKey, async () => {
-    const resp = await fetch(`${getProxy()}/v3/Eleves/${eleveId}/cahierdetexte/${d.date}.awp?verbe=get`, {
+    const resp = await fetch(`${getProxy()}/v3/Eleves/${eleveId}/cahierdetexte/${d.date}.awp?verbe=get&v=${API_VERSION}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION },
       body: 'data={}'
     });
     const data = await resp.json();
@@ -1582,9 +1593,9 @@ async function loadMessages() {
     const _acc = accountData?.accounts ? accountData.accounts[0] : accountData;
     const _msgBase = (_childEleveView || _acc?.typeCompte === 'E') ? `/v3/eleves/${eleveId}/messages.awp` : `/v3/familles/${eleveId}/messages.awp`;
     const fetchTab = async type => {
-      const resp = await fetch(`${getProxy()}${_msgBase}?force=false&typeRecuperation=${type}&idClasseur=0&orderBy=date&order=desc&query=&onlyRead=&page=0&itemsPerPage=100&getAll=0&verbe=get`, {
+      const resp = await fetch(`${getProxy()}${_msgBase}?force=false&typeRecuperation=${type}&idClasseur=0&orderBy=date&order=desc&query=&onlyRead=&page=0&itemsPerPage=100&getAll=0&verbe=get&v=${API_VERSION}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION },
         body: `data=${encodeURIComponent(JSON.stringify({ anneeMessages: annee }))}`
       });
       return resp.json();
@@ -1645,6 +1656,7 @@ function switchVieScolaireTab(section) {
   if (section === 'sondages') { loadSondages(); return; }
   if (section === 'portemonnaie') { loadPorteMonnaie(); return; }
   if (section === 'demandesabsences') { loadDemandesAbsences(); return; }
+  if (section === 'viedeclasse') { loadVieDeClasse(); return; }
   // Absences / sanctions : re-render depuis le cache sans refetch
   edCache.get(`absences:${eleveId}`).then(entry => {
     if (entry) document.getElementById('absences-result').innerHTML = renderVieScolaireSection(entry.data, section);
@@ -1664,9 +1676,9 @@ async function loadAbsences() {
   };
 
   await edCache.load(cacheKey, async () => {
-    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' };
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
-    const resp = await fetch(`${getProxy()}/v3/eleves/${eleveId}/viescolaire.awp?verbe=get&v=4.98.0`, {
+    const resp = await fetch(`${getProxy()}/v3/eleves/${eleveId}/viescolaire.awp?verbe=get&v=${API_VERSION}`, {
       method: 'POST',
       headers,
       body: 'data={}'
@@ -1693,9 +1705,9 @@ async function loadQcm() {
   const spinEl = document.getElementById('spin-absences');
 
   await edCache.load(cacheKey, async () => {
-    const resp = await fetch(`${getProxy()}/v3/eleves/${eleveId}/qcms/0/associations.awp?verbe=get&v=4.97.2`, {
+    const resp = await fetch(`${getProxy()}/v3/eleves/${eleveId}/qcms/0/associations.awp?verbe=get&v=${API_VERSION}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION },
       body: 'data={}'
     });
     const d = await resp.json();
@@ -1720,9 +1732,9 @@ async function loadSondages() {
   const spinEl = document.getElementById('spin-absences');
 
   await edCache.load(cacheKey, async () => {
-    const resp = await fetch(`${getProxy()}/v3/edforms.awp?verbe=getlist&v=4.97.2`, {
+    const resp = await fetch(`${getProxy()}/v3/edforms.awp?verbe=getlist&v=${API_VERSION}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION },
       body: `data=${encodeURIComponent(JSON.stringify({ eleveId }))}`
     });
     const d = await resp.json();
@@ -1757,9 +1769,9 @@ async function loadPorteMonnaie() {
   };
 
   await edCache.load(cacheKey, async () => {
-    const resp = await fetch(`${getProxy()}/v3/comptes/detail.awp?verbe=get&v=4.98.0`, {
+    const resp = await fetch(`${getProxy()}/v3/comptes/detail.awp?verbe=get&v=${API_VERSION}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION },
       body: `data=${encodeURIComponent(JSON.stringify({ eleveId }))}`
     });
     const d = await resp.json();
@@ -1943,12 +1955,12 @@ async function toggleDevoirEffectue(devoirId, date, currentState) {
       idDevoirsEffectues:    newState ? [idNum] : [],
       idDevoirsNonEffectues: newState ? [] : [idNum],
     };
-    const resp = await fetch(`${getProxy()}/v3/Eleves/${eleveId}/cahierdetexte.awp?verbe=put&v=4.97.0`, {
+    const resp = await fetch(`${getProxy()}/v3/Eleves/${eleveId}/cahierdetexte.awp?verbe=put&v=${API_VERSION}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'X-Token': token,
-        'X-ApisVer': '4.97.0',
+        'X-ApisVer': API_VERSION,
       },
       body: `data=${encodeURIComponent(JSON.stringify(body))}`,
     });
@@ -2019,9 +2031,9 @@ async function loadSeances() {
     let data = null;
     try {
       await edCache.load(cacheKey, async () => {
-        const resp = await fetch(`${getProxy()}/v3/Eleves/${eleveId}/cahierdetexte/${dateVal}.awp?verbe=get`, {
+        const resp = await fetch(`${getProxy()}/v3/Eleves/${eleveId}/cahierdetexte/${dateVal}.awp?verbe=get&v=${API_VERSION}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION },
           body: 'data={}'
         });
         const d = await resp.json();
@@ -2231,10 +2243,10 @@ async function loadManuels() {
   const cacheKey = `manuels:${eleveId}`;
 
   await edCache.load(cacheKey, async () => {
-    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
     const resp = await fetch(
-      `${getProxy()}/v3/Eleves/${eleveId}/manuelsNumeriques.awp?verbe=get&v=4.97.2`,
+      `${getProxy()}/v3/Eleves/${eleveId}/manuelsNumeriques.awp?verbe=get&v=${API_VERSION}`,
       { method: 'POST', headers, body: 'data={}' }
     );
     const data = await resp.json();
@@ -2285,10 +2297,10 @@ async function loadEspacesTravail() {
   const cacheKey = `espaces:${eleveId}`;
 
   await edCache.load(cacheKey, async () => {
-    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
     const resp = await fetch(
-      `${getProxy()}/v3/E/${eleveId}/espacestravail.awp?verbe=get&typeModule=espaceTravail&v=4.97.2`,
+      `${getProxy()}/v3/E/${eleveId}/espacestravail.awp?verbe=get&typeModule=espaceTravail&v=${API_VERSION}`,
       { method: 'POST', headers, body: 'data={}' }
     );
     const data = await resp.json();
@@ -2340,10 +2352,10 @@ async function loadEspaceTravailContent(espaceId) {
   const cacheKey = `espace-content:${espaceId}`;
 
   await edCache.load(cacheKey, async () => {
-    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
     const resp = await fetch(
-      `${getProxy()}/v3/cloud/W/${espaceId}.awp?verbe=get&v=4.97.2`,
+      `${getProxy()}/v3/cloud/W/${espaceId}.awp?verbe=get&v=${API_VERSION}`,
       { method: 'POST', headers, body: 'data={}' }
     );
     const data = await resp.json();
@@ -2445,10 +2457,10 @@ async function navigateEspaceInto(childIdx) {
       const detailEl = document.getElementById('espaces-detail');
       if (detailEl) detailEl.innerHTML = centeredSpinner();
       try {
-        const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
+        const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
         if (twoFaToken) headers['2fa-token'] = twoFaToken;
         const resp = await fetch(
-          `${getProxy()}/v3/cloud/W/${_selectedEspaceId}.awp?verbe=get&idFolder=${encodeURIComponent(folderPath)}&v=4.97.2`,
+          `${getProxy()}/v3/cloud/W/${_selectedEspaceId}.awp?verbe=get&idFolder=${encodeURIComponent(folderPath)}&v=${API_VERSION}`,
           { method: 'POST', headers, body: 'data={}' }
         );
         const data = await resp.json();
@@ -2477,11 +2489,11 @@ async function openEspaceFile(espaceIdEnc, fileIdEnc, filenameEnc) {
   const fileId   = decodeURIComponent(fileIdEnc);
   const filename = decodeURIComponent(filenameEnc);
   const eleveId  = getEleveId();
-  const headers  = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
+  const headers  = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
   if (twoFaToken) headers['2fa-token'] = twoFaToken;
 
   // Étape 1 — grant WOPI + MD5 + discovery en parallèle
-  const grantResp = fetch(`${getProxy()}/v3/E/${eleveId}/grant/WOPI.awp?verbe=get&v=4.97.2`, { method: 'POST', headers, body: 'data={}' });
+  const grantResp = fetch(`${getProxy()}/v3/E/${eleveId}/grant/WOPI.awp?verbe=get&v=${API_VERSION}`, { method: 'POST', headers, body: 'data={}' });
   const [grantRespObj, md5Data, viewUrlData] = await Promise.all([
     grantResp,
     fetch(`${getProxy()}/md5?s=${encodeURIComponent(fileId)}`).then(r => r.json()),
@@ -2563,7 +2575,7 @@ async function loadDevoirs() {
   await edCache.load(cacheKey, async () => {
     const resp = await fetch(`${getProxy()}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION },
       body: 'data={}'
     });
     const d = await resp.json();
@@ -2595,9 +2607,9 @@ async function enrichDevoirsWithDocs(eleveId, listData) {
         dayData = cached.data;
       } else {
         // Fetch silencieux
-        const resp = await fetch(`${getProxy()}/v3/Eleves/${eleveId}/cahierdetexte/${date}.awp?verbe=get`, {
+        const resp = await fetch(`${getProxy()}/v3/Eleves/${eleveId}/cahierdetexte/${date}.awp?verbe=get&v=${API_VERSION}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION },
           body: 'data={}'
         });
         const json = await resp.json();
@@ -2649,9 +2661,9 @@ async function loadNotes() {
   };
 
   await edCache.load(cacheKey, async () => {
-    const resp = await fetch(`${getProxy()}/v3/eleves/${eleveId}/notes.awp?verbe=get&v=4.98.0`, {
+    const resp = await fetch(`${getProxy()}/v3/eleves/${eleveId}/notes.awp?verbe=get&v=${API_VERSION}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION },
       body: 'data={"anneeScolaire":""}'
     });
     const d = await resp.json();
@@ -3332,14 +3344,14 @@ async function loadAccueil() {
   if (!resultEl) return;
 
   const accueilUrl = isEleve
-    ? `${getProxy()}/v3/E/${accountId}/timelineAccueilCommun.awp?verbe=get&v=4.98.0`
-    : `${getProxy()}/v3/1/${accountId}/timelineAccueilCommun.awp?verbe=get&v=4.98.0`;
+    ? `${getProxy()}/v3/E/${accountId}/timelineAccueilCommun.awp?verbe=get&v=${API_VERSION}`
+    : `${getProxy()}/v3/1/${accountId}/timelineAccueilCommun.awp?verbe=get&v=${API_VERSION}`;
 
   await edCache.load(`accueil:${accountId}`, async () => {
     const headers = {
       'Content-Type': 'application/x-www-form-urlencoded',
       'X-Token': token,
-      'X-ApisVer': '4.98.0'
+      'X-ApisVer': API_VERSION
     };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
     const resp = await fetch(accueilUrl, {
@@ -3589,9 +3601,9 @@ async function runEdt() {
   };
 
   await edCache.load(cacheKey, async () => {
-    const resp = await fetch(`${getProxy()}/v3/E/${eleveId}/emploidutemps.awp?verbe=get`, {
+    const resp = await fetch(`${getProxy()}/v3/E/${eleveId}/emploidutemps.awp?verbe=get&v=${API_VERSION}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION },
       body: `data=${encodeURIComponent(JSON.stringify({ dateDebut: fmt(mon), dateFin: fmt(fri) }))}`
     });
     const d = await resp.json();
@@ -3723,7 +3735,7 @@ function switchTab(id, fromPopstate = false) {
   else if (id === 'notes') loadNotes();
   else if (id === 'absences') {
     switchVieScolaireTab(vieScolaireSection || 'absences');
-    if (vieScolaireSection !== 'qcm' && vieScolaireSection !== 'sondages' && vieScolaireSection !== 'portemonnaie' && vieScolaireSection !== 'demandesabsences') loadAbsences();
+    if (vieScolaireSection !== 'qcm' && vieScolaireSection !== 'sondages' && vieScolaireSection !== 'portemonnaie' && vieScolaireSection !== 'demandesabsences' && vieScolaireSection !== 'viedeclasse') loadAbsences();
   }
   else if (id === 'devoirs') loadDevoirs();
   else if (id === 'seances') {
@@ -3804,9 +3816,9 @@ async function loadVspFinances(tab) {
   }
 
   await edCache.load(cacheKey, async () => {
-    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' };
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
-    const resp = await fetch(`${getProxy()}/v3/comptes/detail.awp?verbe=get&v=4.98.0`, {
+    const resp = await fetch(`${getProxy()}/v3/comptes/detail.awp?verbe=get&v=${API_VERSION}`, {
       method: 'POST', headers, body: 'data={}'
     });
     const d = await resp.json();
@@ -3832,9 +3844,9 @@ async function loadVspPorteMonnaieParent() {
   if (!resultEl) return;
 
   await edCache.load(cacheKey, async () => {
-    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' };
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
-    const resp = await fetch(`${getProxy()}/v3/comptes/detail.awp?verbe=get&v=4.98.0`, {
+    const resp = await fetch(`${getProxy()}/v3/comptes/detail.awp?verbe=get&v=${API_VERSION}`, {
       method: 'POST', headers,
       body: `data=${encodeURIComponent(JSON.stringify({ eleveId }))}`
     });
@@ -3996,9 +4008,9 @@ async function loadVspModeReglement() {
   if (!resultEl) return;
 
   await edCache.load(cacheKey, async () => {
-    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' };
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
-    const resp = await fetch(`${getProxy()}/v3/famillemodedereglement.awp?verbe=get&v=4.98.0`, {
+    const resp = await fetch(`${getProxy()}/v3/famillemodedereglement.awp?verbe=get&v=${API_VERSION}`, {
       method: 'POST', headers, body: 'data={}'
     });
     const d = await resp.json();
@@ -4054,11 +4066,11 @@ async function loadVspPaiementsEnLigne() {
   if (!resultEl) return;
 
   await edCache.load(cacheKey, async () => {
-    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' };
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
     const [rPaiements, rSoldes] = await Promise.all([
-      fetch(`${getProxy()}/v3/boutique/paiementsenligne.awp?verbe=get&v=4.98.0`, { method: 'POST', headers, body: 'data={}' }),
-      fetch(`${getProxy()}/v3/comptes/sansdetails.awp?verbe=get&v=4.98.0`,        { method: 'POST', headers, body: 'data={}' }),
+      fetch(`${getProxy()}/v3/boutique/paiementsenligne.awp?verbe=get&v=${API_VERSION}`, { method: 'POST', headers, body: 'data={}' }),
+      fetch(`${getProxy()}/v3/comptes/sansdetails.awp?verbe=get&v=${API_VERSION}`,        { method: 'POST', headers, body: 'data={}' }),
     ]);
     const [dPaiements, dSoldes] = await Promise.all([rPaiements.json(), rSoldes.json()]);
     if (dPaiements.code !== 200) throw new Error(dPaiements.message || `Code ${dPaiements.code}`);
@@ -4318,9 +4330,9 @@ async function loadVspSondages() {
   if (!resultEl) return;
 
   await edCache.load(cacheKey, async () => {
-    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' };
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
-    const resp = await fetch(`${getProxy()}/v3/edforms.awp?verbe=getlist&v=4.98.0`, {
+    const resp = await fetch(`${getProxy()}/v3/edforms.awp?verbe=getlist&v=${API_VERSION}`, {
       method: 'POST', headers, body: `data=${encodeURIComponent(JSON.stringify({ anneeForms: getCurrentAnnee(), typeEntity: '1', idEntity: eleveId }))}`
     });
     const d = await resp.json();
@@ -4370,9 +4382,9 @@ async function loadVspDocuments() {
   if (!listEl) return;
 
   await edCache.load(cacheKey, async () => {
-    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' };
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
-    const resp = await fetch(`${getProxy()}/v3/familledocuments.awp?archive=&verbe=get&v=4.98.0`, {
+    const resp = await fetch(`${getProxy()}/v3/familledocuments.awp?archive=&verbe=get&v=${API_VERSION}`, {
       method: 'POST', headers, body: 'data={}'
     });
     const d = await resp.json();
@@ -4539,8 +4551,8 @@ function openVspDocDetail(category, idx) {
 async function downloadVspFile(fileId, filenameEnc, leTypeDeFichier) {
   const filename = decodeURIComponent(filenameEnc);
   try {
-    const dlUrl = `${getProxy()}/v3/telechargement.awp?verbe=get&fichierId=${fileId}&leTypeDeFichier=${leTypeDeFichier}&v=4.98.0`;
-    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
+    const dlUrl = `${getProxy()}/v3/telechargement.awp?verbe=get&fichierId=${fileId}&leTypeDeFichier=${leTypeDeFichier}&v=${API_VERSION}`;
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
     await triggerDownload(dlUrl, {
       method: 'POST',
@@ -4692,9 +4704,9 @@ async function signVspDocument(category, idx) {
   // ── Étape 1 : récupération du numéro via famillecoordonnees.awp ──────────
   let sigTel = '';
   try {
-    const cr = await fetch(`${getProxy()}/v3/famillecoordonnees.awp?verbe=get&v=4.98.0`, {
+    const cr = await fetch(`${getProxy()}/v3/famillecoordonnees.awp?verbe=get&v=${API_VERSION}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION },
       body: 'data={}'
     });
     const cj = await cr.json();
@@ -4720,9 +4732,9 @@ async function signVspDocument(category, idx) {
 
     try {
       const signataire = { idSignataire: sigId, typeSignataire: '1', telephone: tel, email: sigMail, demandeMail: false, nom: sigNom };
-      const headers3ds = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' };
+      const headers3ds = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
       if (twoFaToken) headers3ds['2fa-token'] = twoFaToken;
-      const resp = await fetch(`${getProxy()}/v3/3DSecure.awp?verbe=get&v=4.98.0`, {
+      const resp = await fetch(`${getProxy()}/v3/3DSecure.awp?verbe=get&v=${API_VERSION}`, {
         method: 'POST',
         headers: headers3ds,
         body: `data=${JSON.stringify({ signataire })}`
@@ -4774,9 +4786,9 @@ async function signVspDocument(category, idx) {
     };
 
     try {
-      const headersPut = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' };
+      const headersPut = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
       if (twoFaToken) headersPut['2fa-token'] = twoFaToken;
-      const resp = await fetch(`${getProxy()}/v3/familledocuments/${doc.id}.awp?verbe=put&v=4.98.0`, {
+      const resp = await fetch(`${getProxy()}/v3/familledocuments/${doc.id}.awp?verbe=put&v=${API_VERSION}`, {
         method: 'POST',
         headers: headersPut,
         body: `data=${JSON.stringify(payload)}`
@@ -4819,9 +4831,9 @@ async function loadDossierInscription() {
   if (!resultEl) return;
 
   await edCache.load(cacheKey, async () => {
-    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' };
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
-    const resp = await fetch(`${getProxy()}/v3/inscriptions/familleDossierInscription.awp?verbe=get&v=4.98.0`, {
+    const resp = await fetch(`${getProxy()}/v3/inscriptions/familleDossierInscription.awp?verbe=get&v=${API_VERSION}`, {
       method: 'POST', headers, body: 'data={}'
     });
     const d = await resp.json();
@@ -5027,6 +5039,13 @@ function switchMsgTab(tab) {
     loadCorrespondance();
     return;
   }
+  const detailEl = document.getElementById('message-detail-panel');
+  if (detailEl) {
+    detailEl.style.alignItems = 'center';
+    detailEl.style.justifyContent = 'center';
+    detailEl.innerHTML = `<span style="color:var(--text4);font-size:13px;text-align:center">Sélectionne un message<br>pour voir le contenu ici</span>`;
+  }
+  selectedMessageId = null;
   const resultEl = document.getElementById('messages-result');
   if (resultEl) {
     let listEl = document.getElementById('msg-list');
@@ -5071,10 +5090,10 @@ async function fetchCorrespondanceCount() {
       // Si le cache est frais, pas besoin de refetch
       if (!edCache.isStale(cached)) return;
     }
-    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' };
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
     const resp = await fetch(
-      `${getProxy()}/v3/eleves/${eleveId}/eleveCarnetCorrespondance.awp?verbe=get&v=4.98.0`,
+      `${getProxy()}/v3/eleves/${eleveId}/eleveCarnetCorrespondance.awp?verbe=get&v=${API_VERSION}`,
       { method: 'POST', headers, body: 'data={}' }
     );
     const data = await resp.json();
@@ -5104,10 +5123,10 @@ async function loadCorrespondance() {
   };
 
   await edCache.load(cacheKey, async () => {
-    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' };
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
     const resp = await fetch(
-      `${getProxy()}/v3/eleves/${eleveId}/eleveCarnetCorrespondance.awp?verbe=get&v=4.98.0`,
+      `${getProxy()}/v3/eleves/${eleveId}/eleveCarnetCorrespondance.awp?verbe=get&v=${API_VERSION}`,
       { method: 'POST', headers, body: 'data={}' }
     );
     const data = await resp.json();
@@ -5247,8 +5266,8 @@ async function downloadCorrespondancePj(urlEnc, nameEnc) {
   const urlFichier = decodeURIComponent(urlEnc);
   const filename = decodeURIComponent(nameEnc);
   try {
-    const dlUrl = `${getProxy()}/v3/telechargement.awp?verbe=get&fichierId=${encodeURIComponent(urlFichier)}&leTypeDeFichier=CORRESPONDANCE`;
-    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
+    const dlUrl = `${getProxy()}/v3/telechargement.awp?verbe=get&fichierId=${encodeURIComponent(urlFichier)}&leTypeDeFichier=CORRESPONDANCE&v=${API_VERSION}`;
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
     await triggerDownload(dlUrl, { method: 'POST', headers, body: 'data={}' }, filename);
   } catch(e) {
@@ -5326,9 +5345,9 @@ async function openMessageDialog(msgId) {
     // Pour un compte élève (ou vue enfant depuis compte parent) : requête PUT séparée ;
     // pour un compte parent, le fetch du contenu avec verbe=post marque déjà le message comme lu.
     if (_childEleveView || _acc2?.typeCompte === 'E') {
-      fetch(`${getProxy()}/v3/eleves/${eleveId}/messages/${msgId}.awp?verbe=put`, {
+      fetch(`${getProxy()}/v3/eleves/${eleveId}/messages/${msgId}.awp?verbe=put&v=${API_VERSION}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION },
         body: `data=${encodeURIComponent(JSON.stringify({ anneeMessages: annee }))}`
       }).catch(() => {});
     }
@@ -5405,16 +5424,16 @@ async function openMessageDialog(msgId) {
     const _msgContentBase = _isEleve3
       ? `/v3/eleves/${eleveId}/messages/${msgId}.awp`
       : `/v3/familles/${eleveId}/messages/${msgId}.awp`;
-    const _contentVerbe = _isEleve3 ? 'get' : 'post';
+    const _contentVerbe = 'get';
     await edCache.load(cacheKey, async () => {
       const endpoints = [
-        { url: `${_msgContentBase}?verbe=${_contentVerbe}&mode=${mode}`, body: `data=${encodeURIComponent(JSON.stringify({ anneeMessages: annee }))}` },
-        { url: `${_msgContentBase}?verbe=${_contentVerbe}`, body: 'data={}' },
+        { url: `${_msgContentBase}?verbe=${_contentVerbe}&mode=${mode}&v=${API_VERSION}`, body: `data=${encodeURIComponent(JSON.stringify({ anneeMessages: annee }))}` },
+        { url: `${_msgContentBase}?verbe=${_contentVerbe}&v=${API_VERSION}`, body: 'data={}' },
       ];
       for (const ep of endpoints) {
         const resp = await fetch(`${getProxy()}${ep.url}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION },
           body: ep.body
         });
         const data = await resp.json();
@@ -5537,8 +5556,8 @@ async function triggerDownload(url, fetchOptions, filename) {
 async function downloadAttachment(msgId, fileId, filename) {
   try {
     const annee = document.getElementById('msg-annee')?.value || '2025-2026';
-    const dlUrl = `${getProxy()}/v3/telechargement.awp?verbe=get&fichierId=${fileId}&leTypeDeFichier=PIECE_JOINTE`;
-    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
+    const dlUrl = `${getProxy()}/v3/telechargement.awp?verbe=get&fichierId=${fileId}&leTypeDeFichier=PIECE_JOINTE&v=${API_VERSION}`;
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
     await triggerDownload(dlUrl, {
       method: 'POST',
@@ -5562,8 +5581,8 @@ async function downloadDevoirDoc(fileId, filename) {
   try {
     // L'appli officielle ED utilise FICHIER_CDT (pas CLOUD_ELEVE) pour les docs du cahier de texte
     // Le body ne contient PAS le token - l'auth passe uniquement par x-token et 2fa-token headers
-    const dlUrl = `${getProxy()}/v3/telechargement.awp?verbe=get&fichierId=${fileId}&leTypeDeFichier=FICHIER_CDT`;
-    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
+    const dlUrl = `${getProxy()}/v3/telechargement.awp?verbe=get&fichierId=${fileId}&leTypeDeFichier=FICHIER_CDT&v=${API_VERSION}`;
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
     await triggerDownload(dlUrl, {
       method: 'POST',
@@ -5635,9 +5654,9 @@ async function loadDemandesAbsences() {
   const spinEl   = document.getElementById('spin-absences');
 
   await edCache.load(cacheKey, async () => {
-    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' };
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
-    const resp = await fetch(`${getProxy()}/v3/eleves/${eleveId}/niveaux/0/autorisationsSortie.awp?verbe=get&v=4.98.0`, {
+    const resp = await fetch(`${getProxy()}/v3/eleves/${eleveId}/niveaux/0/autorisationsSortie.awp?verbe=get&v=${API_VERSION}`, {
       method: 'POST',
       headers,
       body: 'data={}'
@@ -5733,6 +5752,69 @@ function renderDemandesAbsences(data) {
         ${statut ? `<span style="font-size:12px;color:var(--text3)">${statut}</span>` : ''}
       </div>
       ${motif ? `<div style="color:var(--text2)">${motif}</div>` : ''}
+    </div>`;
+  });
+  return html;
+}
+
+async function loadVieDeClasse() {
+  const eleveId = _childEleveView?.id || getEleveId();
+  const classeId = getClasseIdForView();
+  if (!classeId) {
+    document.getElementById('absences-result').innerHTML = '<p style="color:var(--text3);font-size:14px">ID de classe non disponible.</p>';
+    return;
+  }
+  const cacheKey = `viedeclasse:${eleveId}`;
+  const resultEl = document.getElementById('absences-result');
+  const spinEl   = document.getElementById('spin-absences');
+
+  await edCache.load(cacheKey, async () => {
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
+    if (twoFaToken) headers['2fa-token'] = twoFaToken;
+    const resp = await fetch(`${getProxy()}/v3/Classes/${classeId}/viedelaclasse.awp?verbe=get&v=${API_VERSION}`, {
+      method: 'POST',
+      headers,
+      body: 'data={}'
+    });
+    const d = await resp.json();
+    if (d.code !== 200) throw new Error(`Code ${d.code}`);
+    return d.data;
+  }, {
+    onSpinner: () => { spinEl.style.display = 'inline'; resultEl.innerHTML = centeredSpinner(); },
+    onCached:  (data, ts) => { spinEl.style.display = 'none'; resultEl.innerHTML = renderVieDeClasse(data); updateFreshnessLabel('absences', ts || Date.now()); },
+    onFresh:   (data)     => { spinEl.style.display = 'none'; resultEl.innerHTML = renderVieDeClasse(data); updateFreshnessLabel('absences', Date.now()); },
+    diffFn:    edCache.defaultDiff,
+  }).catch(e => {
+    resultEl.innerHTML = `<p style="color:#b91c1c;font-size:14px">Erreur : ${e.message}</p>`;
+    spinEl.style.display = 'none';
+  });
+}
+
+function renderVieDeClasse(data) {
+  // L'API renvoie typiquement { messages: [...] } ou { actualites: [...] } ou un tableau direct
+  const items = Array.isArray(data) ? data
+    : (data?.messages || data?.actualites || data?.evenements || data?.posts || data?.items || []);
+
+  if (!items.length) return '<p style="color:var(--text3);font-size:14px">Aucun élément dans la vie de classe.</p>';
+
+  let html = `<div style="font-weight:500;font-size:14px;margin-bottom:10px">${items.length} élément(s)</div>`;
+  items.forEach(item => {
+    const titre   = (item.titre    || item.title   || item.objet   || item.libelle || item.sujet || '').trim();
+    const auteur  = (item.auteur   || item.from    || item.expediteur?.nom || '').trim();
+    const date    = (item.date     || item.dateDebut || item.dateCreation || '').trim();
+    const contenu = item.contenu ? b64d(item.contenu) : (item.texte || item.description || item.body || '').trim();
+    const type    = (item.type     || item.categorie || '').trim();
+
+    const dateStr = date ? date.split('T')[0].split('-').reverse().join('/') : '';
+
+    html += `<div style="padding:10px 12px;border-radius:8px;background:var(--bg3);margin-bottom:8px;font-size:14px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:${contenu ? 6 : 0}px">
+        <span style="font-weight:600">${titre || '(sans titre)'}</span>
+        ${dateStr ? `<span style="color:var(--text3);font-size:12px;white-space:nowrap;margin-left:10px">${dateStr}</span>` : ''}
+      </div>
+      ${type   ? `<div style="color:var(--text3);font-size:12px;margin-bottom:4px">${type}</div>` : ''}
+      ${auteur ? `<div style="color:var(--text2);font-size:12px;margin-bottom:4px">${auteur}</div>` : ''}
+      ${contenu ? `<div style="color:var(--text);font-size:13px;line-height:1.5">${contenu}</div>` : ''}
     </div>`;
   });
   return html;
@@ -6044,9 +6126,9 @@ async function openJustifierAbsenceDialog(absIdx) {
 
   // ── Étape 1 : récupération du numéro ──────────────────────────────────────
   try {
-    const cr = await fetch(`${getProxy()}/v3/famillecoordonnees.awp?verbe=get&v=4.98.0`, {
+    const cr = await fetch(`${getProxy()}/v3/famillecoordonnees.awp?verbe=get&v=${API_VERSION}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION },
       body: 'data={}'
     });
     const cj = await cr.json();
@@ -6072,9 +6154,9 @@ async function openJustifierAbsenceDialog(absIdx) {
 
     try {
       const signataire = { idSignataire: sigId, typeSignataire: '1', telephone: tel, email: sigMail, demandeMail: false, nom: sigNom };
-      const headers3ds = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' };
+      const headers3ds = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
       if (twoFaToken) headers3ds['2fa-token'] = twoFaToken;
-      const resp = await fetch(`${getProxy()}/v3/3DSecure.awp?verbe=get&v=4.98.0`, {
+      const resp = await fetch(`${getProxy()}/v3/3DSecure.awp?verbe=get&v=${API_VERSION}`, {
         method: 'POST',
         headers: headers3ds,
         body: `data=${JSON.stringify({ signataire })}`
@@ -6128,9 +6210,9 @@ async function openJustifierAbsenceDialog(absIdx) {
     };
 
     try {
-      const headersPut = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' };
+      const headersPut = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
       if (twoFaToken) headersPut['2fa-token'] = twoFaToken;
-      const resp = await fetch(`${getProxy()}/v3/eleves/${eleveId}/viescolaire.awp?verbe=post&v=4.98.0`, {
+      const resp = await fetch(`${getProxy()}/v3/eleves/${eleveId}/viescolaire.awp?verbe=post&v=${API_VERSION}`, {
         method: 'POST',
         headers: headersPut,
         body: `data=${JSON.stringify(payload)}`
@@ -6465,6 +6547,11 @@ function getIdClasse() {
   return acc?.profile?.classe?.id || acc?.classe?.id || '';
 }
 
+function getClasseIdForView() {
+  if (_childEleveView) return _childEleveView.classeId || '';
+  return getIdClasse();
+}
+
 function openMsgToContact(id, nomEnc, type) {
   openNewMessageDialog({ initialRecipient: { id, nom: decodeURIComponent(nomEnc), type } });
 }
@@ -6680,11 +6767,11 @@ async function loadContactsTab(tab) {
     const acc = accountData?.accounts ? accountData.accounts[0] : accountData;
     const idClasse = acc?.profile?.classe?.id || acc?.classe?.id || acc?.idClasse || '';
     const endpoints = {
-      teachers: `/v3/messagerie/contacts/professeurs.awp?nom=&idClasse=${idClasse}&verbe=get&v=4.97.2`,
-      staff:    `/v3/messagerie/contacts/personnels.awp?verbe=get&v=4.97.2`,
-      tutors:   `/v3/messagerie/contacts/entreprises.awp?verbe=get&v=4.97.2`,
+      teachers: `/v3/messagerie/contacts/professeurs.awp?nom=&idClasse=${idClasse}&verbe=get&v=${API_VERSION}`,
+      staff:    `/v3/messagerie/contacts/personnels.awp?verbe=get&v=${API_VERSION}`,
+      tutors:   `/v3/messagerie/contacts/entreprises.awp?verbe=get&v=${API_VERSION}`,
     };
-    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
     const resp = await fetch(`${getProxy()}${endpoints[tab]}`, { method: 'POST', headers, body: 'data={}' });
     const data = await resp.json();
@@ -6826,11 +6913,11 @@ async function sendNewMessage() {
     const eleveId = getEleveId();
     const _acc = accountData?.accounts ? accountData.accounts[0] : accountData;
     const isParent = _acc?.typeCompte !== 'E';
-    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
     const endpoint = isParent
-      ? `${getProxy()}/v3/familles/${eleveId}/messages.awp?verbe=post&v=4.98.0`
-      : `${getProxy()}/v3/eleves/${eleveId}/messages.awp?verbe=post&v=4.97.2`;
+      ? `${getProxy()}/v3/familles/${eleveId}/messages.awp?verbe=post&v=${API_VERSION}`
+      : `${getProxy()}/v3/eleves/${eleveId}/messages.awp?verbe=post&v=${API_VERSION}`;
     const payload = isParent ? getMsgPayloadParent(false) : getMsgPayload(false);
     const resp = await fetch(endpoint, { method: 'POST', headers, body: `data=${encodeURIComponent(JSON.stringify(payload))}` });
     const data = await resp.json();
@@ -6847,11 +6934,11 @@ async function saveMsgDraft() {
     const eleveId = getEleveId();
     const _acc = accountData?.accounts ? accountData.accounts[0] : accountData;
     const isParent = _acc?.typeCompte !== 'E';
-    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
     const endpoint = isParent
-      ? `${getProxy()}/v3/familles/${eleveId}/messages.awp?verbe=post&v=4.98.0`
-      : `${getProxy()}/v3/eleves/${eleveId}/messages.awp?verbe=post&v=4.97.2`;
+      ? `${getProxy()}/v3/familles/${eleveId}/messages.awp?verbe=post&v=${API_VERSION}`
+      : `${getProxy()}/v3/eleves/${eleveId}/messages.awp?verbe=post&v=${API_VERSION}`;
     const payload = isParent ? getMsgPayloadParent(true) : getMsgPayload(true);
     const resp = await fetch(endpoint, { method: 'POST', headers, body: `data=${encodeURIComponent(JSON.stringify(payload))}` });
     const data = await resp.json();
@@ -6886,11 +6973,11 @@ window.addEventListener('DOMContentLoaded', function restoreSession() {
       if (cached && !edCache.isStale(cached)) return;
       // Endpoint de validation : viescolaire pour élève, accueil pour parent
       const validationUrl = isEleve
-        ? `${getProxy()}/v3/eleves/${eleveId}/viescolaire.awp?verbe=get&v=4.98.0`
-        : `${getProxy()}/v3/1/${eleveId}/timelineAccueilCommun.awp?verbe=get&v=4.98.0`;
+        ? `${getProxy()}/v3/eleves/${eleveId}/viescolaire.awp?verbe=get&v=${API_VERSION}`
+        : `${getProxy()}/v3/1/${eleveId}/timelineAccueilCommun.awp?verbe=get&v=${API_VERSION}`;
       fetch(validationUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': s.token, 'X-ApisVer': '4.98.0' },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': s.token, 'X-ApisVer': API_VERSION },
         body: 'data={}'
       }).then(r => r.json()).then(data => {
         if (data.code !== 200) { silentReauth(s); }

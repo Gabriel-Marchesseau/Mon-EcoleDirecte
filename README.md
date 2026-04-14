@@ -12,7 +12,7 @@
 - 📚 **Homework** — Upcoming assignments fetched from the *cahier de textes*, with "done/undone" toggle, filter by interros, and count badge
 - 📖 **Courses** — Three sub-tabs: **Lesson contents** (date range, subject filter) · **Workspaces** (file tree explorer with lazy-loaded sub-folders, open files in Collabora Online viewer) · **Textbooks** (digital manuals via CAS authentication)
 - ✉️ **Messages** — Inbox/sent/drafts/archived with full content view, unread filter, attachment download, compose/reply/forward with rich editor and contact picker
-- 🏫 **Attendance & School life** — Absences, sanctions/encouragements, QCM (quizzes), surveys, and **wallet** (account balance + transaction history)
+- 🏫 **Attendance & School life** — Absences, sanctions/encouragements, QCM (quizzes), surveys, **wallet** (account balance + transaction history), and **class life feed**
 - 📝 **Memos** — Local notes (IndexedDB), rich-text editor, due dates, column sorting, done/expired filters, CSV export/import
 - ⚡ **Instant navigation** — IndexedDB cache with stale-while-revalidate (30 min TTL)
 - 🔴 **New content badges** — Tab badges when new notes or messages are detected

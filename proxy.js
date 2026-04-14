@@ -30,8 +30,9 @@ const MIME = {
   '.ico':  'image/x-icon',
 };
 
-const PORT     = 3131;
-const API_HOST = 'api.ecoledirecte.com';
+const PORT        = 3131;
+const API_HOST    = 'api.ecoledirecte.com';
+const API_VERSION = '4.98.0';
 
 let sslOptions;
 try {
@@ -67,7 +68,7 @@ function apiRequest(method, path, body, extraHeaders) {
       'Accept':       isPJ ? '*/*' : 'application/json, text/plain, */*',
       'Referer':      'https://www.ecoledirecte.com/',
       'Origin':       'https://www.ecoledirecte.com',
-      'X-ApisVer':    '4.75.0',
+      'X-ApisVer':    API_VERSION,
       ...(session.gtk ? { 'X-Gtk': session.gtk } : {}),
       ...(cookieStr   ? { 'Cookie': cookieStr }  : {}),
       ...(extraHeaders || {}),
@@ -98,7 +99,7 @@ function apiRequest(method, path, body, extraHeaders) {
 async function initSession() {
   log(CYAN('  → Init session (GET gtk)...'));
   session = { cookies: {}, gtk: '' };
-  await apiRequest('GET', '/v3/login.awp?gtk=1&v=4.75.0', null);
+  await apiRequest('GET', `/v3/login.awp?gtk=1&v=${API_VERSION}`, null);
   log(GREEN(`  → GTK: ${session.gtk ? session.gtk.substring(0, 20) + '...' : 'VIDE'}`));
   log(GRAY(`  → Cookies: ${Object.keys(session.cookies).join(', ')}`));
 }
@@ -131,7 +132,7 @@ const server = https.createServer(sslOptions, async (req, res) => {
           'Accept': 'text/html,*/*',
           'Referer': 'https://www.ecoledirecte.com/',
           'Origin':  'https://www.ecoledirecte.com',
-          'X-ApisVer': '4.97.2',
+          'X-ApisVer': API_VERSION,
           ...(session.gtk  ? { 'X-Gtk': session.gtk } : {}),
           ...(cookieStr    ? { 'Cookie': cookieStr }  : {}),
           ...extraHeaders,
