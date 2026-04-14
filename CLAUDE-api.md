@@ -30,6 +30,8 @@
 - **Documents famille** : `POST /v3/familledocuments.awp?archive=&verbe=get&v=4.98.0` → `{ administratifs, notes, factures, inscriptions, viescolaire, entreprises, listesPiecesAVerser }`
 - **Messages parent** : `/v3/familles/{eleveId}/messages.awp` (lecture et envoi) à la place de `/v3/eleves/{eleveId}/messages.awp`
 - **Marquage lu messages parent** : fetch du contenu avec `verbe=post` (marque comme lu simultanément) ; pas de requête `verbe=put` séparée contrairement au compte élève
+- **Autorisations de sortie** : `POST /v3/eleves/{eleveId}/niveaux/0/autorisationsSortie.awp?verbe=get&v=4.98.0` avec `data={}` → `{ autorisations: [{jour, autorisationsMatin:{arriveeTardive,intercours,sortieAnticipee:{etat}}, autorisationsApresMidi:{…}}], demandesFamille, demandesEtab, parametrage:{libellesAutorisations} }` — disponible uniquement en vue enfant depuis compte parent
+- **Porte-monnaie enfant (depuis compte parent)** : `POST /v3/comptes/detail.awp?verbe=get&v=4.98.0` avec `data={"eleveId": id}` → comptes de cet enfant uniquement (même endpoint que porte-monnaie élève mais appelé depuis `loadVspPorteMonnaieParent()` séparément)
 
 ---
 
@@ -63,7 +65,7 @@ edCache.defaultDiff(a, b)     // JSON.stringify compare
 
 **Clés de cache utilisées :**
 ```
-edt:{YYYY-MM-DD}
+edt:{eleveId}:{YYYY-MM-DD}    ← eleveId OBLIGATOIRE pour éviter collision entre enfants sur compte parent
 notes:{eleveId}
 messages:received:{YYYY-YYYY}
 messages:sent:{YYYY-YYYY}
@@ -84,9 +86,11 @@ portemonnaie:{eleveId}        ← soldes et écritures porte-monnaie
 documents-parent:{eleveId}    ← documents famille (page Documents parent)
 sondages-parent:{eleveId}     ← sondages parent (page Vie scolaire parent)
 dossier-inscription:{eleveId} ← dossier d'inscription (page Vie scolaire parent)
-finances-parent:{eleveId}     ← comptes/detail.awp data={} — partagé entre Situation financière et Porte-monnaie
+finances-parent:{eleveId}     ← comptes/detail.awp data={} — onglets Factures (compte standard)
+portemonnaie-parent:{eleveId} ← comptes/detail.awp data={eleveId} — onglet Porte-monnaie parent (par enfant)
 mode-reglement:{eleveId}      ← famillemodedereglement.awp — Mode de règlement parent
 paiements-enligne:{eleveId}   ← { paiements, soldesParEleve } — boutique/paiementsenligne.awp + comptes/sansdetails.awp
+autorisations-sortie:{eleveId} ← autorisationsSortie.awp — vue enfant depuis compte parent
 ```
 
 ---
@@ -109,7 +113,7 @@ leTypeDeFichier=FICHIER_CDT      ← IMPORTANT : pas CLOUD_ELEVE
 const headers = {
   'Content-Type': 'application/x-www-form-urlencoded',
   'X-Token': token,
-  'X-ApisVer': '4.97.2'         ← version récente requise
+  'X-ApisVer': '4.98.0'         ← version récente requise
 };
 if (twoFaToken) headers['2fa-token'] = twoFaToken;
 ```

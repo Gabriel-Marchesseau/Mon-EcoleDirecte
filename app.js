@@ -31,6 +31,7 @@ darkStyle.textContent = `
   .pj-badge { border: 1px solid #bfdbfe; display:inline-block; line-height:1.5; vertical-align:middle; }
   body.dark .pj-badge { background: #1e3a5f !important; color: #93c5fd !important; border-color: #1e40af !important; }
   body.dark .child-account-select { background: #2a2a2a !important; border-color: #444 !important; color: #e8e8e6 !important; }
+  body.dark .child-account-select:hover { background: #333 !important; border-color: #666 !important; }
   body.dark #notes-view-toggle { background: #242424 !important; border-color: var(--border) !important; }
   .postits-list { display:flex;flex-direction:column;gap:16px;padding:4px 0; }
   .postit-card { border-radius:10px;border-left:4px solid #6b7280;background:var(--bg2);padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.06); }
@@ -360,8 +361,8 @@ async function silentReauth(savedSession) {
     });
     const data = await resp.json();
     if (data.code === 200) {
-      token = data.token; twoFaToken = '';
-      localStorage.setItem('ed_session', JSON.stringify({ ...savedSession, token: data.token, twoFaToken: '', accountData: data.data }));
+      token = data.token; twoFaToken = savedSession.twoFaToken || '';
+      localStorage.setItem('ed_session', JSON.stringify({ ...savedSession, token: data.token, twoFaToken: savedSession.twoFaToken || '', accountData: data.data }));
     } else if (data.code === 250) {
       await silentDoubleAuth(data.token, savedSession);
     } else {
@@ -510,9 +511,12 @@ function onLoggedIn(data) {
   _currentAccountId = acc.id || acc.idLogin || 'default';
   _rebuildTabBar(TABS);
   if (isEleve) updateDevoirsTabCount();
-  // Masquer le sous-onglet Correspondances pour les comptes parents (hors vue enfant)
+  // Correspondances : visible pour les élèves et pour les parents ayant au moins un enfant
   const corrTabBtn = document.querySelector('#panel-messages .sub-tab[data-tab="correspondance"]');
-  if (corrTabBtn) corrTabBtn.style.display = isEleve ? '' : 'none';
+  if (corrTabBtn) {
+    const _corrEleves = !isEleve ? (acc.profile?.eleves || acc.eleves || []) : [];
+    corrTabBtn.style.display = (isEleve || _corrEleves.length > 0) ? '' : 'none';
+  }
   // Sélecteur compte enfant (compte parent uniquement)
   const childBar = document.getElementById('child-account-bar');
   const childSel = document.getElementById('child-account-selector');
@@ -533,6 +537,21 @@ function onLoggedIn(data) {
   } else if (childBar) {
     childBar.style.display = 'none';
   }
+  // Restaurer la vue enfant si elle était active avant le rechargement
+  const savedChildView = !isEleve ? localStorage.getItem(`ed_child_view_${_currentAccountId}`) : null;
+  if (savedChildView) {
+    const childSel = document.getElementById('child-account-selector');
+    if (childSel) childSel.value = savedChildView;
+    const childTabIds = new Set(_CHILD_VIEW_TABS.map(t => t.id));
+    const urlTab = getTabFromPath();
+    const lastTab = localStorage.getItem('ed_last_tab');
+    const restoredTab = (urlTab && childTabIds.has(urlTab)) ? urlTab
+      : (lastTab && childTabIds.has(lastTab)) ? lastTab
+      : 'absences';
+    switchChildAccountView(savedChildView, restoredTab);
+    return;
+  }
+
   const validTabIds = new Set(TABS.map(t => t.id));
   const savedDefault = localStorage.getItem(`ed_default_tab_${_currentAccountId}`);
   const defaultTab = (savedDefault && validTabIds.has(savedDefault)) ? savedDefault : 'accueil';
@@ -553,11 +572,15 @@ const _CHILD_VIEW_TABS = [
   { id: 'messages', label: 'Messages' },
 ];
 
-function switchChildAccountView(eleveId) {
+function switchChildAccountView(eleveId, initialTab) {
   const acc = accountData?.accounts ? accountData.accounts[0] : accountData;
+  // Onglet actif au moment du changement de compte
+  const activeTabEl = document.querySelector('.tab.active');
+  const activeTabId = activeTabEl?.dataset?.tab || null;
   if (!eleveId) {
     // Retour au compte parent
     _childEleveView = null;
+    localStorage.removeItem(`ed_child_view_${_currentAccountId}`);
     const PARENT_TABS = [
       { id: 'accueil',            label: 'Accueil' },
       { id: 'messages',           label: 'Messages' },
@@ -565,21 +588,46 @@ function switchChildAccountView(eleveId) {
       { id: 'finances-parent',    label: 'Situation financière' },
       { id: 'viescolaire-parent', label: 'Vie scolaire' },
     ];
-    // Restaurer masquage correspondances
+    // Maintenir visibilité du sous-onglet Correspondances si des enfants sont disponibles
     const corrTabBtn = document.querySelector('#panel-messages .sub-tab[data-tab="correspondance"]');
-    if (corrTabBtn) corrTabBtn.style.display = 'none';
+    if (corrTabBtn) {
+      const _acc2 = accountData?.accounts ? accountData.accounts[0] : accountData;
+      const _eleves2 = _acc2?.profile?.eleves || _acc2?.eleves || [];
+      corrTabBtn.style.display = _eleves2.length ? '' : 'none';
+    }
+    // Masquer l'onglet Demandes absences (compte parent sans vue enfant)
+    const demandesTabBtn = document.getElementById('vs-tab-demandesabsences');
+    if (demandesTabBtn) demandesTabBtn.style.display = 'none';
     _rebuildTabBar(PARENT_TABS);
-    switchTab('accueil');
+    const parentTabIds = new Set(PARENT_TABS.map(t => t.id));
+    const targetTab = initialTab && parentTabIds.has(initialTab) ? initialTab
+      : activeTabId && parentTabIds.has(activeTabId) ? activeTabId
+      : 'accueil';
+    switchTab(targetTab);
   } else {
     const eleves = acc?.profile?.eleves || acc?.eleves || [];
     const eleve = eleves.find(e => String(e.id) === String(eleveId));
     if (!eleve) return;
+    notesData = null; notesPeriod = null;
     _childEleveView = { id: eleve.id, nom: eleve.nom || '', prenom: eleve.prenom || '' };
+    localStorage.setItem(`ed_child_view_${_currentAccountId}`, String(eleveId));
     // Afficher le sous-onglet Correspondances dans Messages
     const corrTabBtn = document.querySelector('#panel-messages .sub-tab[data-tab="correspondance"]');
     if (corrTabBtn) corrTabBtn.style.display = '';
+    // Afficher l'onglet Demandes absences (vue enfant depuis compte parent)
+    const demandesTabBtn = document.getElementById('vs-tab-demandesabsences');
+    if (demandesTabBtn) demandesTabBtn.style.display = '';
+    // Masquer les onglets QCM et Sondages (non disponibles depuis un compte parent)
+    const qcmTabBtn = document.getElementById('vs-tab-qcm');
+    if (qcmTabBtn) qcmTabBtn.style.display = 'none';
+    const sondagesTabBtn = document.getElementById('vs-tab-sondages');
+    if (sondagesTabBtn) sondagesTabBtn.style.display = 'none';
     _rebuildTabBar(_CHILD_VIEW_TABS);
-    switchTab('edt');
+    const childTabIds = new Set(_CHILD_VIEW_TABS.map(t => t.id));
+    const targetTab = initialTab && childTabIds.has(initialTab) ? initialTab
+      : activeTabId && childTabIds.has(activeTabId) ? activeTabId
+      : 'edt';
+    switchTab(targetTab);
   }
 }
 
@@ -594,7 +642,6 @@ function _loadChildViewTab(id) {
     edt:      'edt-result',
     notes:    'notes-result',
     devoirs:  'devoirs-result',
-    absences: 'absences-result',
     messages: 'messages-result',
   };
   // Masquer spinners
@@ -1350,7 +1397,7 @@ async function openDevoirDialog(encodedData, triggerEl) {
       </div>
     </div>`;
 
-  const eleveId = getEleveId();
+  const eleveId = _childEleveView?.id || getEleveId();
   const cacheKey = `devoirs-detail:${eleveId}:${d.date}`;
 
   const renderDocs = (docs) => {
@@ -1524,7 +1571,8 @@ function detectCurrentPeriod(periodes) {
 let msgCounts = { received: 0, sent: 0, draft: 0, archived: 0 };
 
 async function loadMessages() {
-  const eleveId = getEleveId();
+  // En vue enfant (compte parent visualisant un élève), utiliser l'ID et l'endpoint de l'élève
+  const eleveId = _childEleveView?.id || getEleveId();
   if (!eleveId) return;
   const annee = document.getElementById('msg-annee').value;
   const cacheKey = `messages:${eleveId}:${annee}`;
@@ -1532,7 +1580,7 @@ async function loadMessages() {
   const fetchBoth = async () => {
     if (sessionExpired) throw new Error('Session expirée');
     const _acc = accountData?.accounts ? accountData.accounts[0] : accountData;
-    const _msgBase = _acc?.typeCompte === 'E' ? `/v3/eleves/${eleveId}/messages.awp` : `/v3/familles/${eleveId}/messages.awp`;
+    const _msgBase = (_childEleveView || _acc?.typeCompte === 'E') ? `/v3/eleves/${eleveId}/messages.awp` : `/v3/familles/${eleveId}/messages.awp`;
     const fetchTab = async type => {
       const resp = await fetch(`${getProxy()}${_msgBase}?force=false&typeRecuperation=${type}&idClasseur=0&orderBy=date&order=desc&query=&onlyRead=&page=0&itemsPerPage=100&getAll=0&verbe=get`, {
         method: 'POST',
@@ -1563,8 +1611,7 @@ async function loadMessages() {
     applyMessageSelection();
     document.getElementById('spin-messages').style.display = 'none';
     updateFreshnessLabel('messages', Date.now());
-    const _isEleve = (accountData?.accounts ? accountData.accounts[0] : accountData)?.typeCompte === 'E';
-    if (_isEleve) {
+    if (getCorrespondancesEleveId()) {
       if (msgActiveTab === 'correspondance') loadCorrespondance();
       else fetchCorrespondanceCount();
     }
@@ -1592,11 +1639,12 @@ function switchVieScolaireTab(section) {
   vieScolaireSection = section;
   document.getElementById('viescolaire-tabs').querySelectorAll('.sub-tab').forEach(b => b.classList.remove('active'));
   document.getElementById(`vs-tab-${section}`).classList.add('active');
-  const eleveId = getEleveId();
+  const eleveId = _childEleveView?.id || getEleveId();
   if (!eleveId) return;
   if (section === 'qcm') { loadQcm(); return; }
   if (section === 'sondages') { loadSondages(); return; }
   if (section === 'portemonnaie') { loadPorteMonnaie(); return; }
+  if (section === 'demandesabsences') { loadDemandesAbsences(); return; }
   // Absences / sanctions : re-render depuis le cache sans refetch
   edCache.get(`absences:${eleveId}`).then(entry => {
     if (entry) document.getElementById('absences-result').innerHTML = renderVieScolaireSection(entry.data, section);
@@ -1604,7 +1652,7 @@ function switchVieScolaireTab(section) {
 }
 
 async function loadAbsences() {
-  const eleveId = getEleveId();
+  const eleveId = _childEleveView?.id || getEleveId();
   if (!eleveId) return;
   const cacheKey = `absences:${eleveId}`;
 
@@ -1616,9 +1664,11 @@ async function loadAbsences() {
   };
 
   await edCache.load(cacheKey, async () => {
-    const resp = await fetch(`${getProxy()}/v3/eleves/${eleveId}/viescolaire.awp?verbe=get`, {
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' };
+    if (twoFaToken) headers['2fa-token'] = twoFaToken;
+    const resp = await fetch(`${getProxy()}/v3/eleves/${eleveId}/viescolaire.awp?verbe=get&v=4.98.0`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
+      headers,
       body: 'data={}'
     });
     const d = await resp.json();
@@ -1696,6 +1746,16 @@ async function loadPorteMonnaie() {
   const resultEl = document.getElementById('absences-result');
   const spinEl = document.getElementById('spin-absences');
 
+  const render = data => {
+    // En vue enfant : filtrer uniquement les comptes de cet enfant et masquer l'historique
+    if (_childEleveView) {
+      const childId = String(_childEleveView.id);
+      const filtered = { ...data, comptes: (data?.comptes || []).filter(c => String(c.idEleve) === childId) };
+      return renderPorteMonnaie(filtered, false);
+    }
+    return renderPorteMonnaie(data, true);
+  };
+
   await edCache.load(cacheKey, async () => {
     const resp = await fetch(`${getProxy()}/v3/comptes/detail.awp?verbe=get&v=4.98.0`, {
       method: 'POST',
@@ -1707,8 +1767,8 @@ async function loadPorteMonnaie() {
     return d.data;
   }, {
     onSpinner: () => { spinEl.style.display = 'inline'; resultEl.innerHTML = centeredSpinner(); },
-    onCached:  (data) => { resultEl.innerHTML = renderPorteMonnaie(data); spinEl.style.display = 'none'; },
-    onFresh:   (data) => { resultEl.innerHTML = renderPorteMonnaie(data); spinEl.style.display = 'none'; },
+    onCached:  (data) => { resultEl.innerHTML = render(data); spinEl.style.display = 'none'; },
+    onFresh:   (data) => { resultEl.innerHTML = render(data); spinEl.style.display = 'none'; },
     diffFn:    edCache.defaultDiff,
   }).catch(e => {
     resultEl.innerHTML = `<p style="color:#b91c1c;font-size:14px">Erreur : ${e.message}</p>`;
@@ -1716,7 +1776,7 @@ async function loadPorteMonnaie() {
   });
 }
 
-function renderPorteMonnaie(data) {
+function renderPorteMonnaie(data, showHistory = true) {
   const comptes = data?.comptes || [];
   if (!comptes.length) return '<p style="color:var(--text3);font-size:14px">Aucun compte disponible.</p>';
 
@@ -1738,25 +1798,27 @@ function renderPorteMonnaie(data) {
         </div>
       </div>`;
 
-    if (ecritures.length) {
-      html += `<div style="border-top:1px solid var(--border);padding-top:8px">
-        <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em">Historique</div>`;
-      ecritures.forEach(e => {
-        const montant = typeof e.montant === 'number' ? e.montant : 0;
-        const signe = montant > 0 ? '+' : '';
-        const mCouleur = montant < 0 ? '#b91c1c' : (montant > 0 ? '#15803d' : 'var(--text3)');
-        const dateStr = e.date ? e.date.split('T')[0].split('-').reverse().join('/') : '';
-        html += `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;border-bottom:1px solid var(--border2);font-size:13px">
-          <div>
-            <span style="color:var(--text)">${e.libelle || '—'}</span>
-            ${dateStr ? `<span style="color:var(--text3);font-size:11px;margin-left:8px">${dateStr}</span>` : ''}
-          </div>
-          <span style="font-weight:600;color:${mCouleur};white-space:nowrap;margin-left:12px">${signe}${montant.toFixed(2)} €</span>
-        </div>`;
-      });
-      html += `</div>`;
-    } else {
-      html += `<div style="color:var(--text3);font-size:13px;margin-top:6px">Aucune écriture.</div>`;
+    if (showHistory) {
+      if (ecritures.length) {
+        html += `<div style="border-top:1px solid var(--border);padding-top:8px">
+          <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em">Historique</div>`;
+        ecritures.forEach(e => {
+          const montant = typeof e.montant === 'number' ? e.montant : 0;
+          const signe = montant > 0 ? '+' : '';
+          const mCouleur = montant < 0 ? '#b91c1c' : (montant > 0 ? '#15803d' : 'var(--text3)');
+          const dateStr = e.date ? e.date.split('T')[0].split('-').reverse().join('/') : '';
+          html += `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;border-bottom:1px solid var(--border2);font-size:13px">
+            <div>
+              <span style="color:var(--text)">${e.libelle || '—'}</span>
+              ${dateStr ? `<span style="color:var(--text3);font-size:11px;margin-left:8px">${dateStr}</span>` : ''}
+            </div>
+            <span style="font-weight:600;color:${mCouleur};white-space:nowrap;margin-left:12px">${signe}${montant.toFixed(2)} €</span>
+          </div>`;
+        });
+        html += `</div>`;
+      } else {
+        html += `<div style="color:var(--text3);font-size:13px;margin-top:6px">Aucune écriture.</div>`;
+      }
     }
 
     html += `</div>`;
@@ -1863,42 +1925,7 @@ function renderDevoirsFromCache() {
 }
 
 async function toggleDevoirEffectue(devoirId, date, currentState) {
-  const eleveId = getEleveId();
-  if (!eleveId || !devoirId) return;
-  const newState = !currentState;
-
-  if (devoirsCache && devoirsCache[date]) {
-    const d = devoirsCache[date].find(d => String(d.id ?? d.idDevoir) === String(devoirId));
-    if (d) d.effectue = newState;
-  }
-  renderDevoirsFromCache();
-
-  try {
-    const idNum = parseInt(devoirId, 10);
-    const body = {
-      idDevoirsEffectues:    newState ? [idNum] : [],
-      idDevoirsNonEffectues: newState ? [] : [idNum],
-    };
-    const resp = await fetch(`${getProxy()}/v3/Eleves/${eleveId}/cahierdetexte.awp?verbe=put&v=4.97.0`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.0' },
-      body: `data=${encodeURIComponent(JSON.stringify(body))}`,
-    });
-    const data = await resp.json();
-    if (data.code !== 200) throw new Error(`Code ${data.code}`);
-    await edCache.delete(`devoirs:${eleveId}`);
-  } catch(e) {
-    if (devoirsCache && devoirsCache[date]) {
-      const d = devoirsCache[date].find(d => String(d.id ?? d.idDevoir) === String(devoirId));
-      if (d) d.effectue = currentState;
-    }
-    renderDevoirsFromCache();
-    console.error('toggleDevoirEffectue erreur :', e.message);
-  }
-}
-
-async function toggleDevoirEffectue(devoirId, date, currentState) {
-  const eleveId = getEleveId();
+  const eleveId = _childEleveView?.id || getEleveId();
   if (!eleveId || !devoirId) return;
   const newState = !currentState;
 
@@ -2515,7 +2542,7 @@ function _openCollaboraViewer(collaboraUrl, accessToken, idUser) {
 }
 
 async function loadDevoirs() {
-  const eleveId = getEleveId();
+  const eleveId = _childEleveView?.id || getEleveId();
   if (!eleveId) return;
   const cacheKey = `devoirs:${eleveId}`;
   const path = `/v3/Eleves/${eleveId}/cahierdetexte.awp?verbe=get`;
@@ -2606,7 +2633,7 @@ async function enrichDevoirsWithDocs(eleveId, listData) {
 }
 
 async function loadNotes() {
-  const eleveId = getEleveId();
+  const eleveId = _childEleveView?.id || getEleveId();
   if (!eleveId) return;
   const cacheKey = `notes:${eleveId}`;
 
@@ -2622,10 +2649,10 @@ async function loadNotes() {
   };
 
   await edCache.load(cacheKey, async () => {
-    const resp = await fetch(`${getProxy()}/v3/eleves/${eleveId}/notes.awp?verbe=get`, {
+    const resp = await fetch(`${getProxy()}/v3/eleves/${eleveId}/notes.awp?verbe=get&v=4.98.0`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
-      body: 'data={}'
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' },
+      body: 'data={"anneeScolaire":""}'
     });
     const d = await resp.json();
     if (d.code !== 200) throw new Error(`Code ${d.code}`);
@@ -3431,14 +3458,14 @@ async function forceRefresh(tab) {
   if (btn) btn.classList.add('spinning');
 
   // Supprimer le cache de cet onglet
-  const eleveId = getEleveId();
+  const eleveId = _childEleveView?.id || getEleveId();
   if (tab === 'accueil') {
     await edCache.delete(`accueil:${eleveId}`);
     await loadAccueil();
   } else if (tab === 'edt') {
     const mon = getMondayOfWeek(edtWeekOffset);
     const fmt = d => d.toISOString().substring(0,10);
-    await edCache.delete(`edt:${fmt(mon)}`);
+    await edCache.delete(`edt:${eleveId}:${fmt(mon)}`);
     await runEdt();
   } else if (tab === 'notes') {
     await edCache.delete(`notes:${eleveId}`);
@@ -3455,7 +3482,7 @@ async function forceRefresh(tab) {
   } else if (tab === 'absences') {
     if (vieScolaireSection === 'qcm') { await edCache.delete(`qcm:${eleveId}`); await loadQcm(); return; }
     if (vieScolaireSection === 'sondages') { await edCache.delete(`sondages:${eleveId}`); await loadSondages(); return; }
-    if (vieScolaireSection === 'portemonnaie') { await edCache.delete(`portemonnaie:${eleveId}`); await loadPorteMonnaie(); return; }
+    if (vieScolaireSection === 'portemonnaie') { await edCache.delete(`portemonnaie:${getEleveId()}`); await loadPorteMonnaie(); return; }
     await edCache.delete(`absences:${eleveId}`);
     await loadAbsences();
   } else if (tab === 'devoirs') {
@@ -3496,6 +3523,9 @@ async function forceRefresh(tab) {
       await edCache.delete(`finances-parent:${eleveId}`);
       _vspFinancesData = null;
       await loadVspFinances(_finActiveTab);
+    } else if (_finActiveTab === 'portemonnaie-parent') {
+      await edCache.delete(`portemonnaie-parent:${eleveId}`);
+      await loadVspPorteMonnaieParent();
     } else if (_finActiveTab === 'modeReglement') {
       await edCache.delete(`mode-reglement:${eleveId}`);
       await loadVspModeReglement();
@@ -3540,12 +3570,12 @@ function centeredSpinner() {
 }
 
 async function runEdt() {
-  const eleveId = getEleveId();
+  const eleveId = _childEleveView?.id || getEleveId();
   if (!eleveId) return;
   const mon = getMondayOfWeek(edtWeekOffset);
   const fri = new Date(mon); fri.setDate(mon.getDate() + 6);
   const fmt = d => d.toISOString().substring(0,10);
-  const cacheKey = `edt:${fmt(mon)}`;
+  const cacheKey = `edt:${eleveId}:${fmt(mon)}`;
 
   const moisFr = ['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
   document.getElementById('edt-week-label').textContent =
@@ -3683,8 +3713,8 @@ function switchTab(id, fromPopstate = false) {
   if (refreshBtn) {
     refreshBtn.onclick = () => forceRefresh(id);
   }
-  // Mode vue enfant (compte parent visualisant un élève) — afficher stubs
-  if (_childEleveView) {
+  // Mode vue enfant (compte parent visualisant un élève) — afficher stubs sauf pour les onglets implémentés
+  if (_childEleveView && id !== 'absences' && id !== 'edt' && id !== 'notes' && id !== 'devoirs' && id !== 'messages') {
     _loadChildViewTab(id);
     return;
   }
@@ -3692,11 +3722,8 @@ function switchTab(id, fromPopstate = false) {
   else if (id === 'edt') runEdt();
   else if (id === 'notes') loadNotes();
   else if (id === 'absences') {
-    vieScolaireSection = 'absences';
-    document.getElementById('viescolaire-tabs').querySelectorAll('.sub-tab').forEach(b => b.classList.remove('active'));
-    const defaultTab = document.getElementById('vs-tab-absences');
-    if (defaultTab) defaultTab.classList.add('active');
-    loadAbsences();
+    switchVieScolaireTab(vieScolaireSection || 'absences');
+    if (vieScolaireSection !== 'qcm' && vieScolaireSection !== 'sondages' && vieScolaireSection !== 'portemonnaie' && vieScolaireSection !== 'demandesabsences') loadAbsences();
   }
   else if (id === 'devoirs') loadDevoirs();
   else if (id === 'seances') {
@@ -3730,7 +3757,7 @@ let _finActiveTab = 'situation';
 let _paiementsData = null;       // données brutes paiements en ligne (catalog + soldes)
 let _panierPaiements = new Map(); // itemId → { item, qte, montantSaisi }
 
-const _VSP_FINANCE_TABS = new Set(['situation', 'portemonnaie-parent']);
+const _VSP_FINANCE_TABS = new Set(['situation']);
 
 function switchVspTab(tab) {
   _vspActiveTab = tab;
@@ -3751,6 +3778,7 @@ function switchFinancesTab(tab) {
     }
   }
   if (_VSP_FINANCE_TABS.has(tab)) loadVspFinances(tab);
+  else if (tab === 'portemonnaie-parent') loadVspPorteMonnaieParent();
   else if (tab === 'modeReglement') loadVspModeReglement();
   else if (tab === 'paiementsenligne') loadVspPaiementsEnLigne();
 }
@@ -3788,6 +3816,35 @@ async function loadVspFinances(tab) {
     onSpinner: () => { spinEl.style.display = 'inline'; resultEl.innerHTML = centeredSpinner(); },
     onCached:  (data, ts) => { spinEl.style.display = 'none'; _vspFinancesData = data; resultEl.innerHTML = renderForTab(data); updateFreshnessLabel('finances-parent', ts || Date.now()); },
     onFresh:   (data)     => { spinEl.style.display = 'none'; _vspFinancesData = data; resultEl.innerHTML = renderForTab(data); updateFreshnessLabel('finances-parent', Date.now()); },
+    diffFn:    edCache.defaultDiff,
+  }).catch(e => {
+    resultEl.innerHTML = `<p style="color:#b91c1c;font-size:14px">Erreur : ${e.message}</p>`;
+    spinEl.style.display = 'none';
+  });
+}
+
+async function loadVspPorteMonnaieParent() {
+  const eleveId = getEleveId();
+  if (!eleveId) return;
+  const cacheKey = `portemonnaie-parent:${eleveId}`;
+  const resultEl = document.getElementById('finances-result');
+  const spinEl   = document.getElementById('spin-finances-parent');
+  if (!resultEl) return;
+
+  await edCache.load(cacheKey, async () => {
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' };
+    if (twoFaToken) headers['2fa-token'] = twoFaToken;
+    const resp = await fetch(`${getProxy()}/v3/comptes/detail.awp?verbe=get&v=4.98.0`, {
+      method: 'POST', headers,
+      body: `data=${encodeURIComponent(JSON.stringify({ eleveId }))}`
+    });
+    const d = await resp.json();
+    if (d.code !== 200) throw new Error(d.message || `Code ${d.code}`);
+    return d.data;
+  }, {
+    onSpinner: () => { spinEl.style.display = 'inline'; resultEl.innerHTML = centeredSpinner(); },
+    onCached:  (data, ts) => { spinEl.style.display = 'none'; resultEl.innerHTML = renderVspPorteMonnaie(data); updateFreshnessLabel('finances-parent', ts || Date.now()); },
+    onFresh:   (data)     => { spinEl.style.display = 'none'; resultEl.innerHTML = renderVspPorteMonnaie(data); updateFreshnessLabel('finances-parent', Date.now()); },
     diffFn:    edCache.defaultDiff,
   }).catch(e => {
     resultEl.innerHTML = `<p style="color:#b91c1c;font-size:14px">Erreur : ${e.message}</p>`;
@@ -3885,20 +3942,37 @@ function renderVspPorteMonnaie(data) {
           <div style="font-size:11px;color:var(--text3)">Solde</div>
         </div>
       </div>`;
+    const avenir = Array.isArray(c.avenir) ? c.avenir : [];
+    if (avenir.length) {
+      html += `<div style="border-top:1px solid var(--border);padding-top:10px;margin-bottom:10px">
+        <div style="font-size:12px;font-weight:600;color:#b91c1c;margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em">Consommations en cours</div>`;
+      avenir.forEach(a => {
+        const m = typeof a.montant === 'number' ? a.montant : 0;
+        const absM = Math.abs(m);
+        const dateStr = a.date ? a.date.split('T')[0].split('-').reverse().join('/') : '';
+        html += `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;border-bottom:1px solid var(--border2);font-size:13px">
+          <div><span style="color:var(--text)">${a.libelle || '—'}</span>${dateStr ? `<span style="color:var(--text3);font-size:11px;margin-left:8px">${dateStr}</span>` : ''}</div>
+          <span style="font-weight:600;color:#b91c1c;white-space:nowrap;margin-left:12px">-${absM.toFixed(2)} €</span>
+        </div>`;
+      });
+      html += '</div>';
+    }
     if (ecritures.length) {
       html += `<div style="border-top:1px solid var(--border);padding-top:8px">
         <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em">Historique</div>`;
       ecritures.forEach(e => {
         html += _renderEcritureRow(e);
         if (e.ecritures?.length) {
+          const parentIsDebit = typeof e.montant === 'number' && e.montant < 0;
           html += `<div style="margin:2px 0 6px 12px;padding-left:10px;border-left:2px solid var(--border2)">`;
           e.ecritures.forEach(s => {
             const sm = typeof s.montant === 'number' ? s.montant : 0;
-            const sc = sm < 0 ? '#b91c1c' : (sm > 0 ? '#15803d' : 'var(--text3)');
+            const absM = Math.abs(sm);
+            const sc = parentIsDebit ? '#b91c1c' : (sm < 0 ? '#b91c1c' : (sm > 0 ? '#15803d' : 'var(--text3)'));
             const sd = s.date ? s.date.split('T')[0].split('-').reverse().join('/') : '';
             html += `<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text2);padding:2px 0">
               <span>${s.libelle || '—'}${sd ? ` <span style="color:var(--text3)">${sd}</span>` : ''}</span>
-              <span style="color:${sc};white-space:nowrap;margin-left:8px">${sm > 0 ? '+' : ''}${sm.toFixed(2)} €</span>
+              <span style="color:${sc};white-space:nowrap;margin-left:8px">${parentIsDebit ? '-' : (sm > 0 ? '+' : '')}${absM.toFixed(2)} €</span>
             </div>`;
           });
           html += '</div>';
@@ -4927,7 +5001,7 @@ let msgUnreadOnly = false;
 
 function renderMessages(data) {
   msgData = data;
-  // Mettre à jour les labels avec les vrais counts
+  // Mettre à jour les labels et la classe active avec les vrais counts
   document.querySelectorAll('#panel-messages .sub-tab').forEach(b => {
     if (b.dataset.tab === 'received')      b.textContent = `Reçus (${msgCounts.received})`;
     if (b.dataset.tab === 'sent')          b.textContent = `Envoyés (${msgCounts.sent})`;
@@ -4935,6 +5009,7 @@ function renderMessages(data) {
     if (b.dataset.tab === 'archived')      b.textContent = `Archivés (${msgCounts.archived})`;
     if (b.dataset.tab === 'correspondance' && _correspondancesCount > 0)
       b.textContent = `Correspondances (${_correspondancesCount})`;
+    b.classList.toggle('active', b.dataset.tab === msgActiveTab);
   });
   return `<div id="msg-list">${renderMsgList()}</div>`;
 }
@@ -4966,9 +5041,23 @@ function switchMsgTab(tab) {
 let _correspondancesCache = [];
 let _correspondancesCount = 0;
 
+// Retourne l'ID de l'élève pour les correspondances :
+// - en vue enfant (compte parent) : ID de l'enfant visualisé
+// - en mode parent direct : premier enfant du compte
+// - en compte élève : ID de l'élève courant
+function getCorrespondancesEleveId() {
+  if (_childEleveView) return _childEleveView.id;
+  const acc = accountData?.accounts ? accountData.accounts[0] : accountData;
+  if (acc?.typeCompte !== 'E') {
+    const eleves = acc?.profile?.eleves || acc?.eleves || [];
+    return eleves[0]?.id || null;
+  }
+  return getEleveId();
+}
+
 async function fetchCorrespondanceCount() {
   try {
-    const eleveId = getEleveId();
+    const eleveId = getCorrespondancesEleveId();
     if (!eleveId || !token || sessionExpired) return;
     const cacheKey = `correspondances:${eleveId}`;
     // Charger depuis le cache IndexedDB d'abord pour afficher le badge immédiatement
@@ -4982,10 +5071,10 @@ async function fetchCorrespondanceCount() {
       // Si le cache est frais, pas besoin de refetch
       if (!edCache.isStale(cached)) return;
     }
-    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
     const resp = await fetch(
-      `${getProxy()}/v3/eleves/${eleveId}/eleveCarnetCorrespondance.awp?verbe=get&v=4.97.2`,
+      `${getProxy()}/v3/eleves/${eleveId}/eleveCarnetCorrespondance.awp?verbe=get&v=4.98.0`,
       { method: 'POST', headers, body: 'data={}' }
     );
     const data = await resp.json();
@@ -5004,7 +5093,7 @@ async function loadCorrespondance() {
   if (!resultEl) return;
   selectedContactId = null;
 
-  const eleveId = getEleveId();
+  const eleveId = getCorrespondancesEleveId();
   if (!eleveId) return;
   const cacheKey = `correspondances:${eleveId}`;
 
@@ -5015,10 +5104,10 @@ async function loadCorrespondance() {
   };
 
   await edCache.load(cacheKey, async () => {
-    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.97.2' };
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
     const resp = await fetch(
-      `${getProxy()}/v3/eleves/${eleveId}/eleveCarnetCorrespondance.awp?verbe=get&v=4.97.2`,
+      `${getProxy()}/v3/eleves/${eleveId}/eleveCarnetCorrespondance.awp?verbe=get&v=4.98.0`,
       { method: 'POST', headers, body: 'data={}' }
     );
     const data = await resp.json();
@@ -5036,12 +5125,26 @@ async function loadCorrespondance() {
 }
 
 function renderCorrespondanceList(resultEl) {
+  // En mode parent (hors vue enfant), afficher l'en-tête avec le nom de l'enfant
+  let childHeaderHtml = '';
+  if (!_childEleveView) {
+    const _acc = accountData?.accounts ? accountData.accounts[0] : accountData;
+    if (_acc?.typeCompte !== 'E') {
+      const _eleves = _acc?.profile?.eleves || _acc?.eleves || [];
+      if (_eleves.length > 0) {
+        const _e = _eleves[0];
+        const _nom = [_e.prenom, _e.nom].filter(Boolean).join(' ');
+        childHeaderHtml = `<div style="padding:6px 4px 10px;color:var(--text3);font-size:12px;border-bottom:1px solid var(--border2);margin-bottom:4px">Correspondances de <strong style="color:var(--text2)">${_nom}</strong></div>`;
+      }
+    }
+  }
+
   resultEl.innerHTML = `<div id="msg-list"></div>`;
   const listEl = document.getElementById('msg-list');
   if (!listEl) return;
 
   if (!_correspondancesCache.length) {
-    listEl.innerHTML = `<p style="color:var(--text3);font-size:14px;padding:8px 0">Aucune correspondance.</p>`;
+    listEl.innerHTML = childHeaderHtml + `<p style="color:var(--text3);font-size:14px;padding:8px 0">Aucune correspondance.</p>`;
     return;
   }
 
@@ -5049,7 +5152,7 @@ function renderCorrespondanceList(resultEl) {
   const corrTab = document.querySelector('#panel-messages .sub-tab[data-tab="correspondance"]');
   if (corrTab) corrTab.textContent = `Correspondances (${_correspondancesCount})`;
 
-  listEl.innerHTML = _correspondancesCache.map((c, i) => {
+  listEl.innerHTML = childHeaderHtml + _correspondancesCache.map((c, i) => {
     const auteur = [c.auteur.prenom, c.auteur.nom].filter(Boolean).join(' ');
     const dateStr = c.dateCreation.substring(0, 10);
     const subject = c.type || 'Communication';
@@ -5207,7 +5310,7 @@ function applyMessageSelection() {
 }
 
 async function openMessageDialog(msgId) {
-  const eleveId = getEleveId();
+  const eleveId = _childEleveView?.id || getEleveId();
   const cached = cachedMessages[msgId];
   const panel = document.getElementById('message-detail-panel');
   if (!panel) return;
@@ -5220,9 +5323,9 @@ async function openMessageDialog(msgId) {
     cached.read = true;
     const annee = document.getElementById('msg-annee')?.value || '';
     const _acc2 = accountData?.accounts ? accountData.accounts[0] : accountData;
-    // Pour un compte élève : requête PUT séparée ; pour un compte parent, le fetch du contenu
-    // avec verbe=post (ci-dessous) marque déjà le message comme lu — pas de requête PUT ici.
-    if (_acc2?.typeCompte === 'E') {
+    // Pour un compte élève (ou vue enfant depuis compte parent) : requête PUT séparée ;
+    // pour un compte parent, le fetch du contenu avec verbe=post marque déjà le message comme lu.
+    if (_childEleveView || _acc2?.typeCompte === 'E') {
       fetch(`${getProxy()}/v3/eleves/${eleveId}/messages/${msgId}.awp?verbe=put`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.75.0' },
@@ -5298,7 +5401,7 @@ async function openMessageDialog(msgId) {
     const annee = document.getElementById('msg-annee')?.value || '';
 
     const _acc3 = accountData?.accounts ? accountData.accounts[0] : accountData;
-    const _isEleve3 = _acc3?.typeCompte === 'E';
+    const _isEleve3 = !!_childEleveView || _acc3?.typeCompte === 'E';
     const _msgContentBase = _isEleve3
       ? `/v3/eleves/${eleveId}/messages/${msgId}.awp`
       : `/v3/familles/${eleveId}/messages/${msgId}.awp`;
@@ -5493,23 +5596,591 @@ function renderVieScolaireSection(data, section) {
 function renderAbsences(data) {
   const abs = (data.absencesRetards || []);
   if (!abs.length) return '<p style="color:var(--text3);font-size:14px">Aucune absence enregistrée.</p>';
+  const canJustify = !!_childEleveView; // bouton disponible uniquement en vue enfant (compte parent)
   let html = `<div style="font-weight:500;font-size:14px;margin-bottom:8px">${abs.length} absence(s)</div>`;
-  abs.forEach(a => {
+  abs.forEach((a, idx) => {
     const color = a.justifie ? '#15803d' : '#b91c1c';
     const badge = a.justifie ? 'Justifiée' : 'Non justifiée';
     const date = (a.displayDate || '').split('\n').join(' ').trim();
     const motif = (a.motif || '').split('\n').join(' ').trim();
     const commentaire = (a.commentaire || '').split('\n').join(' ').trim();
+    const justifierBtn = (!a.justifie && !a.justifieEd && canJustify)
+      ? `<button onclick="openJustifierAbsenceDialog(${idx})" onmouseover="this.style.background='#b91c1c';this.style.color='#fff'" onmouseout="this.style.background='transparent';this.style.color='#b91c1c'" style="padding:5px 10px;border-radius:6px;border:1px solid #b91c1c;background:transparent;color:#b91c1c;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;transition:background .15s,color .15s">Justifier</button>`
+      : '';
+    const enAttenteHtml = (!a.justifie && a.justifieEd && canJustify)
+      ? `<span style="color:#b45309;font-weight:500;font-size:14px">En attente</span>`
+      : '';
+    const badgeHtml = (a.justifie || !canJustify)
+      ? `<span style="color:${color};font-weight:500;font-size:14px">${badge}</span>`
+      : '';
     html += `<div style="padding:8px 10px;border-radius:8px;background:var(--bg3);margin-bottom:6px;font-size:14px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
         <span style="font-weight:500">${date}</span>
-        <span style="color:${color};font-weight:500;font-size:14px">${badge}</span>
+        <span style="display:flex;align-items:center;gap:4px">
+          ${badgeHtml}${enAttenteHtml}${justifierBtn}
+        </span>
       </div>
       ${motif ? `<div style="color:var(--text2)">${motif}</div>` : ''}
       ${commentaire ? `<div style="color:var(--text3);font-style:italic;margin-top:2px">"${commentaire}"</div>` : ''}
     </div>`;
   });
   return html;
+}
+
+async function loadDemandesAbsences() {
+  const eleveId = _childEleveView?.id;
+  if (!eleveId) return;
+  const cacheKey = `autorisations-sortie:${eleveId}`;
+  const resultEl = document.getElementById('absences-result');
+  const spinEl   = document.getElementById('spin-absences');
+
+  await edCache.load(cacheKey, async () => {
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' };
+    if (twoFaToken) headers['2fa-token'] = twoFaToken;
+    const resp = await fetch(`${getProxy()}/v3/eleves/${eleveId}/niveaux/0/autorisationsSortie.awp?verbe=get&v=4.98.0`, {
+      method: 'POST',
+      headers,
+      body: 'data={}'
+    });
+    const d = await resp.json();
+    if (d.code !== 200) throw new Error(`Code ${d.code}`);
+    return d.data;
+  }, {
+    onSpinner: () => { spinEl.style.display = 'inline'; resultEl.innerHTML = centeredSpinner(); },
+    onCached:  (data, ts) => { spinEl.style.display = 'none'; resultEl.innerHTML = renderDemandesAbsences(data); },
+    onFresh:   (data)     => { spinEl.style.display = 'none'; resultEl.innerHTML = renderDemandesAbsences(data); },
+    diffFn:    edCache.defaultDiff,
+  }).catch(e => {
+    resultEl.innerHTML = `<p style="color:#b91c1c;font-size:14px">Erreur : ${e.message}</p>`;
+    spinEl.style.display = 'none';
+  });
+}
+
+function renderDemandesAbsences(data) {
+  const autorisations  = data.autorisations  || [];
+  const demandesFam    = data.demandesFamille || [];
+  const demandesEtab   = data.demandesEtab   || [];
+  const libelles       = (data.parametrage?.libellesAutorisations || []);
+  const libMap = {};
+  libelles.forEach(l => { libMap[l.code] = l.libelle; });
+
+  const JOURS = ['', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
+  const TYPES = ['arriveeTardive', 'intercours', 'sortieAnticipee'];
+  const TYPES_SHORT = { arriveeTardive: 'Arrivée tardive', intercours: 'Intercours', sortieAnticipee: 'Sortie anticipée' };
+
+  function etatBadge(etat) {
+    if (etat === 1)  return '<span style="color:#15803d;font-weight:600;font-size:12px">✔ Oui</span>';
+    if (etat === 0)  return '<span style="color:#b91c1c;font-weight:600;font-size:12px">✘ Non</span>';
+    return '<span style="color:var(--text3);font-size:12px">—</span>';
+  }
+
+  // ── Autorisations ──────────────────────────────────────────────
+  let html = `<div style="font-weight:600;font-size:14px;margin-bottom:10px">Autorisations de sortie</div>`;
+  html += `<div style="overflow-x:auto;margin-bottom:20px">
+    <table style="border-collapse:collapse;font-size:12px;min-width:480px;width:100%">
+      <thead>
+        <tr style="background:var(--bg3)">
+          <th style="padding:6px 10px;text-align:left;border:1px solid var(--border);font-weight:600">Jour</th>
+          ${TYPES.map(t => `<th colspan="2" style="padding:6px 8px;text-align:center;border:1px solid var(--border);font-weight:600">${TYPES_SHORT[t]}<br><span style="font-weight:400;font-size:11px;color:var(--text3)">${libMap[t] ? '(' + libMap[t] + ')' : ''}</span></th>`).join('')}
+        </tr>
+        <tr style="background:var(--bg2)">
+          <th style="padding:4px 10px;border:1px solid var(--border)"></th>
+          ${TYPES.map(() => `<th style="padding:4px 8px;text-align:center;border:1px solid var(--border);color:var(--text3);font-size:11px;font-weight:500">Matin</th><th style="padding:4px 8px;text-align:center;border:1px solid var(--border);color:var(--text3);font-size:11px;font-weight:500">Après-midi</th>`).join('')}
+        </tr>
+      </thead>
+      <tbody>`;
+
+  autorisations.forEach(jour => {
+    if (jour.jour > 5) return; // ignorer week-end (etat -1)
+    html += `<tr>
+      <td style="padding:5px 10px;border:1px solid var(--border);font-weight:500">${JOURS[jour.jour] || `Jour ${jour.jour}`}</td>
+      ${TYPES.map(t => `
+        <td style="padding:5px 8px;text-align:center;border:1px solid var(--border)">${etatBadge(jour.autorisationsMatin?.[t]?.etat ?? -1)}</td>
+        <td style="padding:5px 8px;text-align:center;border:1px solid var(--border)">${etatBadge(jour.autorisationsApresMidi?.[t]?.etat ?? -1)}</td>
+      `).join('')}
+    </tr>`;
+  });
+  html += `</tbody></table></div>`;
+
+  // ── Demandes passées ──────────────────────────────────────────
+  const toutesLesDemandes = [
+    ...demandesFam.map(d => ({ ...d, source: 'famille' })),
+    ...demandesEtab.map(d => ({ ...d, source: 'etablissement' })),
+  ];
+  html += `<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
+    <span style="font-weight:600;font-size:14px">Demandes passées</span>
+    <button onclick="openNouvelleDemandeAbsenceDialog()"
+      style="padding:6px 14px;border-radius:6px;border:none;background:#1d4ed8;color:#fff;font-size:13px;font-weight:600;cursor:pointer">
+      + Nouvelle demande
+    </button>
+    <span style="color:var(--text3);font-size:12px;font-style:italic">WIP — coming soon</span>
+  </div>`;
+
+  if (!toutesLesDemandes.length) {
+    html += `<p style="color:var(--text3);font-size:14px">Aucune demande enregistrée.</p>`;
+    return html;
+  }
+
+  toutesLesDemandes.forEach(d => {
+    const dateDebut = d.dateDebut || d.date || '';
+    const dateFin   = d.dateFin   || '';
+    const motif     = d.motif     || d.commentaire || '';
+    const statut    = d.statut    || d.etat || '';
+    const periode   = dateFin ? `${dateDebut} → ${dateFin}` : dateDebut;
+    html += `<div style="padding:8px 10px;border-radius:8px;background:var(--bg3);margin-bottom:6px;font-size:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+        <span style="font-weight:500">${periode}</span>
+        ${statut ? `<span style="font-size:12px;color:var(--text3)">${statut}</span>` : ''}
+      </div>
+      ${motif ? `<div style="color:var(--text2)">${motif}</div>` : ''}
+    </div>`;
+  });
+  return html;
+}
+
+function openNouvelleDemandeAbsenceDialog() {
+  const dark    = document.body.classList.contains('dark');
+  const dlgBg   = dark ? '#1e1e1e' : '#fff';
+  const dlgText = dark ? '#f0f0ee' : '#1a1a1a';
+  const inpBg   = dark ? '#2a2a2a' : '#fff';
+  const inpBord = dark ? '#555'    : '#d1d5db';
+  const labelColor = dark ? '#e0e0dc' : '#374151';
+  const ACCENT  = '#1d4ed8';
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:2000;display:flex;align-items:center;justify-content:center;padding:1.5rem;overflow-y:auto';
+
+  const dialog = document.createElement('div');
+  dialog.style.cssText = `background:${dlgBg};color:${dlgText};border-radius:12px;padding:1.5rem;max-width:520px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,.35);position:relative;font-family:inherit`;
+
+  dialog.innerHTML = `
+    <button id="nvdemande-close" style="position:absolute;top:10px;right:12px;background:none;border:none;cursor:pointer;font-size:22px;color:${dark?'#666':'#aaa'};line-height:1">×</button>
+    <h3 style="margin:0 0 20px;font-size:15px;font-weight:700">Nouvelle demande d'absence</h3>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px">
+      <!-- Date de début -->
+      <div>
+        <div style="font-size:13px;font-weight:600;color:${labelColor};margin-bottom:6px">
+          Date de début <span style="color:${ACCENT}">(*)</span>
+        </div>
+        <div style="display:flex;align-items:center;border:1px solid ${inpBord};border-radius:6px;overflow:hidden;background:${inpBg}">
+          <input type="date" id="nvdemande-date-debut"
+            style="flex:1;padding:7px 8px;border:none;background:transparent;color:${dlgText};font-size:13px;outline:none;min-width:0">
+          <span style="padding:0 10px;color:${ACCENT};font-size:15px;pointer-events:none">📅</span>
+        </div>
+      </div>
+      <!-- Heure de début -->
+      <div>
+        <div style="font-size:13px;font-weight:600;color:${labelColor};margin-bottom:6px">
+          Heure de début <span style="color:${ACCENT}">(*)</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px;border:1px solid ${inpBord};border-radius:6px;padding:5px 10px;background:${inpBg}">
+          <input type="number" id="nvdemande-hd-h" min="0" max="23" value="8"
+            style="width:36px;text-align:center;border:none;background:transparent;color:${dlgText};font-size:14px;font-weight:500;outline:none;-moz-appearance:textfield">
+          <span style="font-weight:600;color:${labelColor}">:</span>
+          <input type="number" id="nvdemande-hd-m" min="0" max="59" value="0"
+            style="width:36px;text-align:center;border:none;background:transparent;color:${dlgText};font-size:14px;font-weight:500;outline:none;-moz-appearance:textfield">
+        </div>
+      </div>
+    </div>
+
+    <div id="nvdemande-fin-row" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:10px">
+      <!-- Date de fin -->
+      <div>
+        <div style="font-size:13px;font-weight:600;color:${labelColor};margin-bottom:6px">Date de fin</div>
+        <div style="display:flex;align-items:center;border:1px solid ${inpBord};border-radius:6px;overflow:hidden;background:${inpBg}">
+          <input type="date" id="nvdemande-date-fin"
+            style="flex:1;padding:7px 8px;border:none;background:transparent;color:${dlgText};font-size:13px;outline:none;min-width:0">
+          <span style="padding:0 10px;color:${ACCENT};font-size:15px;pointer-events:none">📅</span>
+        </div>
+      </div>
+      <!-- Heure de fin -->
+      <div>
+        <div style="font-size:13px;font-weight:600;color:${labelColor};margin-bottom:6px">Heure de fin</div>
+        <div style="display:flex;align-items:center;gap:4px;border:1px solid ${inpBord};border-radius:6px;padding:5px 10px;background:${inpBg}">
+          <input type="number" id="nvdemande-hf-h" min="0" max="23" value="8"
+            style="width:36px;text-align:center;border:none;background:transparent;color:${dlgText};font-size:14px;font-weight:500;outline:none;-moz-appearance:textfield">
+          <span style="font-weight:600;color:${labelColor}">:</span>
+          <input type="number" id="nvdemande-hf-m" min="0" max="59" value="0"
+            style="width:36px;text-align:center;border:none;background:transparent;color:${dlgText};font-size:14px;font-weight:500;outline:none;-moz-appearance:textfield">
+        </div>
+      </div>
+    </div>
+
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:8px;color:${dlgText}">
+      <input type="checkbox" id="nvdemande-no-fin" style="width:14px;height:14px;cursor:pointer">
+      Je ne connais pas la date et l'heure de fin
+    </label>
+
+    <div id="nvdemande-error" style="display:none;color:${ACCENT};font-size:13px;margin-bottom:10px">
+      Vous devez choisir une date de début valide
+    </div>
+
+    <div style="margin-bottom:6px">
+      <div style="font-size:13px;font-weight:600;color:${labelColor};margin-bottom:6px">
+        Motif <span style="color:${ACCENT}">(*)</span>
+      </div>
+      <textarea id="nvdemande-motif" maxlength="250" rows="4"
+        style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid ${inpBord};border-radius:6px;background:${inpBg};color:${dlgText};font-size:13px;font-family:inherit;resize:vertical;outline:none"></textarea>
+      <div style="text-align:right;font-size:11px;color:var(--text3);margin-top:2px">
+        <span id="nvdemande-motif-count">0</span> / 250
+      </div>
+    </div>
+
+    <div style="display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-top:18px;flex-wrap:wrap">
+      <button id="nvdemande-annuler"
+        style="padding:8px 18px;border-radius:6px;border:1px solid ${inpBord};background:transparent;color:${dlgText};font-size:13px;font-weight:600;cursor:pointer">
+        Annuler
+      </button>
+      <button id="nvdemande-enregistrer"
+        style="padding:8px 18px;border-radius:6px;border:none;background:${ACCENT};color:#fff;font-size:13px;font-weight:600;cursor:pointer">
+        Enregistrer
+      </button>
+      <span style="color:var(--text3);font-size:12px;font-style:italic">WIP — coming soon</span>
+    </div>
+  `;
+
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+
+  const closeDialog = () => document.body.removeChild(overlay);
+  document.getElementById('nvdemande-close').onclick   = closeDialog;
+  document.getElementById('nvdemande-annuler').onclick = closeDialog;
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeDialog(); });
+
+  // Toggle "Je ne connais pas la date de fin"
+  document.getElementById('nvdemande-no-fin').addEventListener('change', function() {
+    document.getElementById('nvdemande-fin-row').style.display = this.checked ? 'none' : 'grid';
+  });
+
+  // Compteur motif
+  document.getElementById('nvdemande-motif').addEventListener('input', function() {
+    document.getElementById('nvdemande-motif-count').textContent = this.value.length;
+  });
+
+  // Enregistrer — WIP : valider le formulaire et afficher l'erreur si incomplet
+  document.getElementById('nvdemande-enregistrer').addEventListener('click', () => {
+    const dateDebut = document.getElementById('nvdemande-date-debut').value;
+    const errEl = document.getElementById('nvdemande-error');
+    if (!dateDebut) {
+      errEl.style.display = 'block';
+      return;
+    }
+    errEl.style.display = 'none';
+    // TODO: implémenter la requête de soumission
+  });
+}
+
+async function openJustifierAbsenceDialog(absIdx) {
+  const eleveId = _childEleveView?.id;
+  if (!eleveId) return;
+
+  // Récupère l'absence depuis le cache
+  const entry = await edCache.get(`absences:${eleveId}`);
+  const absence = (entry?.data?.absencesRetards || [])[absIdx];
+  if (!absence) return;
+
+  const acc = accountData?.accounts ? accountData.accounts[0] : accountData;
+  if (!acc) return;
+
+  const dark = document.body.classList.contains('dark');
+  const dlgBg   = dark ? '#1e1e1e' : '#fff';
+  const dlgText = dark ? '#f0f0ee' : '#1a1a1a';
+  const inpBg   = dark ? '#2a2a2a' : '#fff';
+  const inpBord = dark ? '#555' : '#ccc';
+
+  const sigNom  = `${acc.prenom || ''} ${acc.nom || ''}`.trim().toUpperCase();
+  const sigMail = acc.email || '';
+  const sigId   = acc.id || acc.idLogin || 0;
+
+  const dateStr = (absence.displayDate || '').split('\n').join(' ').trim();
+
+  // Build OTP inputs (hidden initially)
+  const otpInputs = Array.from({length: 6}, (_, i) => {
+    const firstStyle = i === 0 ? `border:2px solid #3b82f6` : `border:1px solid ${inpBord}`;
+    return `<input type="text" inputmode="numeric" maxlength="1" data-otp-idx="${i}"
+      style="width:40px;height:44px;text-align:center;font-size:20px;font-weight:700;border-radius:6px;background:${inpBg};color:${dlgText};outline:none;${firstStyle}">`;
+  }).join('');
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:2000;display:flex;align-items:center;justify-content:center;padding:1.5rem;overflow-y:auto';
+
+  const dialog = document.createElement('div');
+  dialog.style.cssText = `background:${dlgBg};color:${dlgText};border-radius:12px;padding:1.5rem;max-width:480px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.35);position:relative;font-family:inherit`;
+  dialog.innerHTML = `
+    <button id="justif-close-btn" style="position:absolute;top:10px;right:12px;background:none;border:none;cursor:pointer;font-size:20px;color:${dark?'#666':'#aaa'}">×</button>
+    <h3 style="margin:0 0 6px;font-size:14px;font-weight:700;letter-spacing:.04em;text-transform:uppercase">Justifier une absence</h3>
+    <div style="font-size:13px;color:var(--text3);margin-bottom:16px">${dateStr}</div>
+
+    <!-- Étape 1 : validation du numéro -->
+    <div id="justif-step-phone">
+      <p style="font-size:13px;margin:0 0 14px;line-height:1.55;color:${dlgText}">Pour justifier cette absence, nous devons <strong>confirmer votre identité par SMS.</strong></p>
+      <div id="justif-phone-loading" style="font-size:13px;color:var(--text3);display:flex;align-items:center;gap:6px;margin-bottom:12px">
+        <span class="spinner" style="width:13px;height:13px"></span> Récupération du numéro…
+      </div>
+      <div id="justif-phone-form" style="display:none">
+        <label style="font-size:13px;font-weight:600;color:${dlgText};display:block;margin-bottom:6px">Numéro de téléphone pour recevoir le code SMS</label>
+        <input id="justif-tel-input" type="tel" autocomplete="tel"
+          style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid ${inpBord};border-radius:8px;background:${inpBg};color:${dlgText};font-size:14px;outline:none;margin-bottom:6px">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:14px">Vérifiez que ce numéro est correct avant d'envoyer le code.</div>
+        <div id="justif-phone-error" style="display:none;color:#b91c1c;font-size:13px;margin-bottom:10px"></div>
+        <div style="display:flex;justify-content:space-between;gap:8px">
+          <button id="justif-cancel-btn" style="padding:8px 20px;border-radius:8px;border:1px solid ${inpBord};background:${dark?'#2a2a2a':'#f3f4f6'};color:${dlgText};font-size:14px;font-weight:500;cursor:pointer">Annuler</button>
+          <button id="justif-send-btn" style="padding:8px 20px;border-radius:8px;border:none;background:#1d4ed8;color:#fff;font-size:14px;font-weight:600;cursor:pointer">Envoyer le code</button>
+        </div>
+      </div>
+      <div id="justif-phone-fetch-error" style="display:none;color:#b91c1c;font-size:13px;margin-bottom:10px"></div>
+    </div>
+
+    <!-- Étape 2 : motif + justificatif + code OTP -->
+    <div id="justif-step-otp" style="display:none">
+      <div id="justif-otp-label" style="font-size:13px;font-weight:600;margin-bottom:12px;color:${dlgText}"></div>
+
+      <!-- Motif -->
+      <label style="font-size:13px;font-weight:600;color:${dlgText};display:block;margin-bottom:5px">Motif de l'absence</label>
+      <input id="justif-motif-input" type="text" placeholder="Ex : Maladie, rendez-vous médical…"
+        style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid ${inpBord};border-radius:8px;background:${inpBg};color:${dlgText};font-size:14px;outline:none;margin-bottom:14px">
+
+      <!-- Drop zone justificatif -->
+      <label style="font-size:13px;font-weight:600;color:${dlgText};display:block;margin-bottom:5px">Justificatif <span style="font-weight:400;color:var(--text3)">(optionnel)</span></label>
+      <div id="justif-dropzone" style="border:2px dashed ${inpBord};border-radius:8px;padding:18px 12px;text-align:center;cursor:pointer;background:${dark?'#242424':'#f9fafb'};margin-bottom:14px;transition:border-color .15s">
+        <div id="justif-dropzone-label" style="font-size:13px;color:var(--text3)">Glissez un fichier ici ou <span style="color:#1d4ed8;text-decoration:underline">cliquez pour choisir</span></div>
+        <div id="justif-file-info" style="display:none;font-size:13px;font-weight:500;color:${dlgText};margin-top:4px"></div>
+        <input id="justif-file-input" type="file" accept="image/*,application/pdf" style="display:none">
+      </div>
+
+      <!-- OTP -->
+      <div id="justif-otp-inputs" style="display:flex;gap:8px;margin-bottom:10px">${otpInputs}</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:16px">Saisissez le code reçu par SMS pour confirmer</div>
+      <div id="justif-error" style="display:none;color:#b91c1c;font-size:13px;margin-bottom:10px"></div>
+      <div style="display:flex;justify-content:space-between;gap:8px">
+        <button id="justif-cancel-btn2" style="padding:8px 20px;border-radius:8px;border:1px solid ${inpBord};background:${dark?'#2a2a2a':'#f3f4f6'};color:${dlgText};font-size:14px;font-weight:500;cursor:pointer">Annuler</button>
+        <button id="justif-confirm-btn" disabled style="padding:8px 20px;border-radius:8px;border:none;background:#1d4ed8;color:#fff;font-size:14px;font-weight:600;cursor:pointer;opacity:.5">Envoyer la justification</button>
+      </div>
+    </div>`;
+
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+
+  const closeBtn        = document.getElementById('justif-close-btn');
+  const cancelBtn       = document.getElementById('justif-cancel-btn');
+  const cancelBtn2      = document.getElementById('justif-cancel-btn2');
+  const sendBtn         = document.getElementById('justif-send-btn');
+  const confirmBtn      = document.getElementById('justif-confirm-btn');
+  const stepPhone       = document.getElementById('justif-step-phone');
+  const stepOtp         = document.getElementById('justif-step-otp');
+  const phoneLoading    = document.getElementById('justif-phone-loading');
+  const phoneForm       = document.getElementById('justif-phone-form');
+  const phoneError      = document.getElementById('justif-phone-error');
+  const telInput        = document.getElementById('justif-tel-input');
+  const otpLabel        = document.getElementById('justif-otp-label');
+  const errorEl         = document.getElementById('justif-error');
+  const otpEls          = Array.from(document.querySelectorAll('#justif-otp-inputs input'));
+  const motifInput      = document.getElementById('justif-motif-input');
+  const dropzone        = document.getElementById('justif-dropzone');
+  const dropzoneLabel   = document.getElementById('justif-dropzone-label');
+  const fileInfo        = document.getElementById('justif-file-info');
+  const fileInput       = document.getElementById('justif-file-input');
+
+  let sigTel = '';
+  let justifFile = null; // { name, base64, type }
+
+  closeBtn.onclick   = () => overlay.remove();
+  cancelBtn.onclick  = () => overlay.remove();
+  cancelBtn2.onclick = () => overlay.remove();
+
+  // ── Drop zone ──────────────────────────────────────────────────────────────
+  const setFile = file => {
+    if (!file) return;
+    justifFile = null;
+    const reader = new FileReader();
+    reader.onload = e => {
+      const b64 = e.target.result.split(',')[1];
+      justifFile = { name: file.name, base64: b64, type: file.type };
+      fileInfo.textContent = file.name;
+      fileInfo.style.display = '';
+      dropzoneLabel.style.display = 'none';
+      dropzone.style.borderColor = '#1d4ed8';
+    };
+    reader.readAsDataURL(file);
+  };
+
+  dropzone.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => { if (fileInput.files[0]) setFile(fileInput.files[0]); });
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.style.borderColor = '#1d4ed8'; });
+  dropzone.addEventListener('dragleave', () => { dropzone.style.borderColor = inpBord; });
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropzone.style.borderColor = inpBord;
+    if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]);
+  });
+
+  // OTP auto-advance
+  const checkOtpDone = () => {
+    const otpOk = otpEls.every(el => el.value);
+    const motifOk = motifInput.value.trim().length > 0;
+    confirmBtn.disabled = !(otpOk && motifOk);
+    confirmBtn.style.opacity = confirmBtn.disabled ? '.5' : '1';
+  };
+  motifInput.addEventListener('input', checkOtpDone);
+  otpEls.forEach((inp, i) => {
+    inp.addEventListener('input', () => {
+      inp.value = inp.value.replace(/\D/g, '').slice(0, 1);
+      if (inp.value && i < otpEls.length - 1) otpEls[i + 1].focus();
+      checkOtpDone();
+    });
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Backspace' && !inp.value && i > 0) { otpEls[i - 1].focus(); otpEls[i - 1].select(); }
+    });
+    inp.addEventListener('paste', e => {
+      e.preventDefault();
+      const digits = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '');
+      otpEls.forEach((el, j) => { el.value = digits[j] || ''; });
+      const next = otpEls.find(el => !el.value);
+      if (next) next.focus(); else otpEls[otpEls.length - 1].focus();
+      checkOtpDone();
+    });
+  });
+
+  // ── Étape 1 : récupération du numéro ──────────────────────────────────────
+  try {
+    const cr = await fetch(`${getProxy()}/v3/famillecoordonnees.awp?verbe=get&v=4.98.0`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' },
+      body: 'data={}'
+    });
+    const cj = await cr.json();
+    if (cj.code === 200) sigTel = cj.data?.responsable?.telMobile || cj.data?.responsable?.tel || '';
+  } catch(_) {}
+
+  phoneLoading.style.display = 'none';
+  telInput.value = sigTel;
+  phoneForm.style.display = '';
+  telInput.focus();
+
+  // ── Envoi du SMS (étape 1 → 2) ────────────────────────────────────────────
+  sendBtn.onclick = async () => {
+    const tel = telInput.value.trim();
+    if (!tel) {
+      phoneError.textContent = 'Veuillez saisir un numéro de téléphone.';
+      phoneError.style.display = '';
+      return;
+    }
+    phoneError.style.display = 'none';
+    sendBtn.disabled = true;
+    sendBtn.textContent = '…';
+
+    try {
+      const signataire = { idSignataire: sigId, typeSignataire: '1', telephone: tel, email: sigMail, demandeMail: false, nom: sigNom };
+      const headers3ds = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' };
+      if (twoFaToken) headers3ds['2fa-token'] = twoFaToken;
+      const resp = await fetch(`${getProxy()}/v3/3DSecure.awp?verbe=get&v=4.98.0`, {
+        method: 'POST',
+        headers: headers3ds,
+        body: `data=${JSON.stringify({ signataire })}`
+      });
+      const json = await resp.json();
+      if (json.code === 200 || json.code === 201) {
+        sigTel = tel;
+        stepPhone.style.display = 'none';
+        otpLabel.textContent = `Code reçu par SMS au ${tel}`;
+        stepOtp.style.display = '';
+        otpEls[0].focus();
+      } else {
+        phoneError.textContent = json.message || 'Erreur lors de l\'envoi du SMS.';
+        phoneError.style.display = '';
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Envoyer le code';
+      }
+    } catch(e) {
+      phoneError.textContent = `Erreur réseau : ${e.message}`;
+      phoneError.style.display = '';
+      sendBtn.disabled = false;
+      sendBtn.textContent = 'Envoyer le code';
+    }
+  };
+
+  // ── Étape 2 : soumission de la justification ──────────────────────────────
+  confirmBtn.onclick = async () => {
+    const code = otpEls.map(el => el.value).join('');
+    if (code.length < 6) return;
+    errorEl.style.display = 'none';
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = '…';
+
+    const sigCanvas = document.createElement('canvas');
+    sigCanvas.width = 600; sigCanvas.height = 150;
+    const blankCanvas = sigCanvas.toDataURL('image/png');
+
+    const payload = {
+      idAbsence: absence.id,
+      typeAbsence: absence.typeElement || 'Absence',
+      action: 'justificationAbsence',
+      signature: {
+        code: parseInt(code, 10),
+        signatureCanvas: blankCanvas
+      },
+      message: motifInput.value.trim(),
+      libelleEnAttente: 'En attente',
+      idEleve: parseInt(eleveId, 10),
+      date: absence.displayDate || '',
+      ...(justifFile ? { justificatif: { nom: justifFile.name, type: justifFile.type, contenu: justifFile.base64 } } : {})
+    };
+
+    try {
+      const headersPut = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': '4.98.0' };
+      if (twoFaToken) headersPut['2fa-token'] = twoFaToken;
+      const resp = await fetch(`${getProxy()}/v3/eleves/${eleveId}/viescolaire.awp?verbe=post&v=4.98.0`, {
+        method: 'POST',
+        headers: headersPut,
+        body: `data=${JSON.stringify(payload)}`
+      });
+      const raw = await resp.text();
+      if (!raw.trim()) {
+        errorEl.textContent = `Erreur serveur (réponse vide, HTTP ${resp.status}).`;
+        errorEl.style.display = '';
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Envoyer la justification';
+        confirmBtn.style.opacity = '1';
+        return;
+      }
+      let json;
+      try { json = JSON.parse(raw); }
+      catch(_) {
+        errorEl.textContent = `Réponse inattendue : ${raw.slice(0, 120)}`;
+        errorEl.style.display = '';
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Envoyer la justification';
+        confirmBtn.style.opacity = '1';
+        return;
+      }
+      if (json.code === 200) {
+        overlay.remove();
+        // Mettre à jour le cache local pour refléter immédiatement la justification
+        const cacheEntry = await edCache.get(`absences:${eleveId}`);
+        if (cacheEntry?.data?.absencesRetards?.[absIdx]) {
+          cacheEntry.data.absencesRetards[absIdx].justifieEd = true;
+          if (motifInput.value.trim()) cacheEntry.data.absencesRetards[absIdx].motif = motifInput.value.trim();
+          await edCache.set(`absences:${eleveId}`, cacheEntry.data);
+        }
+        document.getElementById('absences-result').innerHTML = renderVieScolaireSection(
+          cacheEntry?.data || {}, vieScolaireSection
+        );
+      } else {
+        errorEl.textContent = json.message || 'Code incorrect ou expiré.';
+        errorEl.style.display = '';
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Envoyer la justification';
+        confirmBtn.style.opacity = '1';
+      }
+    } catch(e) {
+      errorEl.textContent = `Erreur réseau : ${e.message}`;
+      errorEl.style.display = '';
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = 'Envoyer la justification';
+      confirmBtn.style.opacity = '1';
+    }
+  };
 }
 
 function renderSanctions(data) {
@@ -6215,7 +6886,7 @@ window.addEventListener('DOMContentLoaded', function restoreSession() {
       if (cached && !edCache.isStale(cached)) return;
       // Endpoint de validation : viescolaire pour élève, accueil pour parent
       const validationUrl = isEleve
-        ? `${getProxy()}/v3/eleves/${eleveId}/viescolaire.awp?verbe=get`
+        ? `${getProxy()}/v3/eleves/${eleveId}/viescolaire.awp?verbe=get&v=4.98.0`
         : `${getProxy()}/v3/1/${eleveId}/timelineAccueilCommun.awp?verbe=get&v=4.98.0`;
       fetch(validationUrl, {
         method: 'POST',

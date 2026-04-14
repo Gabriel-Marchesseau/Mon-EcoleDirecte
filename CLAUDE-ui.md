@@ -78,8 +78,19 @@ Dark mode : `color-scheme: dark` + `filter: invert(1)` sur l'icône calendrier
 
 ## Sélecteur compte enfant (compte parent)
 - `#child-account-bar` avec `#child-account-selector` — visible uniquement sur compte parent
-- `switchChildAccountView(eleveId)` — bascule entre vue parent (5 onglets) et vue élève associé
+- `switchChildAccountView(eleveId, initialTab?)` — bascule entre vue parent (5 onglets) et vue élève associé
+- Vue enfant persistée dans `localStorage` clé `ed_child_view_{_currentAccountId}` — restaurée automatiquement au rechargement via `onLoggedIn()`
+- En vue enfant : QCM et Sondages masqués (`#vs-tab-qcm`, `#vs-tab-sondages`), Demandes absences affiché (`#vs-tab-demandesabsences`)
 - `_rebuildTabBar(tabs)` — centralise la création des onglets
+- `getCorrespondancesEleveId()` — résout l'ID élève pour les correspondances (vue enfant → `_childEleveView.id` ; compte parent → premier enfant ; compte élève → `getEleveId()`)
+
+## Vie scolaire — Demandes absences (vue enfant)
+- Sous-onglet `#vs-tab-demandesabsences` (hidden par défaut, visible uniquement quand `_childEleveView` est actif)
+- `loadDemandesAbsences()` → endpoint `autorisationsSortie.awp`, cache `autorisations-sortie:{eleveId}`
+- `renderDemandesAbsences(data)` : tableau HTML des autorisations par jour/demi-journée (Lundi–Vendredi × Matin/Après-midi × 3 types), puis liste des demandes passées
+- Types : `arriveeTardive`, `intercours`, `sortieAnticipee` — libellés depuis `data.parametrage.libellesAutorisations`
+- Bouton "Justifier" sur chaque absence non justifiée → `openJustifierAbsenceDialog(absIdx)` (dialog avec confirmation OTP WIP)
+- Bouton "+ Nouvelle demande" → `openNouvelleDemandeAbsenceDialog()` (dialog formulaire date/heure/motif, WIP — bouton Enregistrer valide le formulaire sans appel API)
 
 ## Dark mode — règles importantes déjà définies
 ```css

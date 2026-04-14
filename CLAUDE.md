@@ -47,14 +47,15 @@ CLAUDE-ui.md                # Composants UI notables
 | Messages — Correspondances | Carnet de correspondance élève (lettres/docs reçus), badge PJ PDF, badge signature, `fetchCorrespondanceCount()` en arrière-plan dès le chargement Messages |
 | Messages — Contacts | Liste contacts (Professeurs / Personnels / Autres), bouton "Écrire" → ouvre composition avec destinataire pré-rempli |
 | Nouveau message | Dialog composition : éditeur enrichi (contenteditable), PJ drop zone, sélecteur destinataires (contact picker tabulé), modes Répondre / Transférer avec message cité |
-| Vie scolaire | Cinq onglets : Absences (liste avec justificatifs) + Sanctions/Encouragements + QCM + Sondages + **Porte-monnaie** (soldes et historique des écritures) |
+| Vie scolaire | Cinq onglets : Absences (liste avec justificatifs, bouton Justifier + état "En attente" en vue enfant) + Sanctions/Encouragements + QCM + Sondages + **Porte-monnaie** (soldes et historique des écritures) |
+| Vie scolaire — Demandes absences | Sous-onglet visible uniquement en vue enfant (compte parent) : tableau des **autorisations de sortie** par jour/demi-journée (arrivée tardive, intercours, sortie anticipée) + liste des demandes passées + bouton "Nouvelle demande" (WIP, dialog formulaire) |
 | Documents (parent) | Page autonome : liste par catégorie avec filtre, détail et téléchargement (`familledocuments.awp`) |
-| Situation financière (parent) | Quatre sous-onglets : **Factures** (compte standard : solde, avenir, historique hors factures) + **Porte-monnaie** (comptes portemonnaie/pmactivite avec sous-écritures) + **Mode de règlement** (mode, IBAN, titulaire) + **Paiements en ligne** (groupes de services/pm avec image, montant, détail base64) |
+| Situation financière (parent) | Quatre sous-onglets : **Factures** (compte standard : solde, avenir, historique hors factures) + **Porte-monnaie** (comptes portemonnaie/pmactivite avec consommations en cours + sous-écritures) + **Mode de règlement** (mode, IBAN, titulaire) + **Paiements en ligne** (groupes de services/pm avec image, montant, détail base64) |
 | Vie scolaire (parent) | Deux sous-onglets : **Dossier d'inscription** + **Sondages** |
 | Mémos | Notes locales (IndexedDB), éditeur rich-text, date d'échéance, tri colonnes, filtres "Faits"/"Expirés", export/import CSV, résolution de conflits d'import |
 | Onglet ··· | Appel API manuel libre |
 
-Fonctionnalités transversales : dark mode, cache IndexedDB stale-while-revalidate (TTL 30 min), badges nouveautés, mode hors-ligne (session expirée → reconnexion silencieuse automatique ou cache conservé + bannière reconnexion), routeur SPA (URL par onglet), label fraîcheur, refresh forcé, arrêt proxy, double auth 2FA avec QCM et réponses automatiques configurables + sauvegarde auto des réponses manuelles, **paramètres page par défaut** (dialog engrenage, configurable par compte), **support compte parent** (5 onglets : Accueil, Messages, Documents, Situation financière, Vie scolaire), **sélecteur compte enfant** (vue élève depuis compte parent).
+Fonctionnalités transversales : dark mode, cache IndexedDB stale-while-revalidate (TTL 30 min), badges nouveautés, mode hors-ligne (session expirée → reconnexion silencieuse automatique ou cache conservé + bannière reconnexion), routeur SPA (URL par onglet), label fraîcheur, refresh forcé, arrêt proxy, double auth 2FA avec QCM et réponses automatiques configurables + sauvegarde auto des réponses manuelles, **paramètres page par défaut** (dialog engrenage, configurable par compte), **support compte parent** (5 onglets : Accueil, Messages, Documents, Situation financière, Vie scolaire), **sélecteur compte enfant** (vue élève depuis compte parent — EDT, notes, devoirs, absences/vie scolaire, messages pleinement fonctionnels ; vue persistée dans localStorage).
 
 ---
 
@@ -103,7 +104,10 @@ function decodeHtmlEntities(html) {
 
 ### Marquage lu messages — compte parent
 Pour un compte élève, le marquage lu utilise une requête séparée `verbe=put`. Pour un compte parent (`/v3/familles/`), cette requête n'a pas d'effet : c'est le fetch du contenu avec `verbe=post` qui marque simultanément le message comme lu.  
-Fix : `openMessageDialog()` n'envoie le `verbe=put` que si `typeCompte === 'E'`.
+Fix : `openMessageDialog()` n'envoie le `verbe=put` que si `_childEleveView || typeCompte === 'E'` (la vue enfant depuis un compte parent utilise l'endpoint élève et nécessite le PUT).
+
+### Clé cache EDT — inclut l'eleveId
+La clé cache EDT est `edt:{eleveId}:{YYYY-MM-DD}` (pas `edt:{YYYY-MM-DD}` sans eleveId) — sinon, basculer entre différents enfants sur compte parent retourne les données du premier enfant en cache.
 
 ### Jours Congés dans l'EDT (typeCours === 'CONGE')
 Les cours CONGE ont des horaires 00:00 → 23:59 → `top` très négatif → débordaient hors du body.  

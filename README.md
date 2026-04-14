@@ -19,7 +19,7 @@
 - 📶 **Offline mode** — Displays cached data with a banner when the proxy is unreachable
 - 🌙 **Dark mode** — Toggleable, preference saved locally
 - ⚙️ **Settings** — Choose the default landing tab per account (gear icon in header)
-- 👨‍👩‍👧 **Parent account support** — Dedicated tabs: **Documents** (family docs by category), **Financial overview** (Invoices, Wallet, Payment method, Online payments), **School life** (Enrollment dossier, Surveys); child-account selector to view a pupil's timetable, grades, and homework
+- 👨‍👩‍👧 **Parent account support** — Dedicated tabs: **Documents** (family docs by category), **Financial overview** (Invoices, Wallet, Payment method, Online payments), **School life** (Enrollment dossier, Surveys); child-account selector to view a pupil's timetable, grades, homework, attendance (with justify button), messages, and exit authorizations
 - 🔒 **Secure** — All requests go through a local HTTPS proxy; credentials never leave your machine
 - 🔄 **Auto-reload (debug)** — `nodemon` watches for file changes and restarts automatically
 
