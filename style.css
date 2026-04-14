@@ -151,7 +151,7 @@
   .vsp-cat-filter-btn { color: var(--text4); background: transparent; border: none; cursor: pointer; transition: color 0.15s, background 0.15s; padding: 4px 10px; border-radius: 6px; height: 30px; font-size: 12px; font-weight: 500; white-space: nowrap; }
   .vsp-cat-filter-btn:hover { color: var(--text2); background: var(--bg3); }
   .vsp-cat-filter-btn[aria-pressed="true"] { color: var(--text); background: var(--bg3); }
-  .tab-freshness-row { display: flex; align-items: center; gap: 6px; margin-left: auto; padding-right: 2px; }
+  .tab-freshness-row { display: flex; align-items: center; gap: 6px; margin-left: auto; padding-right: 2px; background: var(--bg); border-left: 1px solid var(--border); padding-left: 8px; }
   .tab-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: #1d4ed8; color: #fff; font-size: 10px; font-weight: 700; margin-left: 4px; vertical-align: middle; }
   .espaces-layout { display: flex; flex-direction: row; }
   .offline-banner { display: none; position: sticky; top: 0; z-index: 100; background: #92400e; color: #fef3c7; font-size: 12px; font-weight: 500; padding: 6px 12px; text-align: center; border-radius: 6px; margin-bottom: 8px; }
@@ -269,6 +269,11 @@ body.dark input[type="date"] {
   body { padding: 0.5rem; }
   #api-card { padding: 0; border: none; border-radius: 0; margin-bottom: 0; }
   #login-wrapper .card { width: 100%; min-width: 0; }
+  .tab-bar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .tab-bar::-webkit-scrollbar { display: none; }
+  .tab-bar.overflow-right { -webkit-mask-image: linear-gradient(to right, black calc(100% - 40px), transparent 100%); mask-image: linear-gradient(to right, black calc(100% - 40px), transparent 100%); }
+  .tab-bar.overflow-left { -webkit-mask-image: linear-gradient(to right, transparent 0, black 40px); mask-image: linear-gradient(to right, transparent 0, black 40px); }
+  .tab-bar.overflow-right.overflow-left { -webkit-mask-image: linear-gradient(to right, transparent 0, black 40px, black calc(100% - 40px), transparent 100%); mask-image: linear-gradient(to right, transparent 0, black 40px, black calc(100% - 40px), transparent 100%); }
 }
 
 /* ── Responsive split-pane (master/detail) ≤ 768px ─────────────── */

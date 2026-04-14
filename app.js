@@ -476,6 +476,18 @@ function _rebuildTabBar(tabs) {
     btn.onclick = () => switchTab(t.id);
     bar.appendChild(btn);
   });
+  if (!bar._overflowListenerAttached) {
+    bar.addEventListener('scroll', _updateTabBarOverflow);
+    bar._overflowListenerAttached = true;
+  }
+  setTimeout(_updateTabBarOverflow, 0);
+}
+
+function _updateTabBarOverflow() {
+  const bar = document.getElementById('tab-bar');
+  if (!bar) return;
+  bar.classList.toggle('overflow-right', bar.scrollLeft + bar.clientWidth < bar.scrollWidth - 2);
+  bar.classList.toggle('overflow-left', bar.scrollLeft > 2);
 }
 
 function onLoggedIn(data) {
@@ -3717,6 +3729,7 @@ function renderEdtGrid(cours, monday) {
 function switchTab(id, fromPopstate = false) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === id));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + id));
+  document.querySelector(`.tab[data-tab="${id}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   localStorage.setItem('ed_last_tab', id);
   clearBadge(id);
   renderFreshnessLabel(id);
@@ -4981,8 +4994,8 @@ function renderFreshnessLabel(tabId) {
   if (!ts) { el.textContent = ''; return; }
   const diffMin = Math.round((Date.now() - ts) / 60000);
   if (diffMin < 1) el.textContent = 'à jour';
-  else if (diffMin === 1) el.textContent = 'il y a 1 min';
-  else el.textContent = `il y a ${diffMin} min`;
+  else if (diffMin === 1) el.textContent = '1 min';
+  else el.textContent = `${diffMin} min`;
 }
 
 // Mettre à jour le label toutes les minutes

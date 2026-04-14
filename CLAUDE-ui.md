@@ -121,6 +121,14 @@ body.dark .postit-content [style*="background"] { background: transparent !impor
 - `openPaiementDialog()` — récapitulatif overlay (WIP, bouton Payer sans action réelle)
 - Dark mode : `.btn-remove-panier:hover` couleur spécifique dans le bloc `darkStyle`
 
+## Tab bar — défilement horizontal mobile (≤ 768px)
+- `.tab-bar` passe en `overflow-x: auto; scrollbar-width: none` sur mobile
+- `_updateTabBarOverflow()` : ajoute `.overflow-right` / `.overflow-left` selon la position de scroll → fade gradient via `mask-image` CSS (dégradé de 40px)
+- Les deux classes peuvent coexister → `mask-image` combiné (fondu aux deux extrémités)
+- Listener `scroll` attaché dans `_rebuildTabBar()` (idempotent via `bar._overflowListenerAttached`)
+- `switchTab()` appelle `scrollIntoView({ block:'nearest', inline:'nearest' })` sur l'onglet actif pour le rendre visible
+- `.tab-freshness-row` reçoit `background: var(--bg); border-left: 1px solid var(--border)` pour rester lisible au-dessus des onglets masqués
+
 ## Largeur onglets stable au bold
 `.tab::before` avec `data-label` — empêche le saut de largeur lors du bold de l'onglet actif :
 ```css
