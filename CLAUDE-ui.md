@@ -92,6 +92,18 @@ Dark mode : `color-scheme: dark` + `filter: invert(1)` sur l'icône calendrier
 - Bouton "Justifier" sur chaque absence non justifiée → `openJustifierAbsenceDialog(absIdx)` (dialog avec confirmation OTP WIP)
 - Bouton "+ Nouvelle demande" → `openNouvelleDemandeAbsenceDialog()` (dialog formulaire date/heure/motif, WIP — bouton Enregistrer valide le formulaire sans appel API)
 
+## Responsive split-pane master/detail (≤ 768px)
+- Classe `.split-pane` sur le wrapper flex des panneaux à deux colonnes (liste + détail)
+- Sur mobile : les deux colonnes passent en `min-width:100%` et se décalent via `translateX` (CSS transition 0.28s)
+- `.split-pane.show-detail` → panneau gauche sort à gauche, panneau droit glisse en vue
+- Bouton `.split-back-btn` placé **immédiatement après** le `.split-pane` dans le HTML — pill fixe en bas de l'écran, visible uniquement via `adjacent sibling` CSS (`.split-pane.show-detail + .split-back-btn`)
+- Toolbars (`.msg-toolbar`, `.devoirs-toolbar`, `.memos-toolbar`) masquées via `:has(.show-detail)` quand le détail est affiché
+- `_initSplitSwipe(el, backFn)` — attache un swipe droit → retour (seuil 60 px, annulé si vertical) ; idempotent via `el._swipeInit`
+- Panneaux concernés : `.devoirs-split`, `.msg-split`, `.memos-split`, `#cours-panel-espaces`
+- Fonctions retour : `devoirBack()`, `msgBack()`, `memoBack()`, `espaceBack()`
+- `msgBack()` remet aussi `selectedMessageId = null`
+- `switchMsgTab()` retire `.show-detail` pour éviter de rester en vue détail au changement d'onglet messages
+
 ## Dark mode — règles importantes déjà définies
 ```css
 body.dark .pj-badge { background: #1e3a5f !important; color: #93c5fd !important; }

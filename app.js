@@ -578,6 +578,7 @@ const _CHILD_VIEW_TABS = [
 function switchChildAccountView(eleveId, initialTab) {
   const acc = accountData?.accounts ? accountData.accounts[0] : accountData;
   // Vider le panneau de détail message lors du changement de compte enfant
+  document.querySelector('.msg-split')?.classList.remove('show-detail');
   const detailEl = document.getElementById('message-detail-panel');
   if (detailEl) {
     detailEl.style.alignItems = 'center';
@@ -1389,6 +1390,7 @@ async function openDevoirDialog(encodedData, triggerEl) {
   // Sélection visuelle dans la liste
   if (triggerEl) selectedDevoirKey = triggerEl.dataset.devoirKey;
   applyDevoirSelection();
+  document.querySelector('.devoirs-split')?.classList.add('show-detail');
 
   const inter = d.interrogation ? '<span class="devoir-badge-interro" style="font-size:14px;padding:2px 8px;border-radius:10px;margin-left:8px">Interro</span>' : '';
   const fait  = d.effectue ? '<span class="devoir-badge-fait" style="font-size:14px;padding:2px 8px;border-radius:10px;margin-left:8px">Fait ✅</span>' : '';
@@ -2216,7 +2218,7 @@ function switchCoursTab(tab) {
   espPanel.style.display = tab === 'espaces' ? 'flex' : 'none';
   const manuelsPanel = document.getElementById('cours-panel-manuels');
   if (manuelsPanel) manuelsPanel.style.display = tab === 'manuels' ? 'flex' : 'none';
-  if (tab === 'espaces') loadEspacesTravail();
+  if (tab === 'espaces') { loadEspacesTravail(); _initSplitSwipe(document.getElementById('cours-panel-espaces'), espaceBack); }
   if (tab === 'manuels') loadManuels();
 }
 
@@ -2346,6 +2348,7 @@ async function loadEspaceTravailContent(espaceId) {
   _selectedEspaceId = espaceId;
   _espaceNavPath = [];
   if (_espacesCache) renderEspacesList(_espacesCache);
+  document.getElementById('cours-panel-espaces')?.classList.add('show-detail');
 
   const detailEl = document.getElementById('espaces-detail');
   if (!detailEl) return;
@@ -3737,7 +3740,7 @@ function switchTab(id, fromPopstate = false) {
     switchVieScolaireTab(vieScolaireSection || 'absences');
     if (vieScolaireSection !== 'qcm' && vieScolaireSection !== 'sondages' && vieScolaireSection !== 'portemonnaie' && vieScolaireSection !== 'demandesabsences' && vieScolaireSection !== 'viedeclasse') loadAbsences();
   }
-  else if (id === 'devoirs') loadDevoirs();
+  else if (id === 'devoirs') { loadDevoirs(); _initSplitSwipe(document.querySelector('.devoirs-split'), devoirBack); }
   else if (id === 'seances') {
     const today = new Date();
     const todayStr = today.toISOString().substring(0, 10);
@@ -3752,8 +3755,8 @@ function switchTab(id, fromPopstate = false) {
     if (_coursActiveTab === 'seances' || !_coursActiveTab) loadSeances();
     else if (_coursActiveTab === 'manuels') loadManuels();
   }
-  else if (id === 'messages') loadMessages();
-  else if (id === 'memos') loadMemos();
+  else if (id === 'messages') { loadMessages(); _initMsgSwipe(); }
+  else if (id === 'memos') { loadMemos(); _initSplitSwipe(document.querySelector('.memos-split'), memoBack); }
   else if (id === 'documents-parent') loadVspDocuments();
   else if (id === 'finances-parent') switchFinancesTab(_finActiveTab);
   else if (id === 'viescolaire-parent') switchVspTab(_vspActiveTab);
@@ -5026,8 +5029,46 @@ function renderMessages(data) {
   return `<div id="msg-list">${renderMsgList()}</div>`;
 }
 
+function devoirBack() {
+  document.querySelector('.devoirs-split')?.classList.remove('show-detail');
+}
+
+function espaceBack() {
+  document.getElementById('cours-panel-espaces')?.classList.remove('show-detail');
+}
+
+function memoBack() {
+  document.querySelector('.memos-split')?.classList.remove('show-detail');
+}
+
+function msgBack() {
+  document.querySelector('.msg-split')?.classList.remove('show-detail');
+  selectedMessageId = null;
+}
+
+function _initSplitSwipe(el, backFn) {
+  if (!el || el._swipeInit) return;
+  el._swipeInit = true;
+  let startX = 0, startY = 0;
+  el.addEventListener('touchstart', e => {
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+  }, { passive: true });
+  el.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - startX;
+    const dy = e.changedTouches[0].clientY - startY;
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy)) return;
+    if (dx > 0 && el.classList.contains('show-detail')) backFn();
+  }, { passive: true });
+}
+
+function _initMsgSwipe() {
+  _initSplitSwipe(document.querySelector('.msg-split'), msgBack);
+}
+
 function switchMsgTab(tab) {
   msgActiveTab = tab;
+  document.querySelector('.msg-split')?.classList.remove('show-detail');
   document.querySelectorAll('#panel-messages .sub-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   if (tab === 'correspondance') {
     const detailEl = document.getElementById('message-detail-panel');
@@ -5364,6 +5405,7 @@ async function openMessageDialog(msgId) {
   // Afficher dans le panneau latéral
   panel.style.alignItems = 'flex-start';
   panel.style.justifyContent = 'flex-start';
+  document.querySelector('.msg-split')?.classList.add('show-detail');
 
   const from = cached?.from ? `${cached.from.civilite} ${cached.from.prenom || ''} ${cached.from.nom}`.trim() : '';
   const to   = cached?.to?.map(t => `${t.civilite} ${t.nom}`.trim()).join(', ') || '';
@@ -7121,6 +7163,7 @@ function openMemoDetail(idEnc) {
   if (!panel) return;
   panel.style.alignItems = 'flex-start';
   panel.style.justifyContent = 'flex-start';
+  document.querySelector('.memos-split')?.classList.add('show-detail');
   const enc = encodeURIComponent(id).replace(/'/g, '%27');
   const titreH = (m.titre || '(Sans titre)').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const today = new Date().toISOString().substring(0, 10);

@@ -2,5 +2,7 @@ node_modules/
 package-lock.json
 key.pem
 cert.pem
+ca.pem
+ca-key.pem
 CLAUDE.md
 .claude/

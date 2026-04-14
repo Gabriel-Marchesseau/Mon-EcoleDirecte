@@ -260,3 +260,68 @@ body.dark input[type="date"] {
 /* Dialog overlay — hover effect on all buttons */
 .dlg-overlay button { transition: filter 0.12s; }
 .dlg-overlay button:hover:not(:disabled) { filter: brightness(0.87); }
+
+/* ── Bouton retour split (master/detail mobile) ──────────────────── */
+.split-back-btn { display: none; }
+
+/* ── Espacement extérieur réduit ≤ 768px ────────────────────────── */
+@media (max-width: 768px) {
+  body { padding: 0.5rem; }
+  #api-card { padding: 0; border: none; border-radius: 0; margin-bottom: 0; }
+  #login-wrapper .card { width: 100%; min-width: 0; }
+}
+
+/* ── Responsive split-pane (master/detail) ≤ 768px ─────────────── */
+@media (max-width: 768px) {
+  .split-pane {
+    overflow: hidden;
+    gap: 0 !important;
+  }
+  .split-pane > :first-child {
+    min-width: 100% !important;
+    flex-shrink: 0;
+    transition: transform 0.28s ease;
+  }
+  .split-pane > :last-child {
+    min-width: 100% !important;
+    width: 100% !important;
+    flex-shrink: 0;
+    border-left: none !important;
+    border-right: none !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    transition: transform 0.28s ease;
+    transform: translateX(100%);
+  }
+  .split-pane.show-detail > :first-child { transform: translateX(-100%); }
+  .split-pane.show-detail > :last-child  { transform: translateX(-100%); }
+
+  /* Bouton retour — pill fixe en bas, visible dès que son split est en mode détail */
+  .split-pane.show-detail + .split-back-btn {
+    display: flex;
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background: var(--text);
+    color: var(--bg);
+    border: none;
+    border-radius: 999px;
+    font-size: 14px;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+    white-space: nowrap;
+  }
+  .split-pane.show-detail + .split-back-btn:active { opacity: 0.75; }
+
+  /* Toolbars masquées quand le détail est affiché */
+  #panel-messages:has(.split-pane.show-detail) .msg-toolbar     { display: none !important; }
+  #panel-devoirs:has(.split-pane.show-detail)  .devoirs-toolbar { display: none !important; }
+  #panel-memos:has(.split-pane.show-detail)    .memos-toolbar   { display: none !important; }
+}

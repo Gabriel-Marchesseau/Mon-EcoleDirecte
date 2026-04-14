@@ -2,6 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="icon" type="image/x-icon" href="/favicon.ico">
 <title>Mon EcoleDirecte</title>
 <link rel="stylesheet" href="/style.css?v=__VERSION__">
@@ -126,7 +127,7 @@
 
     <!-- Panel Devoirs -->
     <div class="tab-panel" id="panel-devoirs">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <div class="devoirs-toolbar" style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:.45;flex-shrink:0;color:var(--text2)"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;color:var(--text2)">
           <button id="devoirs-hide-done" onclick="toggleDevoirsHide(this)" style="border:none;cursor:pointer;" aria-pressed="false">Faits</button>
@@ -136,12 +137,16 @@
         </label>
         <span id="spin-devoirs" style="display:none;margin-left:auto"><span class="spinner"></span></span>
       </div>
-      <div style="display:flex;gap:12px;flex:1;min-height:0">
+      <div class="split-pane devoirs-split" style="display:flex;gap:12px;flex:1;min-height:0">
         <div id="devoirs-result" style="flex:1;overflow-y:auto;min-height:0"></div>
         <div id="devoir-detail-panel" style="width:50%;border-left:1px solid var(--border);padding-left:12px;overflow-y:auto;min-height:0;display:flex;align-items:center;justify-content:center">
           <span style="color:var(--text4);font-size:13px;text-align:center">Sélectionne un devoir<br>pour voir le détail ici</span>
         </div>
       </div>
+      <button class="split-back-btn" onclick="devoirBack()" aria-label="Retour à la liste">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        Retour
+      </button>
     </div>
 
     <!-- Panel Cours -->
@@ -188,7 +193,7 @@
       </div>
 
       <!-- Sous-panel Espaces de travail -->
-      <div id="cours-panel-espaces" style="display:none;flex:1;min-height:0;gap:0" class="espaces-layout">
+      <div id="cours-panel-espaces" style="display:none;flex:1;min-height:0;gap:0" class="espaces-layout split-pane">
         <div id="espaces-list" style="overflow-y:auto;border-right:1px solid var(--border2);padding-right:12px;min-width:200px;flex-shrink:0">
           <span style="color:var(--text4);font-size:14px">Chargement…</span>
         </div>
@@ -196,6 +201,10 @@
           <span style="color:var(--text4);font-size:14px">Sélectionne un espace de travail.</span>
         </div>
       </div>
+      <button class="split-back-btn" onclick="espaceBack()" aria-label="Retour à la liste des espaces">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        Retour
+      </button>
 
       <!-- Sous-panel Manuels -->
       <div id="cours-panel-manuels" style="display:none;flex:1;min-height:0;overflow-y:auto">
@@ -207,7 +216,7 @@
 
     <!-- Panel Messages -->
     <div class="tab-panel" id="panel-messages">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      <div class="msg-toolbar" style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:.45;flex-shrink:0;color:var(--text2)"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
         <select id="msg-annee" onchange="loadMessages()" style="height:34px">
           <option value="2025-2026" selected>2025-2026</option>
@@ -225,12 +234,16 @@
         </div>
         <span id="spin-messages" style="display:none"><span class="spinner"></span></span>
       </div>
-      <div style="display:flex;gap:12px;flex:1;min-height:0">
+      <div class="msg-split split-pane" style="display:flex;gap:12px;flex:1;min-height:0">
         <div id="messages-result" style="flex:1;overflow-y:auto;min-height:0"></div>
         <div id="message-detail-panel" style="width:50%;border-left:1px solid var(--border);padding-left:12px;overflow-y:auto;min-height:0;display:flex;align-items:center;justify-content:center">
           <span style="color:var(--text4);font-size:13px;text-align:center">Sélectionne un message<br>pour voir le contenu ici</span>
         </div>
       </div>
+      <button class="split-back-btn" onclick="msgBack()" aria-label="Retour à la liste">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        Retour
+      </button>
     </div>
 
     <!-- Panel Absences -->
@@ -297,7 +310,7 @@
 
     <!-- Panel Mémos -->
     <div class="tab-panel" id="panel-memos">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+      <div class="memos-toolbar" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:.45;flex-shrink:0;color:var(--text2)"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
         <button id="memos-hide-done" onclick="toggleMemosFaits(this)" style="border:none;cursor:pointer;" aria-pressed="false">Faits</button>
         <button id="memos-hide-expires" onclick="toggleMemosExpires(this)" style="border:none;cursor:pointer;" aria-pressed="false">Expirés</button>
@@ -307,12 +320,16 @@
         <input type="file" id="memos-csv-import" accept=".csv" style="display:none" onchange="importMemosCsv(this)">
         <span id="spin-memos" style="display:none;margin-left:auto"><span class="spinner"></span></span>
       </div>
-      <div style="display:flex;gap:12px;flex:1;min-height:0">
+      <div class="split-pane memos-split" style="display:flex;gap:12px;flex:1;min-height:0">
         <div id="memos-result" style="flex:1;overflow-y:auto;min-height:0"></div>
         <div id="memo-detail-panel" style="width:50%;border-left:1px solid var(--border);padding-left:12px;overflow-y:auto;min-height:0;display:flex;align-items:center;justify-content:center">
           <span style="color:var(--text4);font-size:13px;text-align:center">Sélectionne un mémo<br>pour voir le détail ici</span>
         </div>
       </div>
+      <button class="split-back-btn" onclick="memoBack()" aria-label="Retour à la liste">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        Retour
+      </button>
     </div>
   </div>
 </div>
