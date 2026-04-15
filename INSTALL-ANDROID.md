@@ -37,9 +37,9 @@ F-Droid est un store alternatif qui propose la version à jour de Termux.
 Ouvrez Termux et tapez ces commandes une par une :
 
 ```bash
-pkg update
+pkg update && pkg upgrade
 ```
-*(Répondez `y` si on vous demande de confirmer)*
+*(Répondez `y` si on vous demande de confirmer les mises à jour)*
 
 ```bash
 pkg install nodejs git

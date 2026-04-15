@@ -64,6 +64,14 @@ else
   err "Échec de npm install"
 fi
 
+# ── 3b. Correction des vulnérabilités npm ─────────────────
+step "Correction des vulnérabilités npm (audit fix)..."
+if npm audit fix 2>/dev/null; then
+  ok "Audit npm — corrections appliquées"
+else
+  warn "Certaines vulnérabilités n'ont pas pu être corrigées automatiquement (sans impact pour un usage local)"
+fi
+
 # ── 4. Certificats SSL ────────────────────────────────────
 step "Vérification des certificats SSL..."
 if [ -f "$DIR/cert.pem" ] && [ -f "$DIR/key.pem" ] && [ -f "$DIR/ca.pem" ]; then
