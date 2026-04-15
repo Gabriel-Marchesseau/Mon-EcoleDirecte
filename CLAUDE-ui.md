@@ -94,9 +94,9 @@ Dark mode : `color-scheme: dark` + `filter: invert(1)` sur l'icône calendrier
 
 ## Responsive split-pane master/detail (≤ 768px)
 - Classe `.split-pane` sur le wrapper flex des panneaux à deux colonnes (liste + détail)
-- Sur mobile : les deux colonnes passent en `min-width:100%` et se décalent via `translateX` (CSS transition 0.28s)
-- `.split-pane.show-detail` → panneau gauche sort à gauche, panneau droit glisse en vue
-- Bouton `.split-back-btn` placé **immédiatement après** le `.split-pane` dans le HTML — pill fixe en bas de l'écran, visible uniquement via `adjacent sibling` CSS (`.split-pane.show-detail + .split-back-btn`)
+- Sur mobile : les deux colonnes passent en `min-width:100%;width:100%` et se décalent via `translateX` (CSS transition 0.28s)
+- `.split-pane.show-detail` → panneau gauche sort à gauche, panneau droit glisse en vue (+ `padding-bottom:72px` pour éviter que le bouton retour couvre le contenu)
+- Bouton `.split-back-btn` placé **immédiatement après** le `.split-pane` dans le HTML — pill fixe `bottom:20px;right:20px`, visible uniquement via `adjacent sibling` CSS (`.split-pane.show-detail + .split-back-btn`)
 - Toolbars (`.msg-toolbar`, `.devoirs-toolbar`, `.memos-toolbar`, `#vsp-doc-toolbar`) masquées via `:has(.show-detail)` quand le détail est affiché
 - `_initSplitSwipe(el, backFn)` — attache un swipe droit → retour (seuil 60 px, annulé si vertical) ; idempotent via `el._swipeInit`
 - Panneaux concernés : `.devoirs-split`, `.msg-split`, `.memos-split`, `#cours-panel-espaces`, `.docs-split`
@@ -125,7 +125,7 @@ body.dark .postit-content [style*="background"] { background: transparent !impor
 ## Tab bar — défilement horizontal mobile (≤ 768px) et menu hamburger (≤ 667px)
 - À 768px et moins : `.tab-bar` passe en `overflow-x: auto; scrollbar-width: none`
 - `_updateTabBarOverflow()` : ajoute `.overflow-right` / `.overflow-left` → fade gradient via `mask-image` CSS (dégradé de 40px)
-- `switchTab()` appelle `scrollIntoView({ block:'nearest', inline:'nearest' })` sur l'onglet actif
+- `switchTab()` appelle `scrollIntoView({ block:'nearest', inline:'nearest' })` sur l'onglet actif puis `_initAllSubTabs()` (timeout 0) pour initialiser les overflow des sub-tabs du panel actif
 - À 667px et moins (portrait + paysage compact) : `.tab-bar` est masquée entièrement (`display:none`)
   - `#mobile-nav-btn` (bouton hamburger SVG) apparaît dans le header — ouvre `openMobileNav()`
   - `#mobile-current-tab` affiche le nom de l'onglet courant (mis à jour dans `switchTab()`)
@@ -139,6 +139,22 @@ body.dark .postit-content [style*="background"] { background: transparent !impor
 - `.profile-mobile-actions` (caché sur desktop) apparaît sous le header du dialog : 4 boutons (dark mode, paramètres, déconnexion, fermer) en grille `space-around` avec icône + libellé
 - Les actions sur desktop (`#profile-bar-actions`) étant masquées ≤667px, `.profile-mobile-actions` est le seul accès à ces fonctions sur mobile
 - Fermeture du dialog depuis les boutons d'action : `this.closest('.dlg-overlay').remove()` puis ouverture de la fonction cible
+- Bouton dark mode dans le dialog : `id="pma-dark-btn"` — son label/icône est mis à jour par `applyDark()` à chaque toggle (via `innerHTML`)
+- Dialog profil utilise CSS variables (`var(--bg)`, `var(--text)`, `var(--border)`, `var(--input-bg)`) — pas de couleurs inline hardcodées
+
+## Sub-tabs — défilement horizontal et fade overflow sur mobile (≤ 667px)
+- Les `.sub-tabs` passent en `flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none` à ≤667px
+- Classes `.overflow-right` / `.overflow-left` ajoutées dynamiquement → `mask-image` gradient fade de 40px (même pattern que la tab bar principale)
+- `_initSubTabsOverflow(bar)` — attache un listener `scroll` + calcule l'état initial (idempotent via `bar._subTabsOverflowInit`)
+- `_scrollSubTabActive(bar)` — scrolle le `.sub-tab.active` en vue (`scrollIntoView nearest`)
+- `_initAllSubTabs()` — initialise tous les `.sub-tabs` du panel actif ; appelé dans `switchTab()` (timeout 0)
+- Appelé également dans : `switchMsgTab()`, `switchCoursTab()`, `switchVieScolaireTab()`, `switchVspTab()`, `switchFinancesTab()`, `buildNotesPeriodButtons()` / `updateNotesPeriodButtons()`
+- `#notes-period-btns` utilise désormais la classe `.sub-tabs` (plus de styles inline)
+
+## Profile bar — nom + classe sur mobile (≤ 667px) pour compte élève
+- `onLoggedIn()` set `body.is-eleve` si `typeCompte === 'E'` et remplit `#user-class` avec le nom de classe
+- `#user-class` est `display:none` par défaut ; affiché via `body.is-eleve #user-class { display:block !important }` à ≤667px
+- `#user-name` tronqué (`text-overflow:ellipsis`) en font-size 13px sur mobile élève
 
 ## EDT — swipe horizontal
 - `_initEdtSwipe()` attache un listener `touchstart`/`touchend` sur `#panel-edt` (idempotent via `el._edtSwipeInit`)

@@ -490,6 +490,30 @@ function _updateTabBarOverflow() {
   bar.classList.toggle('overflow-left', bar.scrollLeft > 2);
 }
 
+function _updateSubTabsOverflow(bar) {
+  if (!bar) return;
+  bar.classList.toggle('overflow-right', bar.scrollLeft + bar.clientWidth < bar.scrollWidth - 2);
+  bar.classList.toggle('overflow-left', bar.scrollLeft > 2);
+}
+
+function _initSubTabsOverflow(bar) {
+  if (!bar || bar._subTabsOverflowInit) return;
+  bar._subTabsOverflowInit = true;
+  bar.addEventListener('scroll', () => _updateSubTabsOverflow(bar));
+  setTimeout(() => _updateSubTabsOverflow(bar), 0);
+}
+
+function _scrollSubTabActive(bar) {
+  bar?.querySelector('.sub-tab.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
+function _initAllSubTabs() {
+  document.querySelectorAll('.tab-panel.active .sub-tabs').forEach(bar => {
+    _initSubTabsOverflow(bar);
+    _scrollSubTabActive(bar);
+  });
+}
+
 function openMobileNav() {
   const dark = document.body.classList.contains('dark');
   const dlgBg  = dark ? '#242424' : '#fff';
@@ -538,6 +562,9 @@ function onLoggedIn(data) {
   const metaParts  = [accountType, schoolName, className].filter(Boolean);
   const metaEl = document.getElementById('user-meta');
   if (metaEl) metaEl.textContent = metaParts.join(' · ');
+  const classEl = document.getElementById('user-class');
+  if (classEl) classEl.textContent = className || accountType;
+  document.body.classList.toggle('is-eleve', isEleve);
   // Init onglets selon le type de compte
   const TABS = isEleve ? [
     { id: 'accueil',  label: 'Accueil' },
@@ -745,10 +772,6 @@ async function openProfile() {
   const isParent = acc.typeCompte !== 'E';
   const loginId = acc.idLogin || acc.id || '';
   const dark = document.body.classList.contains('dark');
-  const dlgBg   = dark ? '#242424' : '#fff';
-  const dlgText = dark ? '#f0f0ee' : '#1a1a1a';
-  const inputBg = dark ? '#2e2e2e' : '#f9f9fb';
-  const inputBorder = dark ? '#444' : '#d1d5db';
 
   const nom = acc.prenom ? `${acc.prenom} ${acc.nom || ''}` : (acc.login || 'Utilisateur');
   const initials = nom.split(' ').map(s => s[0] || '').join('').substring(0, 2).toUpperCase();
@@ -760,9 +783,9 @@ async function openProfile() {
 
   const dialog = document.createElement('div');
   dialog.classList.add('profile-dlg');
-  dialog.style.cssText = `background:${dlgBg};color:${dlgText};border-radius:12px;padding:1.5rem;max-width:480px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.35);position:relative;margin:auto`;
+  dialog.style.cssText = `background:var(--bg);color:var(--text);border-radius:12px;padding:1.5rem;max-width:480px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.35);position:relative;margin:auto`;
   dialog.innerHTML = `
-    <button class="profile-dlg-close" onclick="this.closest('.profile-dlg-overlay').remove()" style="position:absolute;top:10px;right:12px;background:none;border:none;cursor:pointer;font-size:18px;color:${dark?'#666':'#aaa'}">×</button>
+    <button class="profile-dlg-close" onclick="this.closest('.profile-dlg-overlay').remove()" style="position:absolute;top:10px;right:12px;background:none;border:none;cursor:pointer;font-size:18px;color:var(--text3)">×</button>
     <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
       <div style="width:52px;height:52px;border-radius:50%;background:#4f46e5;color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;flex-shrink:0">${initials}</div>
       <div>
@@ -772,7 +795,7 @@ async function openProfile() {
       <button class="profile-dlg-back" onclick="this.closest('.profile-dlg-overlay').remove()" style="margin-left:auto">← Retour</button>
     </div>
     <div class="profile-mobile-actions">
-      <button onclick="toggleDark()" title="${dark ? 'Mode clair' : 'Mode sombre'}">
+      <button id="pma-dark-btn" onclick="toggleDark()" title="${dark ? 'Mode clair' : 'Mode sombre'}">
         <span class="pma-icon">${dark ? '☀️' : '🌙'}</span>${dark ? 'Mode clair' : 'Mode sombre'}
       </button>
       <button onclick="this.closest('.dlg-overlay').remove();openSettingsDialog()" title="Paramètres">
@@ -819,7 +842,7 @@ async function openProfile() {
   if (!profileData.email)       profileData.email       = acc.email || '';
   if (!profileData.portable)    profileData.portable    = acc.portable || acc.mobile || '';
 
-  const fs = `width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid ${inputBorder};border-radius:8px;background:${inputBg};color:${dlgText};font-size:14px;outline:none`;
+  const fs = `width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text);font-size:14px;outline:none`;
   const ls = `font-size:13px;font-weight:600;color:var(--text2);margin-bottom:4px;display:block`;
   const hs = `font-size:11px;color:var(--text3);margin-top:3px`;
   const qOptions = (profileData.questionsPossibles || []).slice().sort((a, b) => a.localeCompare(b, 'fr'))
@@ -899,7 +922,7 @@ async function openProfile() {
     <div id="pf-status-securite" style="font-size:13px;min-height:18px;margin-top:14px;display:none"></div>
     ${isParent ? '<div id="pf-status-infos" style="font-size:13px;min-height:18px;margin-top:14px;display:none"></div>' : ''}
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
-      <button id="pf-cancel-btn" onclick="this.closest('[style*=fixed]').remove()" style="padding:8px 22px;border-radius:8px;border:1px solid ${inputBorder};background:${inputBg};color:${dlgText};font-size:14px;cursor:pointer;font-weight:500">Annuler</button>
+      <button id="pf-cancel-btn" onclick="this.closest('[style*=fixed]').remove()" style="padding:8px 22px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:14px;cursor:pointer;font-weight:500">Annuler</button>
       <button id="pf-save-btn" onclick="const _t=document.getElementById('pf-tab-compte')?.classList.contains('active')?'compte':document.getElementById('pf-tab-securite')?.classList.contains('active')?'securite':null;if(_t)saveProfile(${loginId},_t)" style="padding:8px 22px;border-radius:8px;border:none;background:#4f46e5;color:#fff;font-size:14px;cursor:pointer;font-weight:600">Valider</button>
     </div>`;
 
@@ -916,6 +939,17 @@ async function openProfile() {
   if (_customWasHidden) _customWrap.style.display = 'none';
   _sec.style.display = 'none';
   document.getElementById('pf-sections-wrapper').style.minHeight = _maxH + 'px';
+
+  // ── Scroll horizontal sub-tabs profil — gradient overflow ───────────
+  const _pfSubTabs = profileFormArea.querySelector('.sub-tabs');
+  if (_pfSubTabs) {
+    function _pfSubTabsOverflow() {
+      _pfSubTabs.classList.toggle('overflow-right', _pfSubTabs.scrollLeft + _pfSubTabs.clientWidth < _pfSubTabs.scrollWidth - 2);
+      _pfSubTabs.classList.toggle('overflow-left',  _pfSubTabs.scrollLeft > 2);
+    }
+    _pfSubTabs.addEventListener('scroll', _pfSubTabsOverflow);
+    setTimeout(_pfSubTabsOverflow, 0);
+  }
 
   // ── Informations personnelles (parent uniquement) ────────────────────
   if (isParent) {
@@ -1712,6 +1746,8 @@ function switchVieScolaireTab(section) {
   vieScolaireSection = section;
   document.getElementById('viescolaire-tabs').querySelectorAll('.sub-tab').forEach(b => b.classList.remove('active'));
   document.getElementById(`vs-tab-${section}`).classList.add('active');
+  const _vsBar = document.getElementById('viescolaire-tabs');
+  _initSubTabsOverflow(_vsBar); _scrollSubTabActive(_vsBar);
   const eleveId = _childEleveView?.id || getEleveId();
   if (!eleveId) return;
   if (section === 'qcm') { loadQcm(); return; }
@@ -2273,6 +2309,8 @@ function switchCoursTab(tab) {
     const btn = document.getElementById(`cours-tab-${t}`);
     if (btn) btn.classList.toggle('active', t === tab);
   });
+  const _coursBar = document.querySelector('#panel-seances .sub-tabs');
+  _initSubTabsOverflow(_coursBar); _scrollSubTabActive(_coursBar);
   document.getElementById('cours-panel-seances').style.display = tab === 'seances' ? 'flex' : 'none';
   const espPanel = document.getElementById('cours-panel-espaces');
   espPanel.style.display = tab === 'espaces' ? 'flex' : 'none';
@@ -2759,13 +2797,17 @@ function buildNotesPeriodButtons() {
   container.innerHTML = periodes.map(p =>
     `<button class="notes-period-btn" data-period="${p.codePeriode}" onclick="selectNotesPeriod('${p.codePeriode}')">${p.periode}</button>`
   ).join('');
+  container._subTabsOverflowInit = false;
   updateNotesPeriodButtons();
+  _initSubTabsOverflow(container);
 }
 
 function updateNotesPeriodButtons() {
+  const container = document.getElementById('notes-period-btns');
   document.querySelectorAll('.notes-period-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.period === notesPeriod);
   });
+  _scrollSubTabActive(container);
 }
 
 function toggleNotesView() {
@@ -3778,6 +3820,7 @@ function switchTab(id, fromPopstate = false) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === id));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + id));
   document.querySelector(`.tab[data-tab="${id}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  setTimeout(_initAllSubTabs, 0);
   localStorage.setItem('ed_last_tab', id);
   clearBadge(id);
   const mct = document.getElementById('mobile-current-tab');
@@ -3840,6 +3883,8 @@ const _VSP_FINANCE_TABS = new Set(['situation']);
 function switchVspTab(tab) {
   _vspActiveTab = tab;
   document.querySelectorAll('#vsp-tabs .sub-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  const _vspBar = document.getElementById('vsp-tabs');
+  _initSubTabsOverflow(_vspBar); _scrollSubTabActive(_vspBar);
   if (tab === 'dossier')  loadDossierInscription();
   else if (tab === 'sondages') loadVspSondages();
 }
@@ -3847,6 +3892,8 @@ function switchVspTab(tab) {
 function switchFinancesTab(tab) {
   _finActiveTab = tab;
   document.querySelectorAll('#finances-tabs .sub-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  const _finBar = document.getElementById('finances-tabs');
+  _initSubTabsOverflow(_finBar); _scrollSubTabActive(_finBar);
   const resultEl = document.getElementById('finances-result');
   if (resultEl) {
     if (tab === 'paiementsenligne') {
@@ -5154,6 +5201,8 @@ function switchMsgTab(tab) {
   msgActiveTab = tab;
   document.querySelector('.msg-split')?.classList.remove('show-detail');
   document.querySelectorAll('#panel-messages .sub-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  const _msgBar = document.querySelector('#panel-messages .sub-tabs');
+  _initSubTabsOverflow(_msgBar); _scrollSubTabActive(_msgBar);
   if (tab === 'correspondance') {
     const detailEl = document.getElementById('message-detail-panel');
     if (detailEl) {

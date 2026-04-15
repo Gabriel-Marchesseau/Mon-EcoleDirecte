@@ -138,7 +138,7 @@
   html { overflow-y: scroll; scrollbar-gutter: stable; }
   #notes-result, #edt-result, #absences-result, #messages-result, #devoirs-result, #result-area { scrollbar-gutter: stable; }
   .sub-tabs { display: flex; gap: 4px; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 3px; margin-bottom: 0; }
-  .sub-tab { font-size: 13px; padding: 0 12px; height: 28px; cursor: pointer; border: none; background: transparent; color: var(--text3); border-radius: 6px; font-family: inherit; font-weight: 500; transition: background 0.15s, color 0.15s; }
+  .sub-tab { font-size: 13px; padding: 0 12px; height: 28px; cursor: pointer; border: none; background: transparent; color: var(--text3); border-radius: 6px; font-family: inherit; font-weight: 500; transition: background 0.15s, color 0.15s; white-space: nowrap; }
   .sub-tab:hover { background: var(--bg3); color: var(--text); }
   .sub-tab.active { background: var(--bg); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
   .refresh-btn { background: none; border: none; cursor: pointer; font-size: 14px; color: var(--text4); padding: 2px 4px; border-radius: 6px; transition: color 0.15s, transform 0.3s; user-select: none; line-height: 1; }
@@ -282,6 +282,38 @@ body.dark input[type="date"] {
   #notes-legend { min-width: unset !important; max-width: unset !important; overflow-y: visible !important; flex-direction: row !important; flex-wrap: wrap; gap: 4px 8px !important; padding-right: 0 !important; }
 }
 
+/* ── Notes — colonnes réduites sur mobile portrait ≤ 480px ─────── */
+@media (max-width: 480px) {
+  /* Tableau moyennes : garder Matière · Moy. classe · Ma moy. */
+  #notes-sort-table th:nth-child(2),
+  #notes-sort-table td:nth-child(2),
+  #notes-sort-table th:nth-child(3),
+  #notes-sort-table td:nth-child(3),
+  #notes-sort-table th:nth-child(5),
+  #notes-sort-table td:nth-child(5),
+  #notes-sort-table th:nth-child(6),
+  #notes-sort-table td:nth-child(6) { display: none; }
+
+  /* Liste des notes : garder Date · Matière · Devoir · Note */
+  .note-row > span:nth-child(3),
+  .note-row > span:nth-child(5),
+  .note-row > span:nth-child(6),
+  .note-row > span:nth-child(7),
+  .note-row > span:nth-child(8),
+  #notes-list-body > div:not(.note-row) > span:nth-child(3),
+  #notes-list-body > div:not(.note-row) > span:nth-child(5),
+  #notes-list-body > div:not(.note-row) > span:nth-child(6),
+  #notes-list-body > div:not(.note-row) > span:nth-child(7),
+  #notes-list-body > div:not(.note-row) > span:nth-child(8) { display: none; }
+
+  /* Séances — compresser le date range picker pour tenir sur une ligne */
+  .seances-date-range { gap: 2px; padding: 0 4px; }
+  .seances-date-field { gap: 3px; padding: 0 2px; }
+  .seances-date-label { display: none; }
+  .seances-date-field input[type="date"] { font-size: 12px; min-width: 96px; padding: 2px 2px; }
+  .seances-date-sep { margin: 0; }
+}
+
 /* ── Responsive split-pane (master/detail) ≤ 768px ─────────────── */
 @media (max-width: 768px) {
   .split-pane {
@@ -290,7 +322,10 @@ body.dark input[type="date"] {
   }
   .split-pane > :first-child {
     min-width: 100% !important;
-    flex-shrink: 0;
+    width: 100% !important;
+    flex-shrink: 0 !important;
+    border-right: none !important;
+    padding-right: 0 !important;
     transition: transform 0.28s ease;
   }
   .split-pane > :last-child {
@@ -305,15 +340,14 @@ body.dark input[type="date"] {
     transform: translateX(100%);
   }
   .split-pane.show-detail > :first-child { transform: translateX(-100%); }
-  .split-pane.show-detail > :last-child  { transform: translateX(-100%); }
+  .split-pane.show-detail > :last-child  { transform: translateX(-100%); padding-bottom: 72px; }
 
   /* Bouton retour — pill fixe en bas, visible dès que son split est en mode détail */
   .split-pane.show-detail + .split-back-btn {
     display: flex;
     position: fixed;
-    bottom: 24px;
-    left: 50%;
-    transform: translateX(-50%);
+    bottom: 20px;
+    right: 20px;
     z-index: 100;
     align-items: center;
     gap: 8px;
@@ -345,6 +379,13 @@ body.dark input[type="date"] {
 
 @media (max-width: 667px) {
   .tab-bar { display: none !important; }
+  .sub-tabs { flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none; }
+  .sub-tabs::-webkit-scrollbar { display: none; }
+  #vsp-doc-toolbar { flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none; }
+  #vsp-doc-toolbar::-webkit-scrollbar { display: none; }
+  .sub-tabs.overflow-right { -webkit-mask-image: linear-gradient(to right, black calc(100% - 40px), transparent 100%); mask-image: linear-gradient(to right, black calc(100% - 40px), transparent 100%); }
+  .sub-tabs.overflow-left { -webkit-mask-image: linear-gradient(to right, transparent 0, black 40px); mask-image: linear-gradient(to right, transparent 0, black 40px); }
+  .sub-tabs.overflow-right.overflow-left { -webkit-mask-image: linear-gradient(to right, transparent 0, black 40px, black calc(100% - 40px), transparent 100%); mask-image: linear-gradient(to right, transparent 0, black 40px, black calc(100% - 40px), transparent 100%); }
   #mobile-nav-btn {
     display: flex;
     flex-direction: row;
@@ -400,6 +441,25 @@ body.dark input[type="date"] {
   #user-name { display: none; }
   #user-meta { display: none; }
   .profile-bar { margin-bottom: 0; }
+}
+
+/* ── Compte élève sur mobile : nom + classe visibles dans la profile bar */
+@media (max-width: 667px) {
+  body.is-eleve .profile-info > div:first-child { display: block !important; }
+  body.is-eleve #user-name {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  body.is-eleve #user-class {
+    display: block !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 
 /* ── Profile dialog — page pleine sur mobile ≤ 667px ──────────── */
@@ -460,7 +520,7 @@ body.dark input[type="date"] {
     color: var(--text2);
     font-size: 11px;
     font-family: inherit;
-    min-width: 60px;
+    flex: 1;
     min-height: 44px;
     padding: 6px 4px;
     border-radius: 8px;
