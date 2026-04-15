@@ -165,9 +165,26 @@ EcoleDirecte's API does not allow direct browser requests from external origins 
 
 ---
 
+## Android Support (Termux)
+
+The proxy runs on Android via [Termux](https://termux.dev). See **[INSTALL-ANDROID.md](INSTALL-ANDROID.md)** for the full setup guide.
+
+Quick start:
+```bash
+pkg install nodejs git
+git clone https://github.com/Gabriel-Marchesseau/Mon-EcoleDirecte.git
+cd Mon-EcoleDirecte
+bash install.sh   # first time only
+bash run.sh       # start the proxy
+```
+
+Then open `https://localhost:3131` in **Firefox for Android** (Chrome does not accept user-installed CA certificates).
+
+---
+
 ## Known Limitations
 
-- Windows only (the launcher scripts are `.bat` / `.ps1`)
+- Windows launcher scripts (`.bat` / `.ps1`) — Android users see [INSTALL-ANDROID.md](INSTALL-ANDROID.md)
 - The self-signed certificate requires a one-time browser exception
 - The *cahier de textes* and account info endpoints may return 403 on student accounts — this is an EcoleDirecte API restriction
 
