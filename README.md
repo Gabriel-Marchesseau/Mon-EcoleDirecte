@@ -20,6 +20,7 @@
 - 🌙 **Dark mode** — Toggleable, preference saved locally
 - ⚙️ **Settings** — Choose the default landing tab per account (gear icon in header)
 - 👨‍👩‍👧 **Parent account support** — Dedicated tabs: **Documents** (family docs by category), **Financial overview** (Invoices, Wallet, Payment method, Online payments), **School life** (Enrollment dossier, Surveys); child-account selector to view a pupil's timetable, grades, homework, attendance (with justify button), messages, and exit authorizations
+- 📱 **Mobile-friendly** — Hamburger navigation menu on small screens, swipe to navigate timetable weeks, full-screen profile page, master/detail panels for documents and messages
 - 🔒 **Secure** — All requests go through a local HTTPS proxy; credentials never leave your machine
 - 🔄 **Auto-reload (debug)** — `nodemon` watches for file changes and restarts automatically
 

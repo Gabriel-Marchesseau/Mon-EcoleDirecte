@@ -97,12 +97,13 @@ Dark mode : `color-scheme: dark` + `filter: invert(1)` sur l'icône calendrier
 - Sur mobile : les deux colonnes passent en `min-width:100%` et se décalent via `translateX` (CSS transition 0.28s)
 - `.split-pane.show-detail` → panneau gauche sort à gauche, panneau droit glisse en vue
 - Bouton `.split-back-btn` placé **immédiatement après** le `.split-pane` dans le HTML — pill fixe en bas de l'écran, visible uniquement via `adjacent sibling` CSS (`.split-pane.show-detail + .split-back-btn`)
-- Toolbars (`.msg-toolbar`, `.devoirs-toolbar`, `.memos-toolbar`) masquées via `:has(.show-detail)` quand le détail est affiché
+- Toolbars (`.msg-toolbar`, `.devoirs-toolbar`, `.memos-toolbar`, `#vsp-doc-toolbar`) masquées via `:has(.show-detail)` quand le détail est affiché
 - `_initSplitSwipe(el, backFn)` — attache un swipe droit → retour (seuil 60 px, annulé si vertical) ; idempotent via `el._swipeInit`
-- Panneaux concernés : `.devoirs-split`, `.msg-split`, `.memos-split`, `#cours-panel-espaces`
-- Fonctions retour : `devoirBack()`, `msgBack()`, `memoBack()`, `espaceBack()`
+- Panneaux concernés : `.devoirs-split`, `.msg-split`, `.memos-split`, `#cours-panel-espaces`, `.docs-split`
+- Fonctions retour : `devoirBack()`, `msgBack()`, `memoBack()`, `espaceBack()`, `vspDocBack()`
 - `msgBack()` remet aussi `selectedMessageId = null`
 - `switchMsgTab()` retire `.show-detail` pour éviter de rester en vue détail au changement d'onglet messages
+- `openVspDocDetail()` ajoute `.show-detail` sur `.docs-split` ; `selectCorrespondance()` l'ajoute sur `.msg-split`
 
 ## Dark mode — règles importantes déjà définies
 ```css
@@ -121,13 +122,32 @@ body.dark .postit-content [style*="background"] { background: transparent !impor
 - `openPaiementDialog()` — récapitulatif overlay (WIP, bouton Payer sans action réelle)
 - Dark mode : `.btn-remove-panier:hover` couleur spécifique dans le bloc `darkStyle`
 
-## Tab bar — défilement horizontal mobile (≤ 768px)
-- `.tab-bar` passe en `overflow-x: auto; scrollbar-width: none` sur mobile
-- `_updateTabBarOverflow()` : ajoute `.overflow-right` / `.overflow-left` selon la position de scroll → fade gradient via `mask-image` CSS (dégradé de 40px)
-- Les deux classes peuvent coexister → `mask-image` combiné (fondu aux deux extrémités)
-- Listener `scroll` attaché dans `_rebuildTabBar()` (idempotent via `bar._overflowListenerAttached`)
-- `switchTab()` appelle `scrollIntoView({ block:'nearest', inline:'nearest' })` sur l'onglet actif pour le rendre visible
-- `.tab-freshness-row` reçoit `background: var(--bg); border-left: 1px solid var(--border)` pour rester lisible au-dessus des onglets masqués
+## Tab bar — défilement horizontal mobile (≤ 768px) et menu hamburger (≤ 667px)
+- À 768px et moins : `.tab-bar` passe en `overflow-x: auto; scrollbar-width: none`
+- `_updateTabBarOverflow()` : ajoute `.overflow-right` / `.overflow-left` → fade gradient via `mask-image` CSS (dégradé de 40px)
+- `switchTab()` appelle `scrollIntoView({ block:'nearest', inline:'nearest' })` sur l'onglet actif
+- À 667px et moins (portrait + paysage compact) : `.tab-bar` est masquée entièrement (`display:none`)
+  - `#mobile-nav-btn` (bouton hamburger SVG) apparaît dans le header — ouvre `openMobileNav()`
+  - `#mobile-current-tab` affiche le nom de l'onglet courant (mis à jour dans `switchTab()`)
+  - `#mobile-nav-badge` (point rouge) sur l'icône hamburger quand un onglet a un badge — mis à jour dans `setBadge()`
+  - `openMobileNav()` crée un overlay fullscreen listant tous les onglets de `_currentTabs` avec leurs badges ; clic ferme l'overlay et appelle `switchTab()`
+  - `#profile-bar-actions` masqué sur mobile (dark toggle, engrenage, déconnexion déplacés dans le dialog profil)
+
+## Profil — page pleine sur mobile (≤ 667px)
+- Sur mobile, le dialog profil passe en page pleine : `.profile-dlg-overlay` perd le fond semi-transparent, `.profile-dlg` prend `min-height:100vh;border-radius:0`
+- Le bouton `×` (`.profile-dlg-close`) est masqué ; le bouton `← Retour` (`.profile-dlg-back`) est affiché
+- `.profile-mobile-actions` (caché sur desktop) apparaît sous le header du dialog : 4 boutons (dark mode, paramètres, déconnexion, fermer) en grille `space-around` avec icône + libellé
+- Les actions sur desktop (`#profile-bar-actions`) étant masquées ≤667px, `.profile-mobile-actions` est le seul accès à ces fonctions sur mobile
+- Fermeture du dialog depuis les boutons d'action : `this.closest('.dlg-overlay').remove()` puis ouverture de la fonction cible
+
+## EDT — swipe horizontal
+- `_initEdtSwipe()` attache un listener `touchstart`/`touchend` sur `#panel-edt` (idempotent via `el._edtSwipeInit`)
+- Swipe gauche → semaine suivante (`edtNav(1)`) ; swipe droit → semaine précédente (`edtNav(-1)`)
+- Seuil : 60 px ; annulé si geste plus vertical qu'horizontal
+
+## Notes — graphique responsive (≤ 768px)
+- `#notes-chart-wrap` passe en `flex-direction:column` sur mobile
+- `#notes-legend` perd ses contraintes de largeur et passe en `flex-direction:row;flex-wrap:wrap` (légende horizontale au-dessus du graphique)
 
 ## Largeur onglets stable au bold
 `.tab::before` avec `data-label` — empêche le saut de largeur lors du bold de l'onglet actif :

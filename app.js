@@ -490,6 +490,38 @@ function _updateTabBarOverflow() {
   bar.classList.toggle('overflow-left', bar.scrollLeft > 2);
 }
 
+function openMobileNav() {
+  const dark = document.body.classList.contains('dark');
+  const dlgBg  = dark ? '#242424' : '#fff';
+  const dlgText = getComputedStyle(document.body).getPropertyValue('--text').trim() || (dark ? '#e2e8f0' : '#1e293b');
+  const dlgText3 = getComputedStyle(document.body).getPropertyValue('--text3').trim() || (dark ? '#94a3b8' : '#64748b');
+  const activeBg = getComputedStyle(document.body).getPropertyValue('--bg4').trim() || (dark ? '#2d3348' : '#f1f5f9');
+  const activeTab = document.querySelector('.tab.active')?.dataset.tab || '';
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = `position:fixed;inset:0;z-index:1000;overflow-y:auto;background:${dlgBg};color:${dlgText};padding:1rem 1.5rem`;
+  overlay.classList.add('dlg-overlay', 'mobile-nav-overlay');
+
+  const items = _currentTabs.map(t => {
+    const isActive = t.id === activeTab;
+    const badge = tabBadges[t.id] || 0;
+    return `<button onclick="switchTab('${t.id}');this.closest('.mobile-nav-overlay').remove()"
+      style="display:flex;align-items:center;justify-content:space-between;width:100%;padding:14px 12px;border:none;border-radius:10px;cursor:pointer;font-size:15px;font-weight:${isActive?'500':'400'};font-family:inherit;background:${isActive?activeBg:'transparent'};color:${isActive?dlgText:dlgText3};margin-bottom:4px;text-align:left;appearance:none;-webkit-appearance:none">
+      <span>${t.label}</span>
+      ${badge > 0 ? `<span style="background:#ef4444;color:#fff;border-radius:999px;padding:1px 7px;font-size:11px;font-weight:600;flex-shrink:0">${badge}</span>` : ''}
+    </button>`;
+  }).join('');
+
+  overlay.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding:4px 0">
+      <span style="font-size:16px;font-weight:700;color:${dlgText}">Navigation</span>
+      <button onclick="this.closest('.mobile-nav-overlay').remove()" style="background:none;border:none;cursor:pointer;font-size:14px;font-weight:500;color:var(--text2);font-family:inherit;padding:4px 0">← Retour</button>
+    </div>
+    ${items}`;
+
+  document.body.appendChild(overlay);
+}
+
 function onLoggedIn(data) {
   _childEleveView = null;
   document.getElementById('login-card').style.display = 'none';
@@ -724,18 +756,34 @@ async function openProfile() {
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1000;display:flex;align-items:center;justify-content:center;padding:1.5rem;overflow-y:auto';
   overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
-  overlay.classList.add('dlg-overlay');
+  overlay.classList.add('dlg-overlay', 'profile-dlg-overlay');
 
   const dialog = document.createElement('div');
+  dialog.classList.add('profile-dlg');
   dialog.style.cssText = `background:${dlgBg};color:${dlgText};border-radius:12px;padding:1.5rem;max-width:480px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.35);position:relative;margin:auto`;
   dialog.innerHTML = `
-    <button onclick="this.closest('[style*=fixed]').remove()" style="position:absolute;top:10px;right:12px;background:none;border:none;cursor:pointer;font-size:18px;color:${dark?'#666':'#aaa'}">×</button>
+    <button class="profile-dlg-close" onclick="this.closest('.profile-dlg-overlay').remove()" style="position:absolute;top:10px;right:12px;background:none;border:none;cursor:pointer;font-size:18px;color:${dark?'#666':'#aaa'}">×</button>
     <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
       <div style="width:52px;height:52px;border-radius:50%;background:#4f46e5;color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;flex-shrink:0">${initials}</div>
       <div>
         <div style="font-size:17px;font-weight:600">${nom.trim()}</div>
         <div style="font-size:13px;color:var(--text3)">${acc.typeCompte === 'E' ? 'Compte élève' : 'Compte parent'}</div>
       </div>
+      <button class="profile-dlg-back" onclick="this.closest('.profile-dlg-overlay').remove()" style="margin-left:auto">← Retour</button>
+    </div>
+    <div class="profile-mobile-actions">
+      <button onclick="toggleDark()" title="${dark ? 'Mode clair' : 'Mode sombre'}">
+        <span class="pma-icon">${dark ? '☀️' : '🌙'}</span>${dark ? 'Mode clair' : 'Mode sombre'}
+      </button>
+      <button onclick="this.closest('.dlg-overlay').remove();openSettingsDialog()" title="Paramètres">
+        <span class="pma-icon">⚙️</span>Paramètres
+      </button>
+      <button onclick="this.closest('.dlg-overlay').remove();logout()" title="Se déconnecter">
+        <span class="pma-icon">⏏</span>Déconnexion
+      </button>
+      <button onclick="shutdownApp()" title="Fermer l'application">
+        <span class="pma-icon">⏻</span>Fermer
+      </button>
     </div>
     <div id="profile-form-area" style="font-size:14px;text-align:center;padding:16px 0"><span class="spinner"></span> Chargement…</div>`;
 
@@ -2745,8 +2793,8 @@ function renderNotes() {
     }
   } else {
     container.innerHTML = `
-      <div style="display:flex;gap:16px;flex:1;min-height:0;overflow:hidden">
-        <div id="notes-legend" style="min-width:160px;max-width:200px;overflow-y:auto;padding-right:4px;display:flex;flex-direction:column;gap:4px"></div>
+      <div id="notes-chart-wrap" style="display:flex;gap:16px">
+        <div id="notes-legend" style="min-width:160px;max-width:200px;overflow-y:auto;padding-right:4px;display:flex;flex-direction:column;gap:4px;flex-shrink:0"></div>
         <div style="flex:1;min-width:0;position:relative"><canvas id="notes-chart" style="width:100%;max-height:420px"></canvas></div>
       </div>`;
     renderNotesChart(periode, notes);
@@ -2945,7 +2993,7 @@ function renderNotesTable(periode, allNotes) {
         <span style="color:var(--text4);min-width:70px;">${n.date}</span>
         <span style="min-width:140px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${codeToDisc[n.codeMatiere] || n.libelleMatiere || ''}</span>
         <span style="min-width:205px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(() => { const parent = codeToDisc[n.codeMatiere] || ''; return (n.libelleMatiere && n.libelleMatiere !== parent) ? n.libelleMatiere : '—'; })()}</span>
-        <span style="flex:1">${n.devoir}</span>
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${n.devoir}</span>
         <span style="min-width:36px;text-align:center;color:var(--text3)">${nMin}</span>
         <span style="min-width:36px;text-align:center;color:var(--text3)">${isNaN(nMoyC)?'—':nMoyC}</span>
         <span style="min-width:36px;text-align:center;color:var(--text3)">${nMax}</span>
@@ -3732,6 +3780,8 @@ function switchTab(id, fromPopstate = false) {
   document.querySelector(`.tab[data-tab="${id}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   localStorage.setItem('ed_last_tab', id);
   clearBadge(id);
+  const mct = document.getElementById('mobile-current-tab');
+  if (mct) mct.textContent = _currentTabs.find(t => t.id === id)?.label || '';
   renderFreshnessLabel(id);
   // Mettre à jour l'URL sans recharger la page
   const route = TAB_TO_ROUTE[id] || '/edt';
@@ -3747,7 +3797,7 @@ function switchTab(id, fromPopstate = false) {
     return;
   }
   if (id === 'accueil') loadAccueil();
-  else if (id === 'edt') runEdt();
+  else if (id === 'edt') { runEdt(); _initEdtSwipe(); }
   else if (id === 'notes') loadNotes();
   else if (id === 'absences') {
     switchVieScolaireTab(vieScolaireSection || 'absences');
@@ -3770,7 +3820,7 @@ function switchTab(id, fromPopstate = false) {
   }
   else if (id === 'messages') { loadMessages(); _initMsgSwipe(); }
   else if (id === 'memos') { loadMemos(); _initSplitSwipe(document.querySelector('.memos-split'), memoBack); }
-  else if (id === 'documents-parent') loadVspDocuments();
+  else if (id === 'documents-parent') { loadVspDocuments(); _initSplitSwipe(document.querySelector('.docs-split'), vspDocBack); }
   else if (id === 'finances-parent') switchFinancesTab(_finActiveTab);
   else if (id === 'viescolaire-parent') switchVspTab(_vspActiveTab);
 }
@@ -4532,13 +4582,10 @@ function openVspDocDetail(category, idx) {
       <span style="font-size:13px;font-weight:600;color:#15803d">✓ Signé le ${sigDate}${tel}</span>
     </div>`;
   } else if (needsSig) {
-    sigHtml = `<div style="margin-top:14px;padding:10px 14px;border-radius:8px;background:#fffbeb;border:1px solid #fde68a;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
-      <span style="font-size:13px;font-weight:600;color:#b45309">● Signature électronique demandée</span>
-      <button onclick="signVspDocument('${category}',${idx})"
-        style="padding:6px 16px;border-radius:8px;border:none;background:#b45309;color:#fff;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">
-        Signer
-      </button>
-    </div>`;
+    sigHtml = `<button onclick="signVspDocument('${category}',${idx})"
+      style="margin-top:16px;padding:8px 20px;border-radius:8px;border:none;background:#b45309;color:#fff;font-size:13px;font-weight:600;cursor:pointer">
+      Signer
+    </button>`;
   }
 
   const fileId = doc.id || doc.idFichier || null;
@@ -4555,6 +4602,7 @@ function openVspDocDetail(category, idx) {
 
   detailEl.style.alignItems = 'flex-start';
   detailEl.style.justifyContent = 'flex-start';
+  document.querySelector('.docs-split')?.classList.add('show-detail');
   detailEl.innerHTML = `
     <div style="font-size:15px;font-weight:600;line-height:1.4;margin-bottom:10px">${doc.libelle}</div>
     <div style="font-size:13px;color:var(--text3)">${[catLabel, typeStr].filter(Boolean).join(' · ')}</div>
@@ -5006,6 +5054,8 @@ setInterval(() => {
 
 function setBadge(tabId, count) {
   tabBadges[tabId] = count;
+  const dot = document.getElementById('mobile-nav-badge');
+  if (dot) dot.classList.toggle('visible', Object.values(tabBadges).some(v => v > 0));
   const tabEl = document.querySelector(`.tab[data-tab="${tabId}"]`);
   if (!tabEl) return;
   const existing = tabEl.querySelector('.tab-badge');
@@ -5046,6 +5096,10 @@ function devoirBack() {
   document.querySelector('.devoirs-split')?.classList.remove('show-detail');
 }
 
+function vspDocBack() {
+  document.querySelector('.docs-split')?.classList.remove('show-detail');
+}
+
 function espaceBack() {
   document.getElementById('cours-panel-espaces')?.classList.remove('show-detail');
 }
@@ -5072,6 +5126,23 @@ function _initSplitSwipe(el, backFn) {
     const dy = e.changedTouches[0].clientY - startY;
     if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy)) return;
     if (dx > 0 && el.classList.contains('show-detail')) backFn();
+  }, { passive: true });
+}
+
+function _initEdtSwipe() {
+  const el = document.getElementById('panel-edt');
+  if (!el || el._edtSwipeInit) return;
+  el._edtSwipeInit = true;
+  let startX = 0, startY = 0;
+  el.addEventListener('touchstart', e => {
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+  }, { passive: true });
+  el.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - startX;
+    const dy = e.changedTouches[0].clientY - startY;
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy)) return;
+    edtNav(dx > 0 ? -1 : 1);
   }, { passive: true });
 }
 
@@ -5267,6 +5338,7 @@ function selectCorrespondance(idx) {
   if (!panel) return;
   panel.style.alignItems = 'flex-start';
   panel.style.justifyContent = 'flex-start';
+  document.querySelector('.msg-split')?.classList.add('show-detail');
   const c = _correspondancesCache[idx];
   if (!c) return;
 

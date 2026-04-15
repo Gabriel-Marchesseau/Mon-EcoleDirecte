@@ -151,7 +151,7 @@
   .vsp-cat-filter-btn { color: var(--text4); background: transparent; border: none; cursor: pointer; transition: color 0.15s, background 0.15s; padding: 4px 10px; border-radius: 6px; height: 30px; font-size: 12px; font-weight: 500; white-space: nowrap; }
   .vsp-cat-filter-btn:hover { color: var(--text2); background: var(--bg3); }
   .vsp-cat-filter-btn[aria-pressed="true"] { color: var(--text); background: var(--bg3); }
-  .tab-freshness-row { display: flex; align-items: center; gap: 6px; margin-left: auto; padding-right: 2px; background: var(--bg); border-left: 1px solid var(--border); padding-left: 8px; }
+  .tab-freshness-row { display: flex; align-items: center; gap: 6px; margin-left: auto; padding-right: 6px; background: var(--bg); border-left: 1px solid var(--border); padding-left: 8px; border-radius: 0 8px 8px 0; }
   .tab-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: #1d4ed8; color: #fff; font-size: 10px; font-weight: 700; margin-left: 4px; vertical-align: middle; }
   .espaces-layout { display: flex; flex-direction: row; }
   .offline-banner { display: none; position: sticky; top: 0; z-index: 100; background: #92400e; color: #fef3c7; font-size: 12px; font-weight: 500; padding: 6px 12px; text-align: center; border-radius: 6px; margin-bottom: 8px; }
@@ -266,7 +266,7 @@ body.dark input[type="date"] {
 
 /* ── Espacement extérieur réduit ≤ 768px ────────────────────────── */
 @media (max-width: 768px) {
-  body { padding: 0.5rem; }
+  body { padding: 0.5rem; background: var(--bg2); }
   #api-card { padding: 0; border: none; border-radius: 0; margin-bottom: 0; }
   #login-wrapper .card { width: 100%; min-width: 0; }
   .tab-bar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
@@ -274,6 +274,12 @@ body.dark input[type="date"] {
   .tab-bar.overflow-right { -webkit-mask-image: linear-gradient(to right, black calc(100% - 40px), transparent 100%); mask-image: linear-gradient(to right, black calc(100% - 40px), transparent 100%); }
   .tab-bar.overflow-left { -webkit-mask-image: linear-gradient(to right, transparent 0, black 40px); mask-image: linear-gradient(to right, transparent 0, black 40px); }
   .tab-bar.overflow-right.overflow-left { -webkit-mask-image: linear-gradient(to right, transparent 0, black 40px, black calc(100% - 40px), transparent 100%); mask-image: linear-gradient(to right, transparent 0, black 40px, black calc(100% - 40px), transparent 100%); }
+}
+
+/* ── Notes — graphique responsive ≤ 768px ─────────────────────── */
+@media (max-width: 768px) {
+  #notes-chart-wrap { flex-direction: column; }
+  #notes-legend { min-width: unset !important; max-width: unset !important; overflow-y: visible !important; flex-direction: row !important; flex-wrap: wrap; gap: 4px 8px !important; padding-right: 0 !important; }
 }
 
 /* ── Responsive split-pane (master/detail) ≤ 768px ─────────────── */
@@ -329,4 +335,141 @@ body.dark input[type="date"] {
   #panel-messages:has(.split-pane.show-detail) .msg-toolbar     { display: none !important; }
   #panel-devoirs:has(.split-pane.show-detail)  .devoirs-toolbar { display: none !important; }
   #panel-memos:has(.split-pane.show-detail)    .memos-toolbar   { display: none !important; }
+  #panel-documents-parent:has(.split-pane.show-detail) #vsp-doc-toolbar { display: none !important; }
+}
+
+/* ── Menu sandwich mobile ──────────────────────────────────────── */
+#mobile-nav-btn { display: none; }
+#mobile-current-tab { display: none; }
+#mobile-nav-badge { display: none; }
+
+@media (max-width: 667px) {
+  .tab-bar { display: none !important; }
+  #mobile-nav-btn {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    align-self: center;
+    gap: 8px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text2);
+    font-size: 10px;
+    font-family: inherit;
+    padding: 4px 6px;
+    border-radius: 8px;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  #mobile-nav-btn:active { background: var(--bg3); }
+  .mobile-nav-icon-wrap { position: relative; display: flex; }
+  #mobile-nav-badge {
+    position: absolute;
+    bottom: -2px;
+    right: -4px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #ef4444;
+    border: 1.5px solid var(--bg);
+  }
+  #mobile-nav-badge.visible { display: block; }
+  #mobile-current-tab {
+    display: block;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 4px 0 8px;
+  }
+  .profile-bar { gap: 6px; }
+  #child-account-bar { margin-top: 0 !important; }
+  .profile-info > div:first-child { display: none; }
+  .child-account-select { font-size: 14px !important; font-weight: 700 !important; text-transform: uppercase; letter-spacing: 0.03em; max-width: 200px; }
+  #mobile-current-tab { flex: 1; text-align: center; font-size: 16px; font-weight: 700; padding: 6px 0 10px; }
+}
+
+/* ── Profile bar — actions masquées ≤ 667px (mobile paysage inclus) */
+@media (max-width: 667px) {
+  #profile-bar-actions { display: none !important; }
+  #child-account-school { display: none !important; }
+  #user-name { display: none; }
+  #user-meta { display: none; }
+  .profile-bar { margin-bottom: 0; }
+}
+
+/* ── Profile dialog — page pleine sur mobile ≤ 667px ──────────── */
+.profile-dlg-back { display: none; }
+
+@media (max-width: 667px) {
+  .profile-dlg-overlay {
+    background: transparent !important;
+    display: block !important;
+    padding: 0 !important;
+  }
+  .profile-dlg-overlay .profile-dlg {
+    max-width: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    min-height: 100vh;
+    margin: 0 !important;
+    padding: 1rem 1.5rem !important;
+  }
+  .profile-dlg-close { display: none !important; }
+  #pf-section-infos { overflow-y: visible !important; max-height: none !important; }
+  .profile-dlg-back {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text2);
+    font-size: 14px;
+    font-weight: 500;
+    font-family: inherit;
+    padding: 0 0 16px;
+  }
+  .profile-dlg-back:active { opacity: 0.6; }
+}
+
+/* ── Profile dialog — actions mobiles ≤ 667px ─────────────────── */
+.profile-mobile-actions { display: none; }
+
+@media (max-width: 667px) {
+  .profile-mobile-actions {
+    display: flex;
+    justify-content: space-around;
+    gap: 8px;
+    padding: 12px 0 4px;
+    margin-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  .profile-mobile-actions button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text2);
+    font-size: 11px;
+    font-family: inherit;
+    min-width: 60px;
+    min-height: 44px;
+    padding: 6px 4px;
+    border-radius: 8px;
+    transition: background 0.15s;
+  }
+  .profile-mobile-actions button:hover,
+  .profile-mobile-actions button:active { background: var(--bg3); }
+  .profile-mobile-actions .pma-icon {
+    font-size: 20px;
+    line-height: 1;
+  }
 }
