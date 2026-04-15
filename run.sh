@@ -8,7 +8,7 @@
 DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$DIR"
 
-PID_FILE="/tmp/med-proxy.pid"
+PID_FILE="${TMPDIR:-/tmp}/med-proxy.pid"
 LOG_FILE="$DIR/proxy.log"
 APP_URL="http://localhost:3131"
 
