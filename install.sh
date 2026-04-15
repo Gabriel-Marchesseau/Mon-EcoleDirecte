@@ -59,7 +59,7 @@ fi
 # ── 3. Dépendances npm ────────────────────────────────────
 step "Installation des dépendances npm..."
 if npm install 2>/dev/null; then
-  ok "Dépendances installées (node-forge, nodemon)"
+  ok "Dépendances installées (node-forge)"
 else
   err "Échec de npm install"
 fi
