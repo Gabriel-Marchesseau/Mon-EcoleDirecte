@@ -50,7 +50,7 @@ Vérifiez que Node.js est bien installé :
 ```bash
 node --version
 ```
-Vous devriez voir quelque chose comme `v22.x.x`.
+Vous devriez voir quelque chose comme `v25.x.x`.
 
 ---
 
