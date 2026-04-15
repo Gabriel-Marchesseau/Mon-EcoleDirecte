@@ -89,7 +89,7 @@ fi
 # ── Afficher l'URL ────────────────────────────────────────
 echo ""
 echo -e "  ${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
-echo -e "  ${GREEN}  Ouvrez Firefox et allez sur :${RESET}"
+echo -e "  ${GREEN}  Ouvrez votre navigateur et allez sur :${RESET}"
 echo ""
 echo -e "        ${CYAN}${APP_URL}${RESET}"
 echo ""
