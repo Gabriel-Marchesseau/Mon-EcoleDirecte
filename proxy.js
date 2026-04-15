@@ -5,11 +5,13 @@
  */
 
 const https  = require('https');
+const http   = require('http');
 const fs     = require('fs');
 const path   = require('path');
 const crypto = require('crypto');
 
-const DEBUG  = process.env.DEBUG === '1';
+const DEBUG     = process.env.DEBUG === '1';
+const HTTP_MODE = process.env.HTTP_MODE === '1';
 const CYAN   = s => DEBUG ? `[36m${s}[0m` : s;
 const GREEN  = s => DEBUG ? `[32m${s}[0m` : s;
 const RED    = s => DEBUG ? `[31m${s}[0m` : s;
@@ -35,11 +37,13 @@ const API_HOST    = 'api.ecoledirecte.com';
 const API_VERSION = '4.98.0';
 
 let sslOptions;
-try {
-  sslOptions = { key: fs.readFileSync('key.pem'), cert: fs.readFileSync('cert.pem') };
-} catch {
-  console.error('❌  Certificat introuvable. Lance : node generate-cert.js');
-  process.exit(1);
+if (!HTTP_MODE) {
+  try {
+    sslOptions = { key: fs.readFileSync('key.pem'), cert: fs.readFileSync('cert.pem') };
+  } catch {
+    console.error('❌  Certificat introuvable. Lance : node generate-cert.js');
+    process.exit(1);
+  }
 }
 
 let session = { cookies: {}, gtk: '' };
@@ -104,7 +108,11 @@ async function initSession() {
   log(GRAY(`  → Cookies: ${Object.keys(session.cookies).join(', ')}`));
 }
 
-const server = https.createServer(sslOptions, async (req, res) => {
+const server = HTTP_MODE
+  ? http.createServer()
+  : https.createServer(sslOptions);
+
+server.on('request', async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', '*');
@@ -414,7 +422,8 @@ const server = https.createServer(sslOptions, async (req, res) => {
 });
 
 server.listen(PORT, '127.0.0.1', async () => {
-  logAlways(`\n✅  Proxy Mon EcoleDirecte démarré sur https://monecoledirecte.local (port ${PORT})${DEBUG ? ' [MODE DEBUG]' : ''}\n`);
+  const localUrl = HTTP_MODE ? `http://localhost:${PORT}` : `https://monecoledirecte.local (port ${PORT})`;
+  logAlways(`\n✅  Proxy Mon EcoleDirecte démarré sur ${localUrl}${DEBUG ? ' [MODE DEBUG]' : ''}\n`);
   if (DEBUG) {
     logAlways(CYAN('  Logs activés : URL, body, réponse, GTK, durée'));
     logAlways(GRAY('  GTK initial: ') + (session.gtk ? GREEN(session.gtk.substring(0,20)+'...') : RED('VIDE')));

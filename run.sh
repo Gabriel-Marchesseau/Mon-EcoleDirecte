@@ -10,7 +10,7 @@ cd "$DIR"
 
 PID_FILE="/tmp/med-proxy.pid"
 LOG_FILE="$DIR/proxy.log"
-APP_URL="https://localhost:3131"
+APP_URL="http://localhost:3131"
 
 # ── Couleurs ──────────────────────────────────────────────
 GREEN='\033[0;32m'; CYAN='\033[0;36m'; RED='\033[0;31m'; YELLOW='\033[1;33m'; RESET='\033[0m'
@@ -65,7 +65,7 @@ else
   # ── Démarrer le proxy ───────────────────────────────────
   step "Démarrage du proxy..."
   rm -f "$PID_FILE" "$LOG_FILE"
-  nohup node proxy.js > "$LOG_FILE" 2>&1 &
+  nohup HTTP_MODE=1 node proxy.js > "$LOG_FILE" 2>&1 &
   echo $! > "$PID_FILE"
 
   # Attendre le message de démarrage (max 8s)

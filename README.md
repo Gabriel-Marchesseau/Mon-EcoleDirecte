@@ -176,9 +176,8 @@ git clone https://github.com/Gabriel-Marchesseau/Mon-EcoleDirecte.git
 cd Mon-EcoleDirecte
 bash install.sh   # first time only
 bash run.sh       # start the proxy
+# then open http://localhost:3131 in any browser
 ```
-
-Then open `https://localhost:3131` in **Firefox for Android** (Chrome does not accept user-installed CA certificates).
 
 ---
 

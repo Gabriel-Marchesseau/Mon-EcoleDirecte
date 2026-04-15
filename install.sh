@@ -89,31 +89,11 @@ else
   fi
 fi
 
-# ── 5. Copie de ca.pem vers Downloads ─────────────────────
-step "Copie du certificat CA vers le dossier Téléchargements..."
-if [ -f "$DIR/ca.pem" ]; then
-  if [ -d ~/storage/downloads ]; then
-    cp "$DIR/ca.pem" ~/storage/downloads/mon-ecoledirecte-ca.pem
-    ok "Certificat copié : Téléchargements/mon-ecoledirecte-ca.pem"
-  else
-    warn "Accès au stockage non configuré."
-    echo ""
-    echo "    Lancez cette commande, acceptez la permission, puis relancez install.sh :"
-    echo ""
-    echo -e "    ${CYAN}termux-setup-storage${RESET}"
-    echo ""
-    warn "Sans cette étape, vous devrez copier ca.pem manuellement."
-  fi
-fi
-
 # ── Bilan ─────────────────────────────────────────────────
 echo ""
 echo "  ====================================="
 if [ ${#ERRORS[@]} -eq 0 ]; then
   echo -e "  ${GREEN}Installation terminée avec succès !${RESET}"
-  echo ""
-  echo "  Prochaine étape : installer le certificat CA"
-  echo "  (voir INSTALL-ANDROID.md, étape Certificat)"
   echo ""
   echo "  Pour démarrer l'application :"
   echo -e "  ${CYAN}bash run.sh${RESET}"
