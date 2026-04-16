@@ -429,6 +429,10 @@ server.listen(PORT, '127.0.0.1', async () => {
     logAlways(GRAY('  GTK initial: ') + (session.gtk ? GREEN(session.gtk.substring(0,20)+'...') : RED('VIDE')));
     logAlways(GRAY('  ─────────────────────────────────────────────'));
   }
-  await initSession();
+  try {
+    await initSession();
+  } catch (e) {
+    log(`⚠️  Init session échouée au démarrage (${e.message}) — nouvelle tentative à la première connexion`);
+  }
   logAlways(DEBUG ? GRAY('  Prêt — en attente de connexions.\n') : '  Prêt.\n');
 });
