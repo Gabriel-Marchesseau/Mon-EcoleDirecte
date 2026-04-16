@@ -126,6 +126,7 @@ done
 echo "Proxy en cours (PID \$NODE_PID)"
 echo "http://localhost:3131"
 echo ""
+am start -a android.intent.action.VIEW -d "http://localhost:3131" 2>/dev/null
 
 # Garder la session vivante — le proxy reste actif tant que ce script tourne
 wait \$NODE_PID
