@@ -98,7 +98,37 @@ cat > "$SHORTCUT_FILE" << EOF
 #!/usr/bin/env bash
 termux-wake-lock 2>/dev/null
 cd "$DIR"
-bash run.sh
+PID_FILE="\${TMPDIR:-/tmp}/med-proxy.pid"
+LOG_FILE="$DIR/proxy.log"
+
+# Proxy déjà en marche — garder la session active
+if [ -f "\$PID_FILE" ] && kill -0 "\$(cat "\$PID_FILE")" 2>/dev/null; then
+  echo ""
+  echo "Proxy déjà en cours (PID \$(cat "\$PID_FILE"))"
+  echo "http://localhost:3131"
+  echo ""
+  wait
+fi
+
+# Démarrer le proxy
+echo ""
+echo "Démarrage du proxy..."
+rm -f "\$PID_FILE" "\$LOG_FILE"
+HTTP_MODE=1 node proxy.js > "\$LOG_FILE" 2>&1 &
+NODE_PID=\$!
+echo \$NODE_PID > "\$PID_FILE"
+
+for i in 1 2 3 4 5 6 7 8; do
+  sleep 1
+  grep -q "démarré" "\$LOG_FILE" 2>/dev/null && break
+done
+
+echo "Proxy en cours (PID \$NODE_PID)"
+echo "http://localhost:3131"
+echo ""
+
+# Garder la session vivante — le proxy reste actif tant que ce script tourne
+wait \$NODE_PID
 EOF
 chmod +x "$SHORTCUT_FILE"
 ok "Raccourci créé dans ~/.shortcuts/"
