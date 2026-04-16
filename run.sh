@@ -66,7 +66,9 @@ else
   step "Démarrage du proxy..."
   rm -f "$PID_FILE" "$LOG_FILE"
   HTTP_MODE=1 nohup node proxy.js > "$LOG_FILE" 2>&1 &
-  echo $! > "$PID_FILE"
+  PROXY_PID=$!
+  echo $PROXY_PID > "$PID_FILE"
+  disown $PROXY_PID
 
   # Attendre le message de démarrage (max 8s)
   STARTED=false

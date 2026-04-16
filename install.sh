@@ -98,6 +98,7 @@ cat > "$SHORTCUT_FILE" << EOF
 #!/usr/bin/env bash
 cd "$DIR"
 bash run.sh
+sleep 3
 am start -a android.intent.action.VIEW -d "http://localhost:3131" 2>/dev/null
 EOF
 chmod +x "$SHORTCUT_FILE"
