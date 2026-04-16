@@ -12,23 +12,24 @@
 
 ---
 
-## Étape 1 — Installer Termux
+## Étape 1 — Installer Termux (et Termux:Widget)
 
-Termux est un terminal Linux pour Android qui permet de faire tourner Node.js.
+Termux est un terminal Linux pour Android qui permet de faire tourner Node.js.  
+Termux:Widget permet d'ajouter un icône de lancement sur l'écran d'accueil.
 
-**Option A — Via le Play Store** *(plus simple)*
+**Via F-Droid** *(recommandé — permet d'installer les deux apps)*
 
-Recherchez **Termux** sur le Play Store et installez-le.
-
-> Note : la version Play Store date de 2020 mais fonctionne pour notre usage.
-
-**Option B — Via F-Droid** *(recommandé si l'option A pose problème)*
-
-F-Droid est un store alternatif qui propose la version à jour de Termux.
+F-Droid est un store alternatif qui propose les versions à jour de Termux.
 
 1. Ouvrez [f-droid.org](https://f-droid.org) dans votre navigateur et téléchargez l'APK F-Droid
 2. Android va vous demander d'autoriser l'installation → acceptez
-3. Installez F-Droid, ouvrez-le, puis cherchez **Termux** et installez-le
+3. Installez F-Droid, ouvrez-le, puis installez **Termux** et **Termux:Widget**
+
+**Via le Play Store** *(alternative si F-Droid pose problème)*
+
+Recherchez **Termux** sur le Play Store et installez-le.
+
+> Note : Termux:Widget n'est pas disponible sur le Play Store — l'icône sur l'écran d'accueil ne fonctionnera pas dans ce cas, mais l'application reste utilisable normalement.
 
 ---
 
@@ -76,16 +77,29 @@ L'installeur va :
 
 ---
 
-## Étape 5 — Démarrer l'application
+## Étape 5 — Ajouter l'icône sur l'écran d'accueil
 
-Dans Termux (depuis le dossier `Mon-EcoleDirecte`) :
+> Cette étape nécessite Termux:Widget installé via F-Droid (étape 1).
 
+L'installeur a déjà créé le script de lancement. Il reste à placer le widget :
+
+1. Appuyez **longuement** sur l'écran d'accueil de votre téléphone
+2. Choisissez **Widgets** → **Termux** → **Termux:Widget**
+3. Placez le widget où vous voulez
+4. L'icône **Mon EcoleDirecte** apparaît — appuyez dessus pour lancer l'application
+
+---
+
+## Étape 6 — Démarrer l'application
+
+**Avec l'icône** *(après l'étape 5)* : appuyez simplement sur l'icône **Mon EcoleDirecte**.  
+Le proxy démarre et le navigateur s'ouvre automatiquement sur l'application.
+
+**Sans l'icône** : ouvrez Termux et tapez :
 ```bash
-bash run.sh
+cd Mon-EcoleDirecte && bash run.sh
 ```
-
-Ouvrez ensuite votre navigateur et allez sur :
-
+Puis ouvrez votre navigateur sur :
 ```
 http://localhost:3131
 ```
@@ -96,18 +110,12 @@ http://localhost:3131
 
 ## Utilisation quotidienne
 
-Chaque fois que vous souhaitez utiliser Mon EcoleDirecte :
+Appuyez sur l'icône **Mon EcoleDirecte** sur votre écran d'accueil.  
+Le navigateur s'ouvre directement sur l'application.
 
-1. Ouvrez **Termux**
-2. Tapez :
-   ```bash
-   cd Mon-EcoleDirecte && bash run.sh
-   ```
-3. Ouvrez votre navigateur → `http://localhost:3131`
-
-Pour arrêter le proxy :
+Pour arrêter le proxy (depuis Termux) :
 ```bash
-bash run.sh stop
+cd Mon-EcoleDirecte && bash run.sh stop
 ```
 
 ---
