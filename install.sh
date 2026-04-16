@@ -96,6 +96,8 @@ mkdir -p "$SHORTCUTS_DIR"
 SHORTCUT_FILE="$SHORTCUTS_DIR/Mon EcoleDirecte.sh"
 cat > "$SHORTCUT_FILE" << EOF
 #!/usr/bin/env bash
+# Empêche Android de tuer le proxy quand Termux passe en arrière-plan
+termux-wake-lock 2>/dev/null
 cd "$DIR"
 bash run.sh
 sleep 3

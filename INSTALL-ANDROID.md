@@ -15,21 +15,22 @@
 ## Étape 1 — Installer Termux (et Termux:Widget)
 
 Termux est un terminal Linux pour Android qui permet de faire tourner Node.js.  
-Termux:Widget permet d'ajouter un icône de lancement sur l'écran d'accueil.
+Termux:Widget permet d'ajouter un icône de lancement sur l'écran d'accueil.  
+Termux:API permet à Android de garder le proxy en vie quand Termux est en arrière-plan.
 
-**Via F-Droid** *(recommandé — permet d'installer les deux apps)*
+**Via F-Droid** *(recommandé — les trois apps sont disponibles)*
 
 F-Droid est un store alternatif qui propose les versions à jour de Termux.
 
 1. Ouvrez [f-droid.org](https://f-droid.org) dans votre navigateur et téléchargez l'APK F-Droid
 2. Android va vous demander d'autoriser l'installation → acceptez
-3. Installez F-Droid, ouvrez-le, puis installez **Termux** et **Termux:Widget**
+3. Installez F-Droid, ouvrez-le, puis installez **Termux**, **Termux:Widget** et **Termux:API**
 
 **Via le Play Store** *(alternative si F-Droid pose problème)*
 
 Recherchez **Termux** sur le Play Store et installez-le.
 
-> Note : Termux:Widget n'est pas disponible sur le Play Store — l'icône sur l'écran d'accueil ne fonctionnera pas dans ce cas, mais l'application reste utilisable normalement.
+> Note : Termux:Widget et Termux:API ne sont pas disponibles sur le Play Store — l'icône sur l'écran d'accueil ne fonctionnera pas, mais l'application reste utilisable normalement.
 
 ---
 
