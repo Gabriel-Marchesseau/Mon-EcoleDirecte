@@ -89,6 +89,28 @@ else
   fi
 fi
 
+# ── 5. Raccourci écran d'accueil (Termux:Widget) ─────────
+step "Création du raccourci écran d'accueil..."
+SHORTCUTS_DIR="$HOME/.shortcuts"
+mkdir -p "$SHORTCUTS_DIR"
+SHORTCUT_FILE="$SHORTCUTS_DIR/Mon EcoleDirecte.sh"
+cat > "$SHORTCUT_FILE" << EOF
+#!/usr/bin/env bash
+cd "$DIR"
+bash run.sh
+am start -a android.intent.action.VIEW -d "http://localhost:3131" 2>/dev/null
+EOF
+chmod +x "$SHORTCUT_FILE"
+ok "Raccourci créé dans ~/.shortcuts/"
+echo ""
+echo -e "  ${CYAN}Pour afficher l'icône sur votre écran d'accueil :${RESET}"
+echo "  1. Installez l'app \"Termux:Widget\" depuis F-Droid"
+echo "  2. Appuyez longuement sur l'écran d'accueil"
+echo "     → Widgets → Termux → Termux:Widget"
+echo "  3. Placez le widget — l'icône \"Mon EcoleDirecte\" apparaît"
+echo "  → Un simple appui lance l'app et ouvre le navigateur"
+echo ""
+
 # ── Bilan ─────────────────────────────────────────────────
 echo ""
 echo "  ====================================="
