@@ -96,7 +96,6 @@ mkdir -p "$SHORTCUTS_DIR"
 SHORTCUT_FILE="$SHORTCUTS_DIR/Mon EcoleDirecte.sh"
 cat > "$SHORTCUT_FILE" << EOF
 #!/usr/bin/env bash
-termux-wake-lock 2>/dev/null
 cd "$DIR"
 PID_FILE="\${TMPDIR:-/tmp}/med-proxy.pid"
 LOG_FILE="$DIR/proxy.log"
@@ -126,7 +125,7 @@ done
 echo "Proxy en cours (PID \$NODE_PID)"
 echo "http://localhost:3131"
 echo ""
-am start -a android.intent.action.VIEW -d "http://localhost:3131" 2>/dev/null
+termux-open-url "http://localhost:3131" 2>/dev/null || am start -a android.intent.action.VIEW -d "http://localhost:3131" 2>/dev/null
 
 # Garder la session vivante — le proxy reste actif tant que ce script tourne
 wait \$NODE_PID
