@@ -1304,12 +1304,16 @@ function openEdtDialog(encodedData) {
   if (c.modifie && !c.annule) badges += `<span style="background:#fffbeb;color:#92400e;font-size:14px;padding:2px 8px;border-radius:10px;font-weight:500">Modifié</span> `;
   if (c.type && c.type !== 'COURS') badges += `<span style="background:#eff6ff;color:#1d4ed8;font-size:14px;padding:2px 8px;border-radius:10px;font-weight:500">${c.type}</span>`;
 
-  const rows = [
-    { icon: '🕐', label: 'Horaire',  value: `${c.debut} → ${c.fin}` },
-    { icon: '📚', label: 'Matière',  value: c.text },
+  const rowDefs = [
+    { icon: '🕐', label: 'Horaire',    value: `${c.debut} → ${c.fin}` },
+    { icon: '📚', label: 'Matière',    value: c.text },
     { icon: '👤', label: 'Professeur', value: c.prof || '—' },
-    { icon: '📍', label: 'Salle',    value: c.salle || '—' },
-  ].map(r => `
+    { icon: '📍', label: 'Salle',      value: c.salle || '—' },
+  ];
+  if (c.classe && c.classe.trim()) {
+    rowDefs.push({ icon: '🏫', label: 'Classe', value: c.classe.split('\n')[0] });
+  }
+  const rows = rowDefs.map(r => `
     <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid ${dlgBorder}">
       <span style="font-size:16px;width:24px;text-align:center">${r.icon}</span>
       <span style="color:var(--text3);font-size:14px;min-width:80px">${r.label}</span>
@@ -1326,6 +1330,34 @@ function openEdtDialog(encodedData) {
     </div>
     ${badges ? `<div style="margin-bottom:12px">${badges}</div>` : ''}
     ${rows}`;
+
+  // Section cours annulé remplacé
+  if (c.coursAnnules && c.coursAnnules.length > 0) {
+    c.coursAnnules.forEach(ann => {
+      const annDot = `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${ann.color || '#ccc'};margin-right:6px;flex-shrink:0"></span>`;
+      const annRows = [
+        { icon: '🕐', label: 'Horaire',    value: `${ann.debut} → ${ann.fin}` },
+        { icon: '📚', label: 'Matière',    value: ann.text },
+        { icon: '👤', label: 'Professeur', value: ann.prof || '—' },
+        { icon: '📍', label: 'Salle',      value: ann.salle || '—' },
+      ].map(r => `
+        <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid ${dlgBorder}">
+          <span style="font-size:15px;width:24px;text-align:center">${r.icon}</span>
+          <span style="color:var(--text3);font-size:13px;min-width:80px">${r.label}</span>
+          <span style="font-size:13px;font-weight:500;color:${dlgText}">${r.value}</span>
+        </div>`).join('');
+      const annSection = document.createElement('div');
+      annSection.style.cssText = `margin-top:14px;padding:10px;border-radius:8px;background:${dark?'#2a1a1a':'#fff5f5'};border:1px solid ${dark?'#5c1f1f':'#fecaca'}`;
+      annSection.innerHTML = `
+        <div style="display:flex;align-items:center;margin-bottom:8px">
+          ${annDot}
+          <span style="font-size:13px;font-weight:600;color:#b91c1c">${ann.text}</span>
+          <span style="margin-left:8px;background:#fef2f2;color:#b91c1c;font-size:11px;padding:1px 7px;border-radius:10px;font-weight:500">Cours annulé</span>
+        </div>
+        ${annRows}`;
+      dialog.appendChild(annSection);
+    });
+  }
 
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
@@ -3749,6 +3781,29 @@ function renderEdtGrid(cours, monday) {
     }
   });
 
+  // Masquer les cours annulés qui se chevauchent avec un cours non-annulé,
+  // et attacher leurs infos au cours remplaçant pour affichage dans le dialog.
+  for (let i = 0; i < 5; i++) {
+    const day = byDay[i];
+    const annules = day.filter(c => c.isAnnule);
+    const actifs  = day.filter(c => !c.isAnnule);
+    const toHide  = new Set();
+    annules.forEach(ann => {
+      const annStart = new Date(ann.start_date.replace(' ','T')).getTime();
+      const annEnd   = new Date(ann.end_date.replace(' ','T')).getTime();
+      actifs.forEach(act => {
+        const actStart = new Date(act.start_date.replace(' ','T')).getTime();
+        const actEnd   = new Date(act.end_date.replace(' ','T')).getTime();
+        if (annStart < actEnd && annEnd > actStart) {
+          toHide.add(ann.id);
+          if (!act._annulePar) act._annulePar = [];
+          act._annulePar.push(ann);
+        }
+      });
+    });
+    byDay[i] = day.filter(c => !toHide.has(c.id));
+  }
+
   // Colonnes heure
   let timeCol = '<div class="edt-time-col">';
   timeCol += '<div class="edt-header" style="height:36px"></div>';
@@ -3797,17 +3852,26 @@ function renderEdtGrid(cours, monday) {
       const r=parseInt(hex.substring(0,2),16), g=parseInt(hex.substring(2,4),16), b=parseInt(hex.substring(4,6),16);
       const lum = (0.299*r + 0.587*g + 0.114*b);
       const fg = c.isAnnule ? '#aaa' : (lum > 160 ? '#1a1a1a' : '#fff');
+      const displayText = c.text && c.text.trim() ? c.text : c.typeCours;
       const cData = encodeURIComponent(JSON.stringify({
-        text: c.text, salle: c.salle || '', prof: c.prof || '',
+        text: displayText, salle: c.salle || '', prof: c.prof || '',
         debut: c.start_date.split(' ')[1].substring(0,5),
         fin: c.end_date.split(' ')[1].substring(0,5),
         annule: c.isAnnule, modifie: c.isModifie,
-        color: c.color, type: c.typeCours || ''
+        color: c.color, type: c.typeCours || '',
+        classe: c.classe || '',
+        coursAnnules: (c._annulePar || []).map(a => ({
+          text: a.text, prof: a.prof || '', salle: a.salle || '',
+          debut: a.start_date.split(' ')[1].substring(0,5),
+          fin: a.end_date.split(' ')[1].substring(0,5),
+          color: a.color
+        }))
       })).replace(/'/g, '%27');
+      const detail2 = c.salle ? c.salle : (c.classe && c.classe.trim() && !c.text.trim() ? c.classe.split('\n')[0] : '');
       dayCols += `<div class="edt-event${c.isAnnule?' annule':''}${c.isModifie?' edt-has-modifie':''}" onclick="openEdtDialog('${cData}')" style="top:${topPx}px;height:${hPx}px;background:${bg};border-left:3px solid ${c.isAnnule?'var(--border)':c.color};cursor:pointer">
         ${c.isModifie ? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 18" width="23" height="20" style="position:absolute;top:2px;right:2px;" title="Cours modifié"><polygon points="10,1 19,17 1,17" fill="#f59e0b" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/><text x="10" y="15.5" text-anchor="middle" font-size="11" font-weight="900" fill="#000">!</text></svg>` : ''}
-        <div class="edt-event-name" style="color:${fg}">${c.text}</div>
-        ${hPx > 28 ? `<div class="edt-event-detail" style="color:${fg}">${c.salle || ''}</div>` : ''}
+        <div class="edt-event-name" style="color:${fg}">${displayText}</div>
+        ${hPx > 28 ? `<div class="edt-event-detail" style="color:${fg}">${detail2}</div>` : ''}
       </div>`;
     });
     dayCols += '</div></div>';

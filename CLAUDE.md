@@ -113,6 +113,12 @@ La clé cache EDT est `edt:{eleveId}:{YYYY-MM-DD}` (pas `edt:{YYYY-MM-DD}` sans 
 Les cours CONGE ont des horaires 00:00 → 23:59 → `top` très négatif → débordaient hors du body.  
 Fix : `isCongeDay` map dans `renderEdtGrid()`, cours CONGE exclus de `byDay`, remplacés par une overlay grise sur le body uniquement.
 
+### Cours annulé chevauchant un cours remplaçant (EDT)
+Quand un cours `isAnnule: true` se chevauche avec un cours non-annulé le même jour, le cours annulé est masqué de la grille (`byDay` filtré) et ses infos sont attachées au cours remplaçant via `_annulePar[]`. Le dialog du cours remplaçant affiche une section "Cours annulé" en rouge avec les détails du cours supprimé.
+
+### Événements exceptionnels sans texte (typeCours === 'EVENEMENT')
+Certains événements EcoleDirecte ont `text: " "` vide. Dans ce cas, `renderEdtGrid()` affiche `typeCours` comme libellé principal et la première ligne de `classe` comme sous-détail. Le dialog reçoit `classe` et l'affiche dans une ligne dédiée (🏫).
+
 ---
 
 ## Workflow de développement
