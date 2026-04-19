@@ -1321,7 +1321,7 @@ function openEdtDialog(encodedData) {
     </div>`).join('');
 
   const dialog = document.createElement('div');
-  dialog.style.cssText = `background:${dlgBg};color:${dlgText};border-radius:12px;padding:1.25rem;max-width:360px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.35);position:relative`;
+  dialog.style.cssText = `background:${dlgBg};color:${dlgText};border-radius:12px;padding:1.25rem;max-width:360px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.35);position:relative;max-height:calc(100vh - 4rem);overflow-y:auto`;
   dialog.innerHTML = `
     <button onclick="this.closest('[style*=fixed]').remove()" style="position:absolute;top:10px;right:12px;background:none;border:none;cursor:pointer;font-size:18px;color:${dark?'#666':'#aaa'}">×</button>
     <div style="display:flex;align-items:center;margin-bottom:12px">
