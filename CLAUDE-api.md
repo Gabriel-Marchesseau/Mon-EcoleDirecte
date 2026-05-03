@@ -33,6 +33,8 @@
 - **Autorisations de sortie** : `POST /v3/eleves/{eleveId}/niveaux/0/autorisationsSortie.awp?verbe=get&v=4.98.0` avec `data={}` → `{ autorisations: [{jour, autorisationsMatin:{arriveeTardive,intercours,sortieAnticipee:{etat}}, autorisationsApresMidi:{…}}], demandesFamille, demandesEtab, parametrage:{libellesAutorisations} }` — disponible uniquement en vue enfant depuis compte parent
 - **Porte-monnaie enfant (depuis compte parent)** : `POST /v3/comptes/detail.awp?verbe=get&v=4.98.0` avec `data={"eleveId": id}` → comptes de cet enfant uniquement (même endpoint que porte-monnaie élève mais appelé depuis `loadVspPorteMonnaieParent()` séparément)
 - **Vie de classe** : `POST /v3/Classes/{classeId}/viedelaclasse.awp?verbe=get&v=4.98.0` avec `data={}` → messages/actualités de la classe. `classeId` extrait de `eleve.classe.id` (profil) — stocké dans `_childEleveView.classeId` pour la vue enfant, ou via `getIdClasse()` pour un compte élève direct.
+- **Espaces de travail (messagerie)** : `POST /v3/1/{accountId}/espacestravail.awp?verbe=get&typeModule=messagerie` avec `data={}` → liste des espaces avec accès messagerie (`messagerieEleve` ou `messagerieFamille`). `accountId` = `accountData.accounts[0].id` (ID du compte, pas de l'élève).
+- **Contacts espace de travail (messagerie)** : `POST /v3/messagerie/contacts/espacesTravail.awp?idEspace={id}&verbe=get` avec `data={}` → `{ contacts: [{id, civilite, nom, prenom, matiere|fonction|profil, …}] }`
 
 ---
 
@@ -47,6 +49,7 @@
 - Header `WOPI-Token` retransmis au client via `Access-Control-Expose-Headers` (nécessaire pour construire l'access_token Collabora)
 - Routes SPA `/accueil`, `/documents-parent`, `/finances-parent`, `/vie-scolaire-parent` ajoutées (servent l'app HTML pour le routeur client)
 - Page 404 personnalisée en français pour les chemins inconnus (hors `/v3/` et fichiers statiques)
+- HTTP status reflète `data.code` EcoleDirecte : si la réponse JSON contient `code !== 200`, le proxy retourne ce code comme HTTP status (clamped à [100-599], sinon 500)
 
 ---
 

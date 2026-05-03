@@ -410,7 +410,16 @@ server.on('request', async (req, res) => {
       // Retransmettre le WOPI-Token si présent (utilisé par le viewer Collabora)
       if (result.headers['wopi-token']) resHeaders['WOPI-Token'] = result.headers['wopi-token'];
 
-      res.writeHead(200, resHeaders);
+      let httpStatus = 200;
+      if (typeof result.body === 'string') {
+        try {
+          const parsed = JSON.parse(result.body);
+          if (parsed.code && parsed.code !== 200) {
+            httpStatus = (parsed.code >= 100 && parsed.code <= 599) ? parsed.code : 500;
+          }
+        } catch(e) {}
+      }
+      res.writeHead(httpStatus, resHeaders);
       res.end(result.body);
 
     } catch (err) {

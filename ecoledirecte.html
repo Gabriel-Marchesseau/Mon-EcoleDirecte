@@ -233,7 +233,7 @@
           <option value="2023-2024">2023-2024</option>
         </select>
         <button id="msg-unread-only" onclick="toggleMsgUnread(this)" style="border:none;cursor:pointer;" aria-pressed="false">Non lus</button>
-        <button onclick="openNewMessageDialog()" style="display:flex;align-items:center;gap:5px;height:34px;padding:0 12px;border-radius:8px;border:none;background:#1d4ed8;color:#fff;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap"><span style="font-size:16px;line-height:1;font-weight:300">＋</span> Nouveau</button>
+        <button id="msg-new-btn" onclick="openNewMessageDialog()" style="display:flex;align-items:center;gap:5px;height:34px;padding:0 12px;border-radius:8px;border:none;background:#1d4ed8;color:#fff;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap"><span style="font-size:16px;line-height:1;font-weight:300">＋</span> Nouveau</button>
         <div class="sub-tabs">
           <button class="sub-tab active" data-tab="received" onclick="switchMsgTab('received')">Reçus</button>
           <button class="sub-tab" data-tab="sent" onclick="switchMsgTab('sent')">Envoyés</button>

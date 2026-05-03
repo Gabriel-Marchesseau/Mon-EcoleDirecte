@@ -119,6 +119,16 @@ Quand un cours `isAnnule: true` se chevauche avec un cours non-annulé le même 
 ### Événements exceptionnels sans texte (typeCours === 'EVENEMENT')
 Certains événements EcoleDirecte ont `text: " "` vide. Dans ce cas, `renderEdtGrid()` affiche `typeCours` comme libellé principal et la première ligne de `classe` comme sous-détail. Le dialog reçoit `classe` et l'affiche dans une ligne dédiée (🏫).
 
+### Envoi de message — payload compte parent (code 550)
+`getMsgPayloadParent()` ne doit pas inclure `idDossier`, `idClasseur`, `mtype` → EcoleDirecte retourne code 550.  
+`transfertFiles: []` et `files: []` doivent toujours être présents dans le payload (même sans transfert).
+
+### Envoi de message — désactivé en vue enfant
+EcoleDirecte n'expose pas le bouton d'envoi quand un parent visualise un enfant. En vue enfant (`_childEleveView` actif) : bouton "Nouveau" masqué (`#msg-new-btn`), boutons Répondre/Transférer non rendus, `openNewMessageDialog()` retourne immédiatement.
+
+### Proxy — HTTP 200 systématique ignorait les erreurs EcoleDirecte
+Le proxy renvoyait toujours HTTP 200 pour les réponses JSON, même quand `data.code !== 200`. Fix : le proxy parse le body et utilise `data.code` comme HTTP status (si valeur dans [100-599]).
+
 ---
 
 ## Workflow de développement

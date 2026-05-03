@@ -548,6 +548,8 @@ function openMobileNav() {
 
 function onLoggedIn(data) {
   _childEleveView = null;
+  const msgNewBtn = document.getElementById('msg-new-btn');
+  if (msgNewBtn) msgNewBtn.style.display = '';
   document.getElementById('login-card').style.display = 'none';
   document.getElementById('api-card').classList.add('active-card');
   const acc = data.accounts ? data.accounts[0] : data;
@@ -681,6 +683,9 @@ function switchChildAccountView(eleveId, initialTab) {
     // Masquer l'onglet Demandes absences (compte parent sans vue enfant)
     const demandesTabBtn = document.getElementById('vs-tab-demandesabsences');
     if (demandesTabBtn) demandesTabBtn.style.display = 'none';
+    // Réafficher le bouton Nouveau message (retour en vue parent)
+    const msgNewBtn = document.getElementById('msg-new-btn');
+    if (msgNewBtn) msgNewBtn.style.display = '';
     _rebuildTabBar(PARENT_TABS);
     const parentTabIds = new Set(PARENT_TABS.map(t => t.id));
     const targetTab = initialTab && parentTabIds.has(initialTab) ? initialTab
@@ -700,6 +705,9 @@ function switchChildAccountView(eleveId, initialTab) {
     // Afficher l'onglet Demandes absences (vue enfant depuis compte parent)
     const demandesTabBtn = document.getElementById('vs-tab-demandesabsences');
     if (demandesTabBtn) demandesTabBtn.style.display = '';
+    // Masquer le bouton Nouveau message (envoi non disponible en vue enfant)
+    const msgNewBtn = document.getElementById('msg-new-btn');
+    if (msgNewBtn) msgNewBtn.style.display = 'none';
     // Masquer les onglets QCM et Sondages (non disponibles depuis un compte parent)
     const qcmTabBtn = document.getElementById('vs-tab-qcm');
     if (qcmTabBtn) qcmTabBtn.style.display = 'none';
@@ -5614,14 +5622,14 @@ async function openMessageDialog(msgId) {
       ${from ? `<div style="font-size:14px;color:var(--text3);margin-bottom:2px">De : ${from}</div>` : ''}
       ${to   ? `<div style="font-size:14px;color:var(--text3);margin-bottom:2px">À : ${to}</div>`   : ''}
       <div style="font-size:14px;color:var(--text4);margin-bottom:8px">${cached?.date || ''}</div>
-      <div style="display:flex;gap:8px;margin-bottom:10px">
+      ${!_childEleveView ? `<div style="display:flex;gap:8px;margin-bottom:10px">
         <button onclick="replyMessage(${msgId})" style="display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:7px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:13px;font-weight:500;cursor:pointer">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 4l4-3v2h2c3 0 5 2 5 5 0-2-2-3-5-3H6v2L2 4z" fill="currentColor"/></svg>Répondre
         </button>
         <button onclick="forwardMessage(${msgId})" style="display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:7px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:13px;font-weight:500;cursor:pointer">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M12 4l-4-3v2H6C3 3 1 5 1 8c0-2 2-3 5-3h2v2l4-3z" fill="currentColor"/></svg>Transférer
         </button>
-      </div>
+      </div>` : ''}
       ${cached?.files?.length ? `
       <div style="margin-bottom:10px;padding:8px;background:var(--bg3);border-radius:8px;border:1px solid var(--border)">
         <div style="font-size:14px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Pièces jointes (${cached.files.length})</div>
@@ -6797,6 +6805,7 @@ function openMsgToContact(id, nomEnc, type) {
 }
 
 function openNewMessageDialog({ initialRecipient = null, mode = null, subject = '', quotedHtml = '', forwardId = null, forwardFiles = [] } = {}) {
+  if (_childEleveView) return;
   newMsgRecipients = initialRecipient ? [initialRecipient] : [];
   newMsgAttachments = [];
   _newMsgMode = mode;
@@ -6951,6 +6960,7 @@ function removeAttachment(i) {
 // ── Dialog sélection destinataires ─────────────────────────────────────────
 
 let contactPickerTab = 'teachers';
+let _workspaceMembersCache = [];
 
 async function openContactPicker() {
   const dark = document.body.classList.contains('dark');
@@ -6970,7 +6980,7 @@ async function openContactPicker() {
     <div style="display:flex;gap:4px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:3px">
       <button class="contact-tab active" data-ctab="teachers" onclick="switchContactTab('teachers')" style="flex:1;padding:4px;border:none;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;background:var(--bg);color:var(--text)">Enseignants</button>
       <button class="contact-tab" data-ctab="staff" onclick="switchContactTab('staff')" style="flex:1;padding:4px;border:none;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;background:transparent;color:var(--text3)">Personnels</button>
-      <button class="contact-tab" data-ctab="tutors" onclick="switchContactTab('tutors')" style="flex:1;padding:4px;border:none;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;background:transparent;color:var(--text3)">Tuteurs</button>
+      <button class="contact-tab" data-ctab="workspaces" onclick="switchContactTab('workspaces')" style="flex:1;padding:4px;border:none;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;background:transparent;color:var(--text3)">Espace de travail</button>
     </div>
     <input id="contact-search" type="text" placeholder="Rechercher…" oninput="filterContacts()" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text);font-size:13px;outline:none">
     <div id="contact-list" style="flex:1;overflow-y:auto;max-height:340px;display:flex;flex-direction:column;gap:2px">
@@ -6992,13 +7002,21 @@ async function switchContactTab(tab) {
     b.style.background = active ? 'var(--bg)' : 'transparent';
     b.style.color = active ? 'var(--text)' : 'var(--text3)';
   });
-  document.getElementById('contact-search').value = '';
+  const searchEl = document.getElementById('contact-search');
+  if (searchEl) { searchEl.style.display = tab === 'workspaces' ? 'none' : ''; searchEl.value = ''; }
   await loadContactsTab(tab);
 }
 
 async function loadContactsTab(tab) {
   const listEl = document.getElementById('contact-list');
   if (!listEl) return;
+
+  if (tab === 'workspaces') {
+    const searchEl = document.getElementById('contact-search');
+    if (searchEl) searchEl.style.display = 'none';
+    await loadWorkspacesForPicker();
+    return;
+  }
 
   const eleveId = getEleveId();
   const cacheKey = `contacts:${tab}:${eleveId}`;
@@ -7038,6 +7056,119 @@ async function loadContactsTab(tab) {
   });
 }
 
+async function loadWorkspacesForPicker() {
+  const listEl = document.getElementById('contact-list');
+  if (!listEl) return;
+  listEl.innerHTML = `<span style="color:var(--text4);font-size:13px;text-align:center;padding:16px">${centeredSpinner()}</span>`;
+  try {
+    const acc = accountData?.accounts ? accountData.accounts[0] : accountData;
+    const accountId = acc?.id || '';
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
+    if (twoFaToken) headers['2fa-token'] = twoFaToken;
+    const resp = await fetch(
+      `${getProxy()}/v3/1/${accountId}/espacestravail.awp?verbe=get&typeModule=messagerie&v=${API_VERSION}`,
+      { method: 'POST', headers, body: 'data={}' }
+    );
+    const data = await resp.json();
+    if (data.code !== 200) throw new Error(data.message || `Code ${data.code}`);
+    const espaces = (data.data || []).filter(e => e.messagerieEleve || e.messagerieFamille);
+    if (!espaces.length) {
+      listEl.innerHTML = `<span style="color:var(--text4);font-size:13px;text-align:center;padding:16px">Aucun espace de travail disponible.</span>`;
+      return;
+    }
+    renderWorkspacePicker(espaces);
+  } catch(e) {
+    if (listEl) listEl.innerHTML = `<span style="color:#b91c1c;font-size:13px;padding:8px">Erreur : ${e.message}</span>`;
+  }
+}
+
+function renderWorkspacePicker(espaces) {
+  const listEl = document.getElementById('contact-list');
+  if (!listEl) return;
+  listEl.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:6px;padding-bottom:8px;border-bottom:1px solid var(--border2)">
+      <select id="workspace-picker-select"
+        style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text);font-size:13px;cursor:pointer;outline:none"
+        onchange="loadWorkspaceMembers(this.value)">
+        <option value="">Sélectionner un espace…</option>
+        ${espaces.map(e => `<option value="${e.id}">${e.titre}</option>`).join('')}
+      </select>
+      <input id="workspace-member-search" type="text" placeholder="Filtrer les membres…"
+        oninput="filterWorkspaceMembers()"
+        style="display:none;padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text);font-size:13px;outline:none">
+    </div>
+    <div id="workspace-members-list" style="display:flex;flex-direction:column;gap:2px;padding-top:4px">
+      <span style="color:var(--text4);font-size:13px;text-align:center;padding:16px">Sélectionnez un espace de travail.</span>
+    </div>`;
+}
+
+function filterWorkspaceMembers() {
+  const q = document.getElementById('workspace-member-search')?.value.toLowerCase() || '';
+  const list = _workspaceMembersCache.filter(c =>
+    c.nom.toLowerCase().includes(q) || c.info.toLowerCase().includes(q)
+  );
+  renderWorkspaceMemberList(list);
+}
+
+async function loadWorkspaceMembers(espaceId) {
+  const membersEl = document.getElementById('workspace-members-list');
+  if (!membersEl) return;
+  if (!espaceId) {
+    membersEl.innerHTML = `<span style="color:var(--text4);font-size:13px;text-align:center;padding:16px">Sélectionnez un espace de travail.</span>`;
+    return;
+  }
+  const searchInput = document.getElementById('workspace-member-search');
+  if (searchInput) { searchInput.style.display = 'none'; searchInput.value = ''; }
+  membersEl.innerHTML = `<span style="color:var(--text4);font-size:13px;text-align:center;padding:16px">${centeredSpinner()}</span>`;
+  try {
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
+    if (twoFaToken) headers['2fa-token'] = twoFaToken;
+    const resp = await fetch(
+      `${getProxy()}/v3/messagerie/contacts/espacesTravail.awp?idEspace=${espaceId}&verbe=get&v=${API_VERSION}`,
+      { method: 'POST', headers, body: 'data={}' }
+    );
+    const data = await resp.json();
+    if (data.code !== 200) throw new Error(data.message || `Code ${data.code}`);
+    const raw = Array.isArray(data.data?.contacts) ? data.data.contacts
+      : Array.isArray(data.data) ? data.data : [];
+    const strVal = v => typeof v === 'string' ? v : (v?.libelle || v?.nom || '');
+    _workspaceMembersCache = raw.map(c => ({
+      id: c.id,
+      nom: [c.civilite, c.prenom, c.nom].filter(Boolean).join(' ').trim() || c.login || String(c.id),
+      info: strVal(c.matiere) || strVal(c.fonction) || strVal(c.profil) || strVal(c.role) || '',
+      _raw: c,
+    }));
+    const searchInput = document.getElementById('workspace-member-search');
+    if (searchInput) { searchInput.style.display = ''; searchInput.value = ''; }
+    renderWorkspaceMemberList(_workspaceMembersCache);
+  } catch(e) {
+    if (membersEl) membersEl.innerHTML = `<span style="color:#b91c1c;font-size:13px;padding:8px">Erreur : ${e.message}</span>`;
+  }
+}
+
+function renderWorkspaceMemberList(list) {
+  const membersEl = document.getElementById('workspace-members-list');
+  if (!membersEl) return;
+  if (!list.length) {
+    membersEl.innerHTML = `<span style="color:var(--text4);font-size:13px;text-align:center;padding:16px">Aucun membre.</span>`;
+    return;
+  }
+  const dark = document.body.classList.contains('dark');
+  membersEl.innerHTML = list.map(c => {
+    const selected = newMsgRecipients.some(r => r.id === c.id);
+    const nomEnc = c.nom.replace(/'/g, '%27');
+    return `<div onclick="toggleRecipient(${c.id},'${nomEnc}','workspaces')"
+      style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:7px;cursor:pointer;
+        background:${selected?(dark?'#1e3a5f':'#eff6ff'):'transparent'};
+        border:1px solid ${selected?'#1d4ed8':'transparent'};font-size:13px;transition:background .1s"
+      onmouseover="if(!this.style.borderColor.includes('1d4ed8'))this.style.background='var(--bg3)'"
+      onmouseout="this.style.background='${selected?(dark?'#1e3a5f':'#eff6ff'):'transparent'}'">
+      <span style="flex:1">${c.nom}${c.info?`<span style="color:var(--text4);font-size:12px;margin-left:6px">${c.info}</span>`:''}</span>
+      ${selected?'<span style="color:#1d4ed8;font-weight:700;font-size:16px">✓</span>':''}
+    </div>`;
+  }).join('');
+}
+
 function filterContacts() {
   const q = document.getElementById('contact-search')?.value.toLowerCase() || '';
   const list = (contactsCache[contactPickerTab] || []).filter(c =>
@@ -7068,9 +7199,17 @@ function renderContactList(list) {
 function toggleRecipient(id, nom, type) {
   const idx = newMsgRecipients.findIndex(r => r.id === id);
   if (idx >= 0) newMsgRecipients.splice(idx, 1);
-  else newMsgRecipients.push({ id, nom, type });
+  else {
+    const entry = { id, nom, type };
+    if (type === 'workspaces') {
+      const raw = _workspaceMembersCache.find(c => c.id === id);
+      if (raw?._raw) entry._raw = raw._raw;
+    }
+    newMsgRecipients.push(entry);
+  }
   renderNewMsgChips();
-  renderContactList(contactsCache[contactPickerTab] || []);
+  if (contactPickerTab === 'workspaces') renderWorkspaceMemberList(_workspaceMembersCache);
+  else renderContactList(contactsCache[contactPickerTab] || []);
 }
 
 // ── Envoi / brouillon ──────────────────────────────────────────────────────
@@ -7078,7 +7217,7 @@ function toggleRecipient(id, nom, type) {
 function getMsgPayload(isDraft) {
   const subject = document.getElementById('new-msg-subject')?.value.trim() || '';
   const body    = document.getElementById('new-msg-body')?.innerHTML || '';
-  const to = newMsgRecipients.map(r => ({ id: r.id, typeDestinataire: r.type === 'teachers' ? 'P' : r.type === 'staff' ? 'A' : 'L' }));
+  const to = newMsgRecipients.map(r => ({ id: r.id, typeDestinataire: r.type === 'teachers' ? 'P' : r.type === 'staff' ? 'A' : r.type === 'workspaces' ? 'P' : 'L' }));
   const payload = { subject, body: btoa(unescape(encodeURIComponent(body))), to, isDraft: isDraft ? 1 : 0 };
   if (_newMsgForwardId) {
     payload.forwardId = _newMsgForwardId;
@@ -7127,14 +7266,12 @@ function getMsgPayloadParent(isDraft) {
   const msg = {
     subject, content,
     groupesDestinataires: [{ destinataires, selection: { type: 'W' } }],
-    idDossier: -1, idClasseur: 0, mtype: 'received', date, read: true,
+    transfertFiles: _newMsgForwardFiles || [],
+    files: _newMsgForwardFiles || [],
+    date, read: true,
     from: { role: '1', id: eleveId, read: true }, brouillon: isDraft
   };
-  if (_newMsgForwardId) {
-    msg.forwardId = _newMsgForwardId;
-    msg.transfertFiles = _newMsgForwardFiles;
-    msg.files = _newMsgForwardFiles;
-  }
+  if (_newMsgForwardId) msg.forwardId = _newMsgForwardId;
   return { message: msg, anneeMessages: annee };
 }
 
@@ -7150,9 +7287,9 @@ async function sendNewMessage() {
   const actionLabel = _newMsgMode === 'reply' ? 'Réponse' : _newMsgMode === 'forward' ? 'Transfert' : 'Envoi';
   setMsgStatus(`${actionLabel} en cours…`, 'var(--text3)');
   try {
-    const eleveId = getEleveId();
+    const eleveId = _childEleveView?.id || getEleveId();
     const _acc = accountData?.accounts ? accountData.accounts[0] : accountData;
-    const isParent = _acc?.typeCompte !== 'E';
+    const isParent = !_childEleveView && _acc?.typeCompte !== 'E';
     const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
     const endpoint = isParent
@@ -7171,9 +7308,9 @@ async function sendNewMessage() {
 async function saveMsgDraft() {
   setMsgStatus('Enregistrement…', 'var(--text3)');
   try {
-    const eleveId = getEleveId();
+    const eleveId = _childEleveView?.id || getEleveId();
     const _acc = accountData?.accounts ? accountData.accounts[0] : accountData;
-    const isParent = _acc?.typeCompte !== 'E';
+    const isParent = !_childEleveView && _acc?.typeCompte !== 'E';
     const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
     const endpoint = isParent
