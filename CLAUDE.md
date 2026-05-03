@@ -129,6 +129,12 @@ EcoleDirecte n'expose pas le bouton d'envoi quand un parent visualise un enfant.
 ### Proxy — HTTP 200 systématique ignorait les erreurs EcoleDirecte
 Le proxy renvoyait toujours HTTP 200 pour les réponses JSON, même quand `data.code !== 200`. Fix : le proxy parse le body et utilise `data.code` comme HTTP status (si valeur dans [100-599]).
 
+### Périodes notes — période annuelle (BILAN / A000)
+EcoleDirecte renvoie parfois des périodes de synthèse (ex. `A000`, bilan annuel) dont le `codePeriode` n'apparaît dans aucune note individuelle.  
+Fix : `isAnnee = !_notesCodes.has(periode.codePeriode)` — si la période n'est pas dans les notes réelles, on affiche toutes les notes sans filtre de période.  
+`detectCurrentPeriod()` restreint aussi la sélection automatique aux seules périodes ayant des notes réelles (évite de pointer sur une période vide au chargement).  
+`buildNotesPeriodButtons()` ne filtre plus `A000` — tous les boutons de période sont affichés.
+
 ---
 
 ## Workflow de développement

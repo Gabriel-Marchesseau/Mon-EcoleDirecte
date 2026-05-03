@@ -1708,11 +1708,12 @@ let notesView = 'table'; // 'table' ou 'chart'
 
 function detectCurrentPeriod(periodes) {
   const today = new Date().toISOString().substring(0,10);
-  for (const p of periodes) {
+  const notesCodes = new Set((notesData?.notes || []).map(n => n.codePeriode).filter(Boolean));
+  const real = notesCodes.size > 0 ? periodes.filter(p => notesCodes.has(p.codePeriode)) : periodes;
+  for (const p of real) {
     if (p.dateDebut <= today && p.dateFin >= today) return p.codePeriode;
   }
-  // Sinon prendre le dernier non-annuel non clôturé
-  return periodes[periodes.length - 1]?.codePeriode || periodes[0]?.codePeriode;
+  return real[real.length - 1]?.codePeriode || real[0]?.codePeriode;
 }
 
 let msgCounts = { received: 0, sent: 0, draft: 0, archived: 0 };
@@ -2824,7 +2825,8 @@ async function loadNotes() {
 function selectNotesPeriod(period) {
   notesPeriod = period;
   notesFilter.clear();
-  notesListOpen = false;
+  const _notesCodes = new Set((notesData?.notes || []).map(n => n.codePeriode).filter(Boolean));
+  notesListOpen = _notesCodes.size > 0 && !_notesCodes.has(period);
   updateNotesPeriodButtons();
   if (notesData) renderNotes();
   else loadNotes();
@@ -2833,7 +2835,7 @@ function selectNotesPeriod(period) {
 function buildNotesPeriodButtons() {
   const container = document.getElementById('notes-period-btns');
   if (!container || !notesData) return;
-  const periodes = (notesData.periodes || []).filter(p => p.codePeriode !== 'A000');
+  const periodes = notesData.periodes || [];
   container.innerHTML = periodes.map(p =>
     `<button class="notes-period-btn" data-period="${p.codePeriode}" onclick="selectNotesPeriod('${p.codePeriode}')">${p.periode}</button>`
   ).join('');
@@ -2945,7 +2947,7 @@ function renderNotesTable(periode, allNotes) {
     const thStyle = "padding:5px 6px;cursor:pointer;user-select:none;white-space:nowrap;color:var(--text3);font-size:14px;font-weight:500";
     const thStyleC = "padding:5px 6px;cursor:pointer;user-select:none;white-space:nowrap;color:var(--text3);font-size:14px;font-weight:500;text-align:center";
 
-    html += `<div style="font-weight:500;font-size:14px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">
+    html += `<div style="font-weight:500;font-size:14px;margin-bottom:10px;padding-bottom:6px">
       ${periode.periode} — Moyenne générale : <strong style="color:${moyColor}">${moyCalc.eleve}/20</strong>
       <span style="font-size:14px;color:var(--text3);font-weight:400"> (classe : ${moyCalc.classe})</span>
     </div>`;
@@ -2953,7 +2955,7 @@ function renderNotesTable(periode, allNotes) {
     const fmt1 = v => isNaN(v) ? '—' : Math.round(v * 10) / 10;
 
     html += '<table id="notes-sort-table" style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:16px">'
-         + '<thead><tr style="border-bottom:1px solid var(--border)">'
+         + '<thead><tr style="border-bottom:2px solid var(--border)">'
          + `<th style="${thStyle}" onclick="sortNotes('matiere')">Matière${arrow('matiere')}</th>`
          + `<th style="${thStyle}" onclick="sortNotes('groupe')">Discipline${arrow('groupe')}</th>`
          + `<th style="${thStyleC}">Min</th>`
@@ -2980,7 +2982,7 @@ function renderNotesTable(periode, allNotes) {
       const hideGroupe = notesSortCol === 'groupe' && idx > 0 && disciplines[idx - 1].groupeLabel === d.groupeLabel;
       const groupeCell = hideGroupe ? `<td style="padding:5px 6px"></td>`
                                     : `<td style="padding:5px 6px;white-space:nowrap;color:var(--text3);font-size:13px;vertical-align:top">${d.groupeLabel||'—'}</td>`;
-      html += `<tr class="notes-filter-row" data-code="${d.codeMatiere||''}" data-disc="${d.discipline.replace(/"/g,'&quot;')}" style="border-top:1px solid #f5f5f0;cursor:pointer;${rowHighlight}">
+      html += `<tr class="notes-filter-row" data-code="${d.codeMatiere||''}" data-disc="${d.discipline.replace(/"/g,'&quot;')}" style="border-top:1px solid var(--border2);cursor:pointer;${rowHighlight}">
         <td style="padding:5px 6px">${d.discipline}</td>
         ${groupeCell}
         <td style="padding:5px 6px;text-align:center;color:var(--text3)">${minC}</td>
@@ -2996,7 +2998,11 @@ function renderNotesTable(periode, allNotes) {
   }
 
   // Section notes collapsible
-  const periodNotes = allNotes.filter(n => n.codePeriode === periode.codePeriode && !n.nonSignificatif && n.valeur);
+  const _notesCodes2 = new Set(allNotes.map(n => n.codePeriode).filter(Boolean));
+  const isAnnee = _notesCodes2.size > 0 && !_notesCodes2.has(periode.codePeriode);
+  const periodNotes = isAnnee
+    ? allNotes.filter(n => !n.nonSignificatif && n.valeur)
+    : allNotes.filter(n => n.codePeriode === periode.codePeriode && !n.nonSignificatif && n.valeur);
   // Mapping codeMatiere → libelleMatiere parent via LSUN
   const lsunAll = Object.values(notesData?.LSUN || {}).flat();
   const codeToDisc = {};
@@ -3027,11 +3033,11 @@ function renderNotesTable(periode, allNotes) {
     : '';
 
   if (periodNotes.length) {
-    html += `<div style="border-top:1px solid var(--border);padding-top:8px">
+    html += `<div style="padding-top:8px">
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
         <button onclick="toggleNotesList(this)" style="display:flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;font-size:14px;font-weight:500;color:var(--text);padding:4px 0;text-align:left;flex-shrink:0">
           <span id="notes-list-arrow" style="font-size:14px;color:var(--text3);transition:transform .2s">▶</span>
-          Notes ${(periode.periode||'').toLowerCase().includes('semestre') ? 'du semestre' : 'du trimestre'}
+          Notes ${isAnnee ? 'de l\'année' : (periode.periode||'').toLowerCase().includes('semestre') ? 'du semestre' : 'du trimestre'}
           <span style="font-weight:400;color:var(--text3);font-size:14px">(${filteredNotes.length}${notesFilter.size > 0 ? ' / ' + periodNotes.length : ''})</span>
         </button>
         ${filterBadges}
@@ -3137,7 +3143,11 @@ function toggleNotesList(btn) {
 const CHART_COLORS = ['#e24b4a','#1d9e75','#378add','#BA7517','#8B5CF6','#D4537E','#0F6E56','#639922','#534AB7','#D85A30','#185FA5','#3B6D11'];
 
 function renderNotesChart(periode, allNotes) {
-  const periodNotes = allNotes.filter(n => n.codePeriode === periode.codePeriode && !n.nonSignificatif && n.valeur && parseFloat(n.noteSur) > 0);
+  const _notesCodes3 = new Set(allNotes.map(n => n.codePeriode).filter(Boolean));
+  const isAnnee = _notesCodes3.size > 0 && !_notesCodes3.has(periode.codePeriode);
+  const periodNotes = isAnnee
+    ? allNotes.filter(n => !n.nonSignificatif && n.valeur && parseFloat(n.noteSur) > 0)
+    : allNotes.filter(n => n.codePeriode === periode.codePeriode && !n.nonSignificatif && n.valeur && parseFloat(n.noteSur) > 0);
   if (!periodNotes.length) { document.getElementById('notes-chart').insertAdjacentHTML('afterend','<em style="color:var(--text3);font-size:14px">Pas assez de notes pour afficher le graphique.</em>'); return; }
 
   // Grouper par matière (sans sous-matières) — points élève ET points moyenne classe
