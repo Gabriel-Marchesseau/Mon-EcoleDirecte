@@ -33,8 +33,9 @@
 - **Autorisations de sortie** : `POST /v3/eleves/{eleveId}/niveaux/0/autorisationsSortie.awp?verbe=get&v=4.98.0` avec `data={}` → `{ autorisations: [{jour, autorisationsMatin:{arriveeTardive,intercours,sortieAnticipee:{etat}}, autorisationsApresMidi:{…}}], demandesFamille, demandesEtab, parametrage:{libellesAutorisations} }` — disponible uniquement en vue enfant depuis compte parent
 - **Porte-monnaie enfant (depuis compte parent)** : `POST /v3/comptes/detail.awp?verbe=get&v=4.98.0` avec `data={"eleveId": id}` → comptes de cet enfant uniquement (même endpoint que porte-monnaie élève mais appelé depuis `loadVspPorteMonnaieParent()` séparément)
 - **Vie de classe** : `POST /v3/Classes/{classeId}/viedelaclasse.awp?verbe=get&v=4.98.0` avec `data={}` → messages/actualités de la classe. `classeId` extrait de `eleve.classe.id` (profil) — stocké dans `_childEleveView.classeId` pour la vue enfant, ou via `getIdClasse()` pour un compte élève direct.
-- **Espaces de travail (messagerie)** : `POST /v3/1/{accountId}/espacestravail.awp?verbe=get&typeModule=messagerie` avec `data={}` → liste des espaces avec accès messagerie (`messagerieEleve` ou `messagerieFamille`). `accountId` = `accountData.accounts[0].id` (ID du compte, pas de l'élève).
-- **Contacts espace de travail (messagerie)** : `POST /v3/messagerie/contacts/espacesTravail.awp?idEspace={id}&verbe=get` avec `data={}` → `{ contacts: [{id, civilite, nom, prenom, matiere|fonction|profil, …}] }`
+- **Espaces de travail (messagerie — élève)** : `POST /v3/E/{eleveId}/espacestravail.awp?verbe=get&typeModule=messagerie` → liste des espaces ; pour compte parent : `/v3/1/{accountId}/...` (accountId = `accountData.accounts[0].id`). L'onglet "Espace de travail" est masqué dans le contact picker pour les comptes parent.
+- **Contacts espace de travail (messagerie)** : `POST /v3/messagerie/contacts/espacesTravail.awp?idEspace={id}&verbe=get` → `{ contacts: [{id, civilite, nom, prenom, matiere|fonction|profil, …}] }`. Body : `{eleveId}` pour compte élève, `{}` pour compte parent.
+- **Archiver/Désarchiver un message** : `POST messages.awp?verbe=put` avec `data={action:'archiver'|'desarchiver', ids:[msgId], anneeMessages}` — même URL élève/parent que pour la lecture. Invalide le cache et recharge la liste.
 
 ---
 

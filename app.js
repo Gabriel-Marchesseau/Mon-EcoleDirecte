@@ -5622,13 +5622,18 @@ async function openMessageDialog(msgId) {
       ${from ? `<div style="font-size:14px;color:var(--text3);margin-bottom:2px">De : ${from}</div>` : ''}
       ${to   ? `<div style="font-size:14px;color:var(--text3);margin-bottom:2px">À : ${to}</div>`   : ''}
       <div style="font-size:14px;color:var(--text4);margin-bottom:8px">${cached?.date || ''}</div>
-      ${!_childEleveView ? `<div style="display:flex;gap:8px;margin-bottom:10px">
+      ${!_childEleveView ? `<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
         <button onclick="replyMessage(${msgId})" style="display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:7px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:13px;font-weight:500;cursor:pointer">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 4l4-3v2h2c3 0 5 2 5 5 0-2-2-3-5-3H6v2L2 4z" fill="currentColor"/></svg>Répondre
         </button>
         <button onclick="forwardMessage(${msgId})" style="display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:7px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:13px;font-weight:500;cursor:pointer">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M12 4l-4-3v2H6C3 3 1 5 1 8c0-2 2-3 5-3h2v2l4-3z" fill="currentColor"/></svg>Transférer
         </button>
+        ${msgActiveTab === 'received' ? `<button onclick="archiveMessage(${msgId})" style="display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:7px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:13px;font-weight:500;cursor:pointer">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>Archiver
+        </button>` : msgActiveTab === 'archived' ? `<button onclick="unarchiveMessage(${msgId})" style="display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:7px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:13px;font-weight:500;cursor:pointer">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/><polyline points="9 12 12 9 15 12"/><line x1="12" y1="9" x2="12" y2="21"/></svg>Désarchiver
+        </button>` : ''}
       </div>` : ''}
       ${cached?.files?.length ? `
       <div style="margin-bottom:10px;padding:8px;background:var(--bg3);border-radius:8px;border:1px solid var(--border)">
@@ -5728,6 +5733,43 @@ function forwardMessage(msgId) {
   const contentEl = document.getElementById('msg-dialog-content');
   const quotedHtml = (contentEl && !contentEl.querySelector('.spinner')) ? contentEl.innerHTML : '';
   openNewMessageDialog({ mode: 'forward', subject, quotedHtml, forwardId: msgId, forwardFiles: cached.files || [] });
+}
+
+async function _doArchiveAction(msgId, action) {
+  const eleveId = getEleveId();
+  const annee = document.getElementById('msg-annee')?.value || '';
+  const _acc = accountData?.accounts ? accountData.accounts[0] : accountData;
+  const msgBase = _acc?.typeCompte === 'E'
+    ? `/v3/eleves/${eleveId}/messages.awp`
+    : `/v3/familles/${eleveId}/messages.awp`;
+  const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
+  if (twoFaToken) headers['2fa-token'] = twoFaToken;
+  const resp = await fetch(`${getProxy()}${msgBase}?verbe=put&v=${API_VERSION}`, {
+    method: 'POST', headers,
+    body: `data=${encodeURIComponent(JSON.stringify({ action, ids: [msgId], anneeMessages: annee }))}`
+  });
+  const data = await resp.json();
+  if (data.code !== 200) throw new Error(data.message || `Erreur ${data.code}`);
+  selectedMessageId = null;
+  document.querySelector('.msg-split')?.classList.remove('show-detail');
+  const panel = document.getElementById('message-detail-panel');
+  if (panel) {
+    panel.style.alignItems = 'center';
+    panel.style.justifyContent = 'center';
+    panel.innerHTML = '<span style="color:var(--text4);font-size:13px;text-align:center">Sélectionne un message<br>pour voir le contenu ici</span>';
+  }
+  await edCache.delete(`messages:${eleveId}:${annee}`);
+  await loadMessages();
+}
+
+async function archiveMessage(msgId) {
+  try { await _doArchiveAction(msgId, 'archiver'); }
+  catch(e) { alert(`Erreur lors de l'archivage : ${e.message}`); }
+}
+
+async function unarchiveMessage(msgId) {
+  try { await _doArchiveAction(msgId, 'desarchiver'); }
+  catch(e) { alert(`Erreur lors du désarchivage : ${e.message}`); }
 }
 
 function getFileIcon(filename) {
@@ -6964,6 +7006,8 @@ let _workspaceMembersCache = [];
 
 async function openContactPicker() {
   const dark = document.body.classList.contains('dark');
+  const _acc = accountData?.accounts ? accountData.accounts[0] : accountData;
+  const _isEleve = _acc?.typeCompte === 'E';
   const overlay = document.createElement('div');
   overlay.id = 'contact-picker-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1100;display:flex;align-items:center;justify-content:center;padding:1rem';
@@ -6980,7 +7024,7 @@ async function openContactPicker() {
     <div style="display:flex;gap:4px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:3px">
       <button class="contact-tab active" data-ctab="teachers" onclick="switchContactTab('teachers')" style="flex:1;padding:4px;border:none;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;background:var(--bg);color:var(--text)">Enseignants</button>
       <button class="contact-tab" data-ctab="staff" onclick="switchContactTab('staff')" style="flex:1;padding:4px;border:none;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;background:transparent;color:var(--text3)">Personnels</button>
-      <button class="contact-tab" data-ctab="workspaces" onclick="switchContactTab('workspaces')" style="flex:1;padding:4px;border:none;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;background:transparent;color:var(--text3)">Espace de travail</button>
+      ${_isEleve ? '' : `<button class="contact-tab" data-ctab="workspaces" onclick="switchContactTab('workspaces')" style="flex:1;padding:4px;border:none;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;background:transparent;color:var(--text3)">Espace de travail</button>`}
     </div>
     <input id="contact-search" type="text" placeholder="Rechercher…" oninput="filterContacts()" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text);font-size:13px;outline:none">
     <div id="contact-list" style="flex:1;overflow-y:auto;max-height:340px;display:flex;flex-direction:column;gap:2px">
@@ -7061,14 +7105,16 @@ async function loadWorkspacesForPicker() {
   if (!listEl) return;
   listEl.innerHTML = `<span style="color:var(--text4);font-size:13px;text-align:center;padding:16px">${centeredSpinner()}</span>`;
   try {
-    const acc = accountData?.accounts ? accountData.accounts[0] : accountData;
-    const accountId = acc?.id || '';
     const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
-    const resp = await fetch(
-      `${getProxy()}/v3/1/${accountId}/espacestravail.awp?verbe=get&typeModule=messagerie&v=${API_VERSION}`,
-      { method: 'POST', headers, body: 'data={}' }
-    );
+    const acc = accountData?.accounts ? accountData.accounts[0] : accountData;
+    let espacesUrl;
+    if (acc?.typeCompte === 'E') {
+      espacesUrl = `${getProxy()}/v3/E/${getEleveId()}/espacestravail.awp?verbe=get&typeModule=messagerie&v=${API_VERSION}`;
+    } else {
+      espacesUrl = `${getProxy()}/v3/1/${acc?.id || ''}/espacestravail.awp?verbe=get&typeModule=messagerie&v=${API_VERSION}`;
+    }
+    const resp = await fetch(espacesUrl, { method: 'POST', headers, body: 'data={}' });
     const data = await resp.json();
     if (data.code !== 200) throw new Error(data.message || `Code ${data.code}`);
     const espaces = (data.data || []).filter(e => e.messagerieEleve || e.messagerieFamille);
@@ -7123,9 +7169,13 @@ async function loadWorkspaceMembers(espaceId) {
   try {
     const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;
+    const acc2 = accountData?.accounts ? accountData.accounts[0] : accountData;
+    const bodyData = acc2?.typeCompte === 'E'
+      ? `data=${encodeURIComponent(JSON.stringify({ eleveId: getEleveId() }))}`
+      : 'data={}';
     const resp = await fetch(
       `${getProxy()}/v3/messagerie/contacts/espacesTravail.awp?idEspace=${espaceId}&verbe=get&v=${API_VERSION}`,
-      { method: 'POST', headers, body: 'data={}' }
+      { method: 'POST', headers, body: bodyData }
     );
     const data = await resp.json();
     if (data.code !== 200) throw new Error(data.message || `Code ${data.code}`);
