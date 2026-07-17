@@ -93,52 +93,89 @@ fi
 step "Création du raccourci écran d'accueil..."
 SHORTCUTS_DIR="$HOME/.shortcuts"
 mkdir -p "$SHORTCUTS_DIR"
-SHORTCUT_FILE="$SHORTCUTS_DIR/Mon EcoleDirecte.sh"
-cat > "$SHORTCUT_FILE" << EOF
-#!/usr/bin/env bash
-cd "$DIR"
-PID_FILE="\${TMPDIR:-/tmp}/med-proxy.pid"
-LOG_FILE="$DIR/proxy.log"
-
-# Proxy déjà en marche — garder la session active
-if [ -f "\$PID_FILE" ] && kill -0 "\$(cat "\$PID_FILE")" 2>/dev/null; then
-  echo ""
-  echo "Proxy déjà en cours (PID \$(cat "\$PID_FILE"))"
-  echo "http://localhost:3131"
-  echo ""
-  wait
+# Pas d'espace dans le nom : le mécanisme des raccourcis dynamiques de
+# Termux:Widget (~/.termux/widget/dynamic_shortcuts) invoque le script via
+# `env "chemin"`, qui scinde un chemin contenant un espace en deux arguments
+# ("Mon" / "EcoleDirecte.sh") et échoue avec "No such file or directory"
+# (confirmé en test réel sur Mon-MELCloud). Le widget-liste classique n'a pas
+# ce problème, mais on évite l'espace pour que les deux mécanismes fonctionnent.
+SHORTCUT_FILE="$SHORTCUTS_DIR/Mon-EcoleDirecte.sh"
+OLD_SHORTCUT_FILE="$SHORTCUTS_DIR/Mon EcoleDirecte.sh"
+OLD_ICON_FILE="$SHORTCUTS_DIR/icons/Mon EcoleDirecte.sh.png"
+OLD_DYNAMIC_LINK="$HOME/.termux/widget/dynamic_shortcuts/Mon EcoleDirecte.sh"
+if [ -f "$OLD_SHORTCUT_FILE" ]; then
+  rm -f "$OLD_SHORTCUT_FILE" "$OLD_ICON_FILE" "$OLD_DYNAMIC_LINK"
+  warn "Ancien raccourci \"Mon EcoleDirecte.sh\" (avec espace) supprimé"
 fi
+cat > "$SHORTCUT_FILE" << EOF
+#!/data/data/com.termux/files/usr/bin/bash
+# "#!/usr/bin/env bash" échoue quand ce script est lancé via Termux:Widget
+# (raccourci dynamique / RUN_COMMAND) : le PATH complet de Termux n'est chargé
+# que dans une session interactive, pas dans ce contexte, donc "env" ne trouve
+# pas "bash" (erreur "No such file or directory", confirmé en test réel sur
+# Mon-MELCloud) - d'où le chemin absolu ci-dessus.
+cd "$DIR"
 
-# Démarrer le proxy
-echo ""
-echo "Démarrage du proxy..."
-rm -f "\$PID_FILE" "\$LOG_FILE"
-HTTP_MODE=1 node proxy.js > "\$LOG_FILE" 2>&1 &
-NODE_PID=\$!
-echo \$NODE_PID > "\$PID_FILE"
+# Termux:Widget ouvre systématiquement une nouvelle session à chaque appui sur
+# le raccourci, sans moyen de réutiliser une session déjà ouverte (pas d'API
+# Termux pour ça). Si une session précédente est déjà en train d'attendre
+# ci-dessous (proxy actif), on évite d'en empiler une deuxième en double : on
+# se contente de rouvrir le navigateur sur l'appli déjà démarrée, puis on
+# quitte tout de suite au lieu de rebloquer sur la boucle d'attente.
+LOCK_FILE="\${TMPDIR:-/tmp}/med-shortcut-session.pid"
+if [ -f "\$LOCK_FILE" ] && kill -0 "\$(cat "\$LOCK_FILE" 2>/dev/null)" 2>/dev/null; then
+  command -v termux-open-url &>/dev/null && termux-open-url "http://localhost:3131" 2>/dev/null
+  echo "Mon EcoleDirecte tourne déjà (session précédente) - navigateur rouvert."
+  sleep 2
+  exit 0
+fi
+echo \$\$ > "\$LOCK_FILE"
+trap 'rm -f "\$LOCK_FILE"' EXIT
 
-for i in 1 2 3 4 5 6 7 8; do
-  sleep 1
-  grep -q "démarré" "\$LOG_FILE" 2>/dev/null && break
-done
-
-echo "Proxy en cours (PID \$NODE_PID)"
-echo "http://localhost:3131"
-echo ""
+bash run.sh
 termux-open-url "http://localhost:3131" 2>/dev/null || am start -a android.intent.action.VIEW -d "http://localhost:3131" 2>/dev/null
 
-# Garder la session vivante — le proxy reste actif tant que ce script tourne
-wait \$NODE_PID
+# Une fois "bash run.sh" terminé (le proxy tourne en arrière-plan via nohup),
+# ce script se terminerait aussi et la session Termux ouverte par le widget
+# avec lui - Android tue alors le proxy peu après, faute de session/fenêtre
+# au premier plan pour le retenir (confirmé en test réel). On bloque donc ici
+# tant que le proxy tourne, pour garder la session vivante.
+PID_FILE="\${TMPDIR:-/tmp}/med-proxy.pid"
+while kill -0 "\$(cat "\$PID_FILE" 2>/dev/null)" 2>/dev/null; do
+  sleep 5
+done
 EOF
 chmod +x "$SHORTCUT_FILE"
 ok "Raccourci créé dans ~/.shortcuts/"
+
+step "Création de l'icône du widget..."
+ICONS_DIR="$SHORTCUTS_DIR/icons"
+mkdir -p "$ICONS_DIR"
+# Termux:Widget attend un fichier nommé "<nom-du-script>.png" (extension .sh
+# conservée, ex. "Mon-EcoleDirecte.sh.png"), pas juste le nom du script sans extension.
+ICON_FILE="$ICONS_DIR/$(basename "$SHORTCUT_FILE").png"
+if [ -f "$DIR/logo.png" ]; then
+  cp "$DIR/logo.png" "$ICON_FILE"
+  ok "Icône copiée dans ~/.shortcuts/icons/"
+else
+  warn "logo.png introuvable, Termux:Widget utilisera son icône par défaut"
+fi
+
+step "Préparation du raccourci individuel (icône seule)..."
+DYNAMIC_DIR="$HOME/.termux/widget/dynamic_shortcuts"
+mkdir -p "$DYNAMIC_DIR"
+ln -sf "$SHORTCUT_FILE" "$DYNAMIC_DIR/$(basename "$SHORTCUT_FILE")"
+ok "Lien créé dans ~/.termux/widget/dynamic_shortcuts/"
+
 echo ""
-echo -e "  ${CYAN}Pour afficher l'icône sur votre écran d'accueil :${RESET}"
+echo -e "  ${CYAN}Pour afficher l'icône sur l'écran d'accueil :${RESET}"
+echo "  Le widget \"liste\" de Termux:Widget (celui qui affiche un titre + une"
+echo "  liste de scripts) n'affiche jamais d'icône individuelle. Pour une icône"
+echo "  seule sur l'écran d'accueil :"
 echo "  1. Installez l'app \"Termux:Widget\" depuis F-Droid"
-echo "  2. Appuyez longuement sur l'écran d'accueil"
-echo "     → Widgets → Termux → Termux:Widget"
-echo "  3. Placez le widget — l'icône \"Mon EcoleDirecte\" apparaît"
-echo "  → Un simple appui lance l'app et ouvre le navigateur"
+echo "  2. Ouvrez l'app Termux:Widget elle-même -> bouton \"CREATE SHORTCUTS\""
+echo "  3. Appui long sur l'icône de l'app Termux:Widget (tiroir d'applications)"
+echo "  4. Faites glisser le raccourci \"Mon-EcoleDirecte\" sur l'écran d'accueil"
 echo ""
 
 # ── Bilan ─────────────────────────────────────────────────

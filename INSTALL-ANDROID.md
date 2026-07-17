@@ -82,11 +82,11 @@ L'installeur va :
 
 > Cette étape nécessite Termux:Widget installé via F-Droid (étape 1).
 
-L'installeur a déjà créé le script de lancement. Il reste à placer le widget :
+L'installeur a déjà créé le raccourci. Pour obtenir une icône individuelle (et non le widget "liste" qui affiche un titre + une liste de scripts) :
 
-1. Appuyez **longuement** sur l'écran d'accueil de votre téléphone
-2. Choisissez **Widgets** → **Termux** → **Termux:Widget**
-3. Placez le widget où vous voulez
+1. Ouvrez l'app **Termux:Widget** elle-même → bouton **CREATE SHORTCUTS**
+2. Appuyez **longuement** sur l'icône de l'app Termux:Widget (tiroir d'applications)
+3. Faites glisser le raccourci **Mon-EcoleDirecte** sur l'écran d'accueil
 4. L'icône **Mon EcoleDirecte** apparaît — appuyez dessus pour lancer l'application
 
 ---
