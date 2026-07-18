@@ -2,9 +2,10 @@
 #  Mon EcoleDirecte — Lancement
 #  Usage : .\run.ps1           (mode normal)
 #          .\run.ps1 --debug   (mode debug avec logs detailles)
+#          .\run.ps1 --stop    (arrete le proxy en cours)
 # ============================================================
 
-param([switch]$debug)
+param([switch]$debug, [switch]$stop)
 
 $DIR = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $DIR
@@ -13,6 +14,22 @@ function Write-Step($msg) { Write-Host "[..] $msg" -ForegroundColor Cyan }
 function Write-OK($msg)   { Write-Host "[OK] $msg"  -ForegroundColor Green }
 function Write-Err($msg)  { Write-Host "[ERREUR] $msg" -ForegroundColor Red }
 function Write-Warn($msg) { Write-Host "[AVERT] $msg" -ForegroundColor Yellow }
+
+# ── Mode arret ────────────────────────────────────────────────
+if ($stop) {
+    $conn = Get-NetTCPConnection -LocalPort 3131 -ErrorAction SilentlyContinue
+    if ($conn) {
+        try {
+            Stop-Process -Id $conn.OwningProcess -Force -ErrorAction SilentlyContinue
+            Write-OK "Proxy arrete (port 3131 libere)."
+        } catch {
+            Write-Err "Impossible d'arreter le proxy : $_"
+        }
+    } else {
+        Write-Warn "Le proxy n'est pas en cours d'execution."
+    }
+    exit 0
+}
 
 Write-Host ""
 Write-Host "  ================================" -ForegroundColor White
@@ -80,7 +97,7 @@ if (-not $skipLaunch) {
         Write-Step "Demarrage du proxy..."
         Start-Process -FilePath "cmd.exe" `
             -ArgumentList "/c cd /d `"$DIR`" && node proxy.js" `
-            -WindowStyle Minimized
+            -WindowStyle Hidden
     }
 
     # ── 4. Attendre que le port soit ouvert ──────────────────

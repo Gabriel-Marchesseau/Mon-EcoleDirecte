@@ -164,6 +164,12 @@ Martial travaille en itératif sur Windows. Claude Code lit/modifie les fichiers
 PowerShell -ExecutionPolicy Bypass -File run.ps1 -debug
 ```
 
+**Arrêter le proxy** (mode normal = fenêtre `Hidden`, invisible barre des tâches/Alt+Tab, pas de fenêtre à fermer manuellement) :
+```powershell
+PowerShell -ExecutionPolicy Bypass -File run.ps1 -stop
+```
+Ou double-clic sur `Stop_Mon_EcoleDirecte.bat` / `Start_Mon_EcoleDirecte.bat --stop`.
+
 ---
 
 ## Références détaillées
