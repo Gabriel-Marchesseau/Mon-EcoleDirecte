@@ -94,7 +94,7 @@ L'installeur a déjà créé le raccourci. Pour obtenir une icône individuelle 
 ## Étape 6 — Démarrer l'application
 
 **Avec l'icône** *(après l'étape 5)* : appuyez simplement sur l'icône **Mon EcoleDirecte**.  
-Le proxy démarre et le navigateur s'ouvre automatiquement sur l'application.
+Le proxy démarre et le navigateur s'ouvre automatiquement sur l'application. Le raccourci s'exécute en arrière-plan (une notification Termux avec bouton d'arrêt reste affichée) sans ouvrir de terminal visible ni apparaître dans l'écran multitâche.
 
 **Sans l'icône** : ouvrez Termux et tapez :
 ```bash

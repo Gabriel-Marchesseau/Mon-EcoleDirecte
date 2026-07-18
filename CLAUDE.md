@@ -137,6 +137,13 @@ Fix : `isAnnee = !_notesCodes.has(periode.codePeriode)` — si la période n'est
 
 ---
 
+## À valider — non testé en conditions réelles
+
+### Raccourci Termux:Widget dans `~/.shortcuts/tasks/`
+`install.sh` crée désormais le script du raccourci écran d'accueil dans `~/.shortcuts/tasks/` (au lieu de `~/.shortcuts/` directement), pour qu'il s'exécute en arrière-plan via `RunCommandService` sans ouvrir d'Activity Android — donc sans apparaître dans l'écran multitâche, tout en gardant la notification Termux (avec bouton d'arrêt). Migration automatique de l'ancien raccourci direct incluse. Porté depuis Mon-MELCloud mais **pas encore confirmé en conditions réelles** sur ce projet — à retirer de cette section une fois testé sur téléphone.
+
+---
+
 ## Workflow de développement
 
 Martial travaille en itératif sur Windows. Claude Code lit/modifie les fichiers directement.
