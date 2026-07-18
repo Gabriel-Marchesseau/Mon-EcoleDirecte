@@ -17,7 +17,9 @@ function Write-Warn($msg) { Write-Host "[AVERT] $msg" -ForegroundColor Yellow }
 
 # ── Mode arret ────────────────────────────────────────────────
 if ($stop) {
-    $conn = Get-NetTCPConnection -LocalPort 3131 -ErrorAction SilentlyContinue
+    # -State Listen : une connexion TimeWait (residuelle apres un arret recent,
+    # OwningProcess=0) ne doit pas etre prise pour un proxy actif.
+    $conn = Get-NetTCPConnection -LocalPort 3131 -State Listen -ErrorAction SilentlyContinue
     if ($conn) {
         try {
             Stop-Process -Id $conn.OwningProcess -Force -ErrorAction SilentlyContinue
@@ -59,7 +61,11 @@ if (-not $ready) {
 Write-OK "Environnement pret"
 
 # ── 2. Gestion du proxy existant ─────────────────────────────
-$portInUse = Get-NetTCPConnection -LocalPort 3131 -ErrorAction SilentlyContinue
+# -State Listen : une connexion TimeWait residuelle (apres un arret recent via
+# l'UI ou -stop, OwningProcess=0) etait a tort detectee comme "proxy deja
+# lance", ce qui sautait le demarrage alors que rien ne tournait reellement -
+# navigateur ouvert sur une page inaccessible (confirme en test reel).
+$portInUse = Get-NetTCPConnection -LocalPort 3131 -State Listen -ErrorAction SilentlyContinue
 $skipLaunch = $false
 
 if ($portInUse) {
@@ -95,9 +101,12 @@ if (-not $skipLaunch) {
         }
     } else {
         Write-Step "Demarrage du proxy..."
-        Start-Process -FilePath "cmd.exe" `
-            -ArgumentList "/c cd /d `"$DIR`" && node proxy.js" `
-            -WindowStyle Hidden
+        # Lance node.exe directement (pas de wrapper cmd.exe /c && ...) : ce
+        # wrapper echoue silencieusement avec -WindowStyle Hidden des que le
+        # script appelant (run.ps1) est lui-meme lance de facon detachee/sans
+        # fenetre (cas reel d'un double-clic sur le .bat) - confirme en test :
+        # le port 3131 ne s'ouvre jamais, sans la moindre erreur visible.
+        Start-Process -FilePath "node.exe" -ArgumentList "proxy.js" -WorkingDirectory $DIR -WindowStyle Hidden
     }
 
     # ── 4. Attendre que le port soit ouvert ──────────────────
@@ -107,7 +116,7 @@ if (-not $skipLaunch) {
     while ($waited -lt $maxWait) {
         Start-Sleep -Seconds 1
         $waited++
-        $conn = Get-NetTCPConnection -LocalPort 3131 -ErrorAction SilentlyContinue
+        $conn = Get-NetTCPConnection -LocalPort 3131 -State Listen -ErrorAction SilentlyContinue
         if ($conn) { $started = $true; break }
     }
 
