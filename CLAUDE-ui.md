@@ -50,8 +50,9 @@ Dark mode : `color-scheme: dark` + `filter: invert(1)` sur l'icône calendrier
 
 ## Arrêt de l'application — `shutdownApp()`
 - Bouton ⏻ "Fermer" présent en deux endroits (dialog profil mobile, barre d'actions desktop `#profile-bar-actions`) — les deux appellent `shutdownApp()`
-- `confirm()` puis `POST /shutdown` vers le proxy
-- `window.close()` échoue silencieusement sur un onglet non ouvert via `window.open()` depuis du script (cas normal ici, onglet ouvert par l'OS/le navigateur) — remplacé par un overlay plein écran bloquant (`z-index:3000`, au-dessus de tous les autres dialogs) sur le pattern `.dlg-overlay`, sans bouton de fermeture ni backdrop cliquable (la confirmation est déjà faite en amont) : message "Mon EcoleDirecte est arrêté" + invitation à fermer l'onglet manuellement
+- Confirmation via un dialog `.dlg-overlay` in-app (pas de `window.confirm()` natif — visible dans la barre du navigateur/OS, pas dans le style de l'appli) : boutons `#shutdown-cancel-btn` (Annuler, style neutre habituel) / `#shutdown-confirm-btn` (Fermer, rouge `#dc2626`, seul bouton destructif de l'appli). Backdrop cliquable pour annuler, comme les autres dialogs.
+- À la confirmation : `POST /shutdown` vers le proxy, puis un second overlay plein écran bloquant (`z-index:3000`, au-dessus de tous les autres dialogs), sans bouton de fermeture ni backdrop cliquable cette fois (la confirmation est déjà faite) : message "Mon EcoleDirecte est arrêté" + invitation à fermer l'onglet manuellement
+- `window.close()` n'est plus utilisé : il échoue silencieusement sur un onglet non ouvert via `window.open()` depuis du script (cas normal ici, onglet ouvert par l'OS/le navigateur)
 
 ## Accueil — post-its
 - Classes CSS : `.postits-list`, `.postit-card`, `.postit-card.type-{info|alerte|urgence}`, `.postit-meta`, `.postit-type`, `.postit-content`, `.postit-author`
