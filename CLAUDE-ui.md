@@ -48,6 +48,11 @@ Dark mode : `color-scheme: dark` + `filter: invert(1)` sur l'icône calendrier
 - Layout stable : hauteur du wrapper fixée au maximum des deux sections pour éviter le saut au changement d'onglet
 - Boutons Annuler/Valider communs en bas (hors des sections), `#pf-save-btn` détecte l'onglet actif
 
+## Arrêt de l'application — `shutdownApp()`
+- Bouton ⏻ "Fermer" présent en deux endroits (dialog profil mobile, barre d'actions desktop `#profile-bar-actions`) — les deux appellent `shutdownApp()`
+- `confirm()` puis `POST /shutdown` vers le proxy
+- `window.close()` échoue silencieusement sur un onglet non ouvert via `window.open()` depuis du script (cas normal ici, onglet ouvert par l'OS/le navigateur) — remplacé par un overlay plein écran bloquant (`z-index:3000`, au-dessus de tous les autres dialogs) sur le pattern `.dlg-overlay`, sans bouton de fermeture ni backdrop cliquable (la confirmation est déjà faite en amont) : message "Mon EcoleDirecte est arrêté" + invitation à fermer l'onglet manuellement
+
 ## Accueil — post-its
 - Classes CSS : `.postits-list`, `.postit-card`, `.postit-card.type-{info|alerte|urgence}`, `.postit-meta`, `.postit-type`, `.postit-content`, `.postit-author`
 - Couleurs de bordure gauche : info → `#1d4ed8`, alerte → `#ca8a04`, urgence → `#dc2626`

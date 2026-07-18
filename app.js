@@ -1252,7 +1252,19 @@ async function shutdownApp() {
   try {
     await fetch(`${getProxy()}/shutdown`, { method: 'POST' });
   } catch(e) { /* normal, le serveur s'arrête */ }
-  window.close();
+  // window.close() ne fonctionne pas sur un onglet ouvert par l'OS/le
+  // navigateur (pas via window.open() depuis du script) : la plupart des
+  // navigateurs modernes ignorent l'appel silencieusement. On affiche donc
+  // un écran final bloquant plutôt qu'un appel qui échouerait sans retour
+  // visible pour l'utilisateur.
+  const overlay = document.createElement('div');
+  overlay.classList.add('dlg-overlay');
+  overlay.style.cssText = 'position:fixed;inset:0;background:var(--bg);color:var(--text);z-index:3000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:1.5rem';
+  overlay.innerHTML = `
+    <div style="font-size:40px">⏻</div>
+    <div style="font-size:17px;font-weight:600">Mon EcoleDirecte est arrêté</div>
+    <div style="font-size:14px;color:var(--text3)">Vous pouvez fermer cet onglet manuellement.</div>`;
+  document.body.appendChild(overlay);
 }
 
 function logout() {
