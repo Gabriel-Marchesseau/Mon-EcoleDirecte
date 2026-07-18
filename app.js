@@ -1247,12 +1247,45 @@ async function saveProfile(loginId, section) {
   }
 }
 
-async function shutdownApp() {
-  if (!confirm('Fermer Mon EcoleDirecte et arrêter le serveur ?')) return;
-  try {
-    await fetch(`${getProxy()}/shutdown`, { method: 'POST' });
-  } catch(e) { /* normal, le serveur s'arrête */ }
-  window.close();
+function shutdownApp() {
+  const overlay = document.createElement('div');
+  overlay.classList.add('dlg-overlay');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:3000;display:flex;align-items:center;justify-content:center;padding:1.5rem';
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+
+  const dialog = document.createElement('div');
+  dialog.style.cssText = 'background:var(--bg);color:var(--text);border-radius:12px;padding:1.5rem;max-width:340px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.35);text-align:center';
+  dialog.innerHTML = `
+    <div style="font-size:32px;margin-bottom:8px">⏻</div>
+    <div style="font-size:16px;font-weight:600;margin-bottom:6px">Fermer Mon EcoleDirecte ?</div>
+    <div style="font-size:13px;color:var(--text3);margin-bottom:18px">Le serveur proxy local sera arrêté.</div>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button id="shutdown-cancel-btn" style="padding:8px 22px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:14px;cursor:pointer;font-weight:500">Annuler</button>
+      <button id="shutdown-confirm-btn" style="padding:8px 22px;border-radius:8px;border:none;background:#dc2626;color:#fff;font-size:14px;font-weight:600;cursor:pointer">Fermer</button>
+    </div>`;
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+
+  document.getElementById('shutdown-cancel-btn').onclick = () => overlay.remove();
+  document.getElementById('shutdown-confirm-btn').onclick = async () => {
+    overlay.remove();
+    try {
+      await fetch(`${getProxy()}/shutdown`, { method: 'POST' });
+    } catch(e) { /* normal, le serveur s'arrête */ }
+    // window.close() ne fonctionne pas sur un onglet ouvert par l'OS/le
+    // navigateur (pas via window.open() depuis du script) : la plupart des
+    // navigateurs modernes ignorent l'appel silencieusement. On affiche donc
+    // un écran final bloquant plutôt qu'un appel qui échouerait sans retour
+    // visible pour l'utilisateur.
+    const doneOverlay = document.createElement('div');
+    doneOverlay.classList.add('dlg-overlay');
+    doneOverlay.style.cssText = 'position:fixed;inset:0;background:var(--bg);color:var(--text);z-index:3000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:1.5rem';
+    doneOverlay.innerHTML = `
+      <div style="font-size:40px">⏻</div>
+      <div style="font-size:17px;font-weight:600">Mon EcoleDirecte est arrêté</div>
+      <div style="font-size:14px;color:var(--text3)">Vous pouvez fermer cet onglet manuellement.</div>`;
+    document.body.appendChild(doneOverlay);
+  };
 }
 
 function logout() {

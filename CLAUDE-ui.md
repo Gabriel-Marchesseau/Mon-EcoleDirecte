@@ -48,6 +48,12 @@ Dark mode : `color-scheme: dark` + `filter: invert(1)` sur l'icône calendrier
 - Layout stable : hauteur du wrapper fixée au maximum des deux sections pour éviter le saut au changement d'onglet
 - Boutons Annuler/Valider communs en bas (hors des sections), `#pf-save-btn` détecte l'onglet actif
 
+## Arrêt de l'application — `shutdownApp()`
+- Bouton ⏻ "Fermer" présent en deux endroits (dialog profil mobile, barre d'actions desktop `#profile-bar-actions`) — les deux appellent `shutdownApp()`
+- Confirmation via un dialog `.dlg-overlay` in-app (pas de `window.confirm()` natif — visible dans la barre du navigateur/OS, pas dans le style de l'appli) : boutons `#shutdown-cancel-btn` (Annuler, style neutre habituel) / `#shutdown-confirm-btn` (Fermer, rouge `#dc2626`, seul bouton destructif de l'appli). Backdrop cliquable pour annuler, comme les autres dialogs.
+- À la confirmation : `POST /shutdown` vers le proxy, puis un second overlay plein écran bloquant (`z-index:3000`, au-dessus de tous les autres dialogs), sans bouton de fermeture ni backdrop cliquable cette fois (la confirmation est déjà faite) : message "Mon EcoleDirecte est arrêté" + invitation à fermer l'onglet manuellement
+- `window.close()` n'est plus utilisé : il échoue silencieusement sur un onglet non ouvert via `window.open()` depuis du script (cas normal ici, onglet ouvert par l'OS/le navigateur)
+
 ## Accueil — post-its
 - Classes CSS : `.postits-list`, `.postit-card`, `.postit-card.type-{info|alerte|urgence}`, `.postit-meta`, `.postit-type`, `.postit-content`, `.postit-author`
 - Couleurs de bordure gauche : info → `#1d4ed8`, alerte → `#ca8a04`, urgence → `#dc2626`

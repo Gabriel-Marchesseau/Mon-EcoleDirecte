@@ -76,7 +76,7 @@ PowerShell -ExecutionPolicy Bypass -File run.ps1
 
 This will:
 1. Verify that the installation is complete (cert, node_modules)
-2. Start the local HTTPS proxy silently in the background (`node proxy.js`)
+2. Start the local HTTPS proxy silently in the background (`node proxy.js`), with no visible window (not even in the taskbar or Alt+Tab)
 3. Open `https://localhost:3131` in your default browser
 
 ### Debug mode
@@ -97,11 +97,13 @@ In debug mode:
 
 ### Stopping the proxy
 
+Since the proxy runs with no visible window, double-click **`Stop_Mon_EcoleDirecte.bat`**, or:
+
 ```powershell
-Stop-Process -Id (Get-NetTCPConnection -LocalPort 3131).OwningProcess -Force
+PowerShell -ExecutionPolicy Bypass -File run.ps1 -stop
 ```
 
-Or use the **⏻** button in the app header to stop the proxy and close the tab.
+Or use the **⏻** button in the app header to stop the proxy from the UI.
 
 ---
 
@@ -139,7 +141,8 @@ mon-ecoledirecte/
 ├── install.ps1                   # Installation script (PowerShell)
 ├── run.ps1                       # Launch script (PowerShell)
 ├── Install_Mon_EcoleDirecte.bat    # One-click installer
-└── Start_Mon_EcoleDirecte.bat      # One-click launcher
+├── Start_Mon_EcoleDirecte.bat      # One-click launcher
+└── Stop_Mon_EcoleDirecte.bat       # One-click stop
 ```
 
 ---

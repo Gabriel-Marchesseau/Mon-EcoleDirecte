@@ -99,13 +99,31 @@ mkdir -p "$SHORTCUTS_DIR"
 # ("Mon" / "EcoleDirecte.sh") et échoue avec "No such file or directory"
 # (confirmé en test réel sur Mon-MELCloud). Le widget-liste classique n'a pas
 # ce problème, mais on évite l'espace pour que les deux mécanismes fonctionnent.
-SHORTCUT_FILE="$SHORTCUTS_DIR/Mon-EcoleDirecte.sh"
+#
+# NON TESTÉ EN CONDITIONS RÉELLES sur ce projet (porté depuis Mon-MELCloud,
+# à confirmer sur téléphone) : un script placé dans ~/.shortcuts/tasks/ (au
+# lieu de ~/.shortcuts/ directement) est exécuté en arrière-plan par
+# Termux:Widget via RunCommandService, sans jamais ouvrir de terminal/Activity
+# Android - il n'apparaît donc pas dans l'écran multitâche, tout en gardant la
+# notification Termux (avec bouton d'arrêt) comme avant.
+SHORTCUTS_TASKS_DIR="$SHORTCUTS_DIR/tasks"
+mkdir -p "$SHORTCUTS_TASKS_DIR"
+SHORTCUT_FILE="$SHORTCUTS_TASKS_DIR/Mon-EcoleDirecte.sh"
 OLD_SHORTCUT_FILE="$SHORTCUTS_DIR/Mon EcoleDirecte.sh"
 OLD_ICON_FILE="$SHORTCUTS_DIR/icons/Mon EcoleDirecte.sh.png"
 OLD_DYNAMIC_LINK="$HOME/.termux/widget/dynamic_shortcuts/Mon EcoleDirecte.sh"
 if [ -f "$OLD_SHORTCUT_FILE" ]; then
   rm -f "$OLD_SHORTCUT_FILE" "$OLD_ICON_FILE" "$OLD_DYNAMIC_LINK"
   warn "Ancien raccourci \"Mon EcoleDirecte.sh\" (avec espace) supprimé"
+fi
+# Migration : ancien raccourci créé directement dans ~/.shortcuts/ (visible
+# dans le multitâche Android) avant le passage à ~/.shortcuts/tasks/.
+OLD_DIRECT_SHORTCUT_FILE="$SHORTCUTS_DIR/Mon-EcoleDirecte.sh"
+OLD_DIRECT_ICON_FILE="$SHORTCUTS_DIR/icons/Mon-EcoleDirecte.sh.png"
+OLD_DIRECT_DYNAMIC_LINK="$HOME/.termux/widget/dynamic_shortcuts/Mon-EcoleDirecte.sh"
+if [ -f "$OLD_DIRECT_SHORTCUT_FILE" ]; then
+  rm -f "$OLD_DIRECT_SHORTCUT_FILE" "$OLD_DIRECT_ICON_FILE" "$OLD_DIRECT_DYNAMIC_LINK"
+  warn "Ancien raccourci ~/.shortcuts/Mon-EcoleDirecte.sh (visible dans le multitâche) supprimé"
 fi
 cat > "$SHORTCUT_FILE" << EOF
 #!/data/data/com.termux/files/usr/bin/bash
@@ -146,7 +164,7 @@ while kill -0 "\$(cat "\$PID_FILE" 2>/dev/null)" 2>/dev/null; do
 done
 EOF
 chmod +x "$SHORTCUT_FILE"
-ok "Raccourci créé dans ~/.shortcuts/"
+ok "Raccourci créé dans ~/.shortcuts/tasks/"
 
 step "Création de l'icône du widget..."
 ICONS_DIR="$SHORTCUTS_DIR/icons"

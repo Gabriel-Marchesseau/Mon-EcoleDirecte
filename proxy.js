@@ -239,12 +239,17 @@ server.on('request', async (req, res) => {
     res.end(JSON.stringify({ ok: true }));
     logAlways('\n  Arrêt demandé depuis le navigateur.');
     setTimeout(() => {
-      // Tuer le processus cmd parent (fonctionne en mode debug /k et normal /c)
-      const { execSync } = require('child_process');
-      try {
-        // Récupérer le PID du processus parent (cmd.exe) et le terminer
-        execSync(`taskkill /PID ${process.ppid} /F /T`, { stdio: 'ignore' });
-      } catch(e) {}
+      // Mode normal : run.ps1 lance node.exe directement (pas de wrapper
+      // cmd.exe), ce process EST le serveur -> process.exit() suffit.
+      // Mode debug : node.exe est un enfant de nodemon (lui-même dans une
+      // fenêtre cmd /k visible) -> on tue l'arbre nodemon via son PID pour
+      // que la fenêtre debug se referme proprement avec le proxy.
+      if (DEBUG) {
+        const { execSync } = require('child_process');
+        try {
+          execSync(`taskkill /PID ${process.ppid} /F /T`, { stdio: 'ignore' });
+        } catch(e) {}
+      }
       process.exit(0);
     }, 200);
     return;

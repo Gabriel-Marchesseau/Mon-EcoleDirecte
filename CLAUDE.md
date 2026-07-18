@@ -135,6 +135,14 @@ Fix : `isAnnee = !_notesCodes.has(periode.codePeriode)` — si la période n'est
 `detectCurrentPeriod()` restreint aussi la sélection automatique aux seules périodes ayant des notes réelles (évite de pointer sur une période vide au chargement).  
 `buildNotesPeriodButtons()` ne filtre plus `A000` — tous les boutons de période sont affichés.
 
+### run.ps1 — faux positif "proxy déjà lancé" (connexions TimeWait)
+Après un arrêt (UI ou `-stop`), une connexion TCP sur le port 3131 reste en état `TimeWait` pendant un moment (comportement normal, `OwningProcess = 0`). `Get-NetTCPConnection -LocalPort 3131` sans filtre la détecte comme si le proxy tournait encore → `run.ps1` sautait le démarrage, le navigateur s'ouvrait sur une page inaccessible.  
+Fix : les 3 usages dans `run.ps1` (détection proxy existant, boucle d'attente au démarrage, `-stop`) filtrent désormais sur `-State Listen`.
+
+### run.ps1 — lancement proxy caché via cmd.exe silencieusement en échec
+Le mode normal lançait `cmd.exe /c cd /d ... && node proxy.js` avec `-WindowStyle Hidden`. Ce wrapper échoue silencieusement (le port ne s'ouvre jamais, aucune erreur) dès que `run.ps1` lui-même est lancé de façon détachée/sans fenêtre (cas réel d'un double-clic sur `Start_Mon_EcoleDirecte.bat`).  
+Fix : lancement direct de `node.exe` (`Start-Process -FilePath "node.exe" -ArgumentList "proxy.js" -WorkingDirectory $DIR -WindowStyle Hidden`), sans wrapper `cmd.exe`. Impact côté `proxy.js` : `/shutdown` ne fait `taskkill` sur le process parent qu'en mode `DEBUG` (nodemon) — en mode normal le process node **est** le serveur, `process.exit(0)` suffit (tuer un ancien PID parent recyclé aurait été dangereux).
+
 ---
 
 ## Workflow de développement
@@ -156,6 +164,12 @@ Martial travaille en itératif sur Windows. Claude Code lit/modifie les fichiers
 ```powershell
 PowerShell -ExecutionPolicy Bypass -File run.ps1 -debug
 ```
+
+**Arrêter le proxy** (mode normal = fenêtre `Hidden`, invisible barre des tâches/Alt+Tab, pas de fenêtre à fermer manuellement) :
+```powershell
+PowerShell -ExecutionPolicy Bypass -File run.ps1 -stop
+```
+Ou double-clic sur `Stop_Mon_EcoleDirecte.bat` / `Start_Mon_EcoleDirecte.bat --stop`.
 
 ---
 
