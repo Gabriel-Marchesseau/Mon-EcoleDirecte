@@ -457,7 +457,7 @@ async function silentLoginWithFa(fa, twoFaTokenValue, savedSession) {
 const ROUTES = [
   { label: 'Notes',           method: 'POST', path: '/v3/eleves/{id}/notes.awp?verbe=get',        body: 'data={}' },
   { label: 'Emploi du temps', method: 'POST', path: '/v3/E/{id}/emploidutemps.awp?verbe=get',     body: 'data={"dateDebut":"2026-03-10","dateFin":"2026-03-16"}' },
-  { label: 'Messages',        method: 'POST', path: '/v3/eleves/{id}/messages.awp?verbe=get',     body: 'data={"anneeMessages":"2025-2026"}' },
+  { label: 'Messages',        method: 'POST', path: '/v3/eleves/{id}/messages.awp?verbe=get',     body: 'data={"anneeMessages":""}' },
   { label: 'Cahier de textes',method: 'POST', path: '/v3/eleves/{id}/cahierdetexte.awp?verbe=get',body: 'data={}' },
   { label: 'Absences',        method: 'POST', path: '/v3/eleves/{id}/viescolaire.awp?verbe=get',  body: 'data={}' },
   { label: 'Infos compte',    method: 'POST', path: '/v3/eleves/{id}/infos.awp?verbe=get',        body: 'data={}' },
@@ -550,6 +550,7 @@ function onLoggedIn(data) {
   _childEleveView = null;
   const msgNewBtn = document.getElementById('msg-new-btn');
   if (msgNewBtn) msgNewBtn.style.display = '';
+  populateMsgAnneeSelect();
   document.getElementById('login-card').style.display = 'none';
   document.getElementById('api-card').classList.add('active-card');
   const acc = data.accounts ? data.accounts[0] : data;
@@ -1750,6 +1751,23 @@ function detectCurrentPeriod(periodes) {
 }
 
 let msgCounts = { received: 0, sent: 0, draft: 0, archived: 0 };
+
+// Remplit le sélecteur d'année des messages : "Année en cours" (value="", comme l'appli
+// officielle EcoleDirecte — le serveur résout lui-même l'année active, sans qu'il faille la
+// coder en dur ici) + les 3 années scolaires précédentes, calculées dynamiquement pour ne
+// jamais devenir obsolète après une rentrée scolaire (bascule estimée début juillet).
+function populateMsgAnneeSelect() {
+  const sel = document.getElementById('msg-annee');
+  if (!sel) return;
+  const now = new Date();
+  const refStart = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+  let html = `<option value="" selected>Année en cours</option>`;
+  for (let i = 1; i <= 3; i++) {
+    const s = refStart - i;
+    html += `<option value="${s}-${s + 1}">${s}-${s + 1}</option>`;
+  }
+  sel.innerHTML = html;
+}
 
 async function loadMessages() {
   // En vue enfant (compte parent visualisant un élève), utiliser l'ID et l'endpoint de l'élève
@@ -5888,7 +5906,7 @@ async function triggerDownload(url, fetchOptions, filename) {
 
 async function downloadAttachment(msgId, fileId, filename) {
   try {
-    const annee = document.getElementById('msg-annee')?.value || '2025-2026';
+    const annee = document.getElementById('msg-annee')?.value || '';
     const dlUrl = `${getProxy()}/v3/telechargement.awp?verbe=get&fichierId=${fileId}&leTypeDeFichier=PIECE_JOINTE&v=${API_VERSION}`;
     const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': token, 'X-ApisVer': API_VERSION };
     if (twoFaToken) headers['2fa-token'] = twoFaToken;

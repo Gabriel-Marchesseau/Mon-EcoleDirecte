@@ -143,6 +143,10 @@ Fix : les 3 usages dans `run.ps1` (détection proxy existant, boucle d'attente a
 Le mode normal lançait `cmd.exe /c cd /d ... && node proxy.js` avec `-WindowStyle Hidden`. Ce wrapper échoue silencieusement (le port ne s'ouvre jamais, aucune erreur) dès que `run.ps1` lui-même est lancé de façon détachée/sans fenêtre (cas réel d'un double-clic sur `Start_Mon_EcoleDirecte.bat`).  
 Fix : lancement direct de `node.exe` (`Start-Process -FilePath "node.exe" -ArgumentList "proxy.js" -WorkingDirectory $DIR -WindowStyle Hidden`), sans wrapper `cmd.exe`. Impact côté `proxy.js` : `/shutdown` ne fait `taskkill` sur le process parent qu'en mode `DEBUG` (nodemon) — en mode normal le process node **est** le serveur, `process.exit(0)` suffit (tuer un ancien PID parent recyclé aurait été dangereux).
 
+### Sélecteur d'année des messages — codé en dur, cassait à chaque rentrée
+Le `<select id="msg-annee">` listait des années scolaires codées en dur (`2025-2026`, `2024-2025`, `2023-2024`). Une fois l'établissement basculé sur `2026-2027`, cette année n'apparaissait dans aucune option → messages de l'année en cours inaccessibles.  
+Fix : l'option par défaut envoie désormais `anneeMessages: ""` (chaîne vide) au lieu d'une année codée en dur — comme le fait déjà `anneeScolaire: ""` pour les notes, le serveur résout lui-même l'année active. Libellé affiché : **"Année en cours"** (comme l'appli officielle), généré par `populateMsgAnneeSelect()` (appelée dans `onLoggedIn()`), qui ajoute aussi les 3 années précédentes calculées dynamiquement depuis la date du jour (bascule estimée début juillet) — plus jamais codées en dur, donc plus de régression à chaque rentrée.
+
 ---
 
 ## Workflow de développement
