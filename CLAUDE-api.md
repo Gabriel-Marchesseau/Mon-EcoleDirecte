@@ -5,13 +5,14 @@
 ## API EcoleDirecte
 
 - **Base** : `https://api.ecoledirecte.com/v3/`
+- **Version d'API** : constante `API_VERSION` — définie **deux fois** (`app.js` et `proxy.js`), à garder synchronisée. Envoyée en `?v=` et en header `X-ApisVer`. EcoleDirecte rejette les versions trop anciennes sur certains modules avec un **code 210** (cf. bug corrigé dans CLAUDE.md) — à bumper en recopiant la valeur d'un curl capturé sur l'appli officielle.
 - **Auth** : token GTK + session cookie + `X-Token` header après login
 - **Double auth** : code 250 → QCM base64 → PUT → re-login avec `fa:[{cn,cv}]`
 - **Contenus** (devoirs, messages) encodés en base64 → `b64d()` pour décoder
 - **Téléchargement PJ messages** : `leTypeDeFichier=PIECE_JOINTE`
 - **Téléchargement docs cahier de texte** : `leTypeDeFichier=FICHIER_CDT` ← (pas CLOUD_ELEVE)
 - **Toggle devoir fait/non-fait** : `PUT /v3/Eleves/{id}/cahierdetexte.awp?verbe=put` avec `{idDevoirsEffectues:[id], idDevoirsNonEffectues:[]}`
-- **Vie scolaire** : `POST /v3/eleves/{id}/viescolaire.awp?verbe=get` → `{ absencesRetards, sanctionsEncouragements }`
+- **Vie scolaire** : `POST /v3/eleves/{id}/viescolaire.awp?verbe=get` → `{ absencesRetards, sanctionsEncouragements }`. **Code 210 = "Aucune donnée à afficher !"** — ce n'est pas une erreur mais un module vide (aucune absence/sanction, fréquent en début d'année) : à traiter comme un jeu de données vide, pas comme un échec.
 - **Contacts messagerie** : `/v3/messagerie/contacts/professeurs.awp`, `personnels.awp`, `entreprises.awp`
 - **Espaces de travail** : `POST /v3/E/{eleveId}/espacestravail.awp?verbe=get&typeModule=espaceTravail` → liste des espaces
 - **Contenu espace** : `POST /v3/cloud/W/{espaceId}.awp?verbe=get` → arborescence `children[]` (dossiers/fichiers)
@@ -21,19 +22,19 @@
 - **Sondages** : `GET /v3/edforms.awp?verbe=getlist` → liste des sondages
 - **Manuels** : ouverts via endpoint CAS `/cas-redirect?url=...` (proxy suit la redirection authentifiée)
 - **Accueil / post-its** : `POST /v3/E/{eleveId}/timelineAccueilCommun.awp?verbe=get` → `{ postits: [{type, contenu (base64), dateDebut, dateFin, auteur}] }`
-- **Accueil parent** : `POST /v3/1/{accountId}/timelineAccueilCommun.awp?verbe=get&v=4.98.0` (vs `/v3/E/{eleveId}/...` pour l'élève)
-- **Porte-monnaie (élève)** : `POST /v3/comptes/detail.awp?verbe=get&v=4.98.0` avec `data={eleveId}` → comptes portemonnaie de l'élève
-- **Finances parent** : `POST /v3/comptes/detail.awp?verbe=get&v=4.98.0` avec `data={}` (sans eleveId) → tous les comptes famille `{ comptes: [{typeCompte, libelle, solde, accomptesEtCautions, avenir, ecritures}], parametrage }`
-- **Mode de règlement parent** : `POST /v3/famillemodedereglement.awp?verbe=get&v=4.98.0` avec `data={}` → `{ demandeencours, modedereglement, iban, domiciliation, bic, tire }`
-- **Paiements en ligne parent** : `POST /v3/boutique/paiementsenligne.awp?verbe=get&v=4.98.0` avec `data={}` → tableau de groupes `[{ libelle, paiements: [{id, idEleve, img, libelle, libellePanier, montant, montantModifiable, quantiteModifiable, typePaiement (pm|service), detail (base64), isPMPayable}] }]`
-- **Soldes porte-monnaie (sans détail)** : `POST /v3/comptes/sansdetails.awp?verbe=get&v=4.98.0` avec `data={}` → `{ comptes: [{typeCompte, idEleve, solde, …}] }` — utilisé pour afficher le solde pm à côté des items de paiement
-- **Documents famille** : `POST /v3/familledocuments.awp?archive=&verbe=get&v=4.98.0` → `{ administratifs, notes, factures, inscriptions, viescolaire, entreprises, listesPiecesAVerser }`
+- **Accueil parent** : `POST /v3/1/{accountId}/timelineAccueilCommun.awp?verbe=get&v=4.101.3` (vs `/v3/E/{eleveId}/...` pour l'élève)
+- **Porte-monnaie (élève)** : `POST /v3/comptes/detail.awp?verbe=get&v=4.101.3` avec `data={eleveId}` → comptes portemonnaie de l'élève
+- **Finances parent** : `POST /v3/comptes/detail.awp?verbe=get&v=4.101.3` avec `data={}` (sans eleveId) → tous les comptes famille `{ comptes: [{typeCompte, libelle, solde, accomptesEtCautions, avenir, ecritures}], parametrage }`
+- **Mode de règlement parent** : `POST /v3/famillemodedereglement.awp?verbe=get&v=4.101.3` avec `data={}` → `{ demandeencours, modedereglement, iban, domiciliation, bic, tire }`
+- **Paiements en ligne parent** : `POST /v3/boutique/paiementsenligne.awp?verbe=get&v=4.101.3` avec `data={}` → tableau de groupes `[{ libelle, paiements: [{id, idEleve, img, libelle, libellePanier, montant, montantModifiable, quantiteModifiable, typePaiement (pm|service), detail (base64), isPMPayable}] }]`
+- **Soldes porte-monnaie (sans détail)** : `POST /v3/comptes/sansdetails.awp?verbe=get&v=4.101.3` avec `data={}` → `{ comptes: [{typeCompte, idEleve, solde, …}] }` — utilisé pour afficher le solde pm à côté des items de paiement
+- **Documents famille** : `POST /v3/familledocuments.awp?archive=&verbe=get&v=4.101.3` → `{ administratifs, notes, factures, inscriptions, viescolaire, entreprises, listesPiecesAVerser }`
 - **Messages parent** : `/v3/familles/{eleveId}/messages.awp` (lecture et envoi) à la place de `/v3/eleves/{eleveId}/messages.awp`
 - **Année des messages (`anneeMessages`)** : envoyer `""` (vide) pour l'année scolaire en cours — le serveur la résout lui-même, comme `anneeScolaire: ""` pour les notes. Ne jamais coder une année en dur (`"2025-2026"`) : elle deviendrait obsolète à la rentrée suivante (cf. bug corrigé dans CLAUDE.md). Seules les années passées doivent être passées explicitement (`"YYYY-YYYY"`), pour consulter les archives.
 - **Marquage lu messages parent** : pas de requête `verbe=put` séparée (contrairement au compte élève) ; le fetch du contenu utilise `verbe=get` comme pour l'élève
-- **Autorisations de sortie** : `POST /v3/eleves/{eleveId}/niveaux/0/autorisationsSortie.awp?verbe=get&v=4.98.0` avec `data={}` → `{ autorisations: [{jour, autorisationsMatin:{arriveeTardive,intercours,sortieAnticipee:{etat}}, autorisationsApresMidi:{…}}], demandesFamille, demandesEtab, parametrage:{libellesAutorisations} }` — disponible uniquement en vue enfant depuis compte parent
-- **Porte-monnaie enfant (depuis compte parent)** : `POST /v3/comptes/detail.awp?verbe=get&v=4.98.0` avec `data={"eleveId": id}` → comptes de cet enfant uniquement (même endpoint que porte-monnaie élève mais appelé depuis `loadVspPorteMonnaieParent()` séparément)
-- **Vie de classe** : `POST /v3/Classes/{classeId}/viedelaclasse.awp?verbe=get&v=4.98.0` avec `data={}` → messages/actualités de la classe. `classeId` extrait de `eleve.classe.id` (profil) — stocké dans `_childEleveView.classeId` pour la vue enfant, ou via `getIdClasse()` pour un compte élève direct.
+- **Autorisations de sortie** : `POST /v3/eleves/{eleveId}/niveaux/0/autorisationsSortie.awp?verbe=get&v=4.101.3` avec `data={}` → `{ autorisations: [{jour, autorisationsMatin:{arriveeTardive,intercours,sortieAnticipee:{etat}}, autorisationsApresMidi:{…}}], demandesFamille, demandesEtab, parametrage:{libellesAutorisations} }` — disponible uniquement en vue enfant depuis compte parent
+- **Porte-monnaie enfant (depuis compte parent)** : `POST /v3/comptes/detail.awp?verbe=get&v=4.101.3` avec `data={"eleveId": id}` → comptes de cet enfant uniquement (même endpoint que porte-monnaie élève mais appelé depuis `loadVspPorteMonnaieParent()` séparément)
+- **Vie de classe** : `POST /v3/Classes/{classeId}/viedelaclasse.awp?verbe=get&v=4.101.3` avec `data={}` → messages/actualités de la classe. `classeId` extrait de `eleve.classe.id` (profil) — stocké dans `_childEleveView.classeId` pour la vue enfant, ou via `getIdClasse()` pour un compte élève direct.
 - **Espaces de travail (messagerie — élève)** : `POST /v3/E/{eleveId}/espacestravail.awp?verbe=get&typeModule=messagerie` → liste des espaces ; pour compte parent : `/v3/1/{accountId}/...` (accountId = `accountData.accounts[0].id`). L'onglet "Espace de travail" est masqué dans le contact picker pour les comptes parent.
 - **Contacts espace de travail (messagerie)** : `POST /v3/messagerie/contacts/espacesTravail.awp?idEspace={id}&verbe=get` → `{ contacts: [{id, civilite, nom, prenom, matiere|fonction|profil, …}] }`. Body : `{eleveId}` pour compte élève, `{}` pour compte parent.
 - **Archiver/Désarchiver un message** : `POST messages.awp?verbe=put` avec `data={action:'archiver'|'desarchiver', ids:[msgId], anneeMessages}` — même URL élève/parent que pour la lecture. Invalide le cache et recharge la liste.
@@ -120,7 +121,7 @@ leTypeDeFichier=FICHIER_CDT      ← IMPORTANT : pas CLOUD_ELEVE
 const headers = {
   'Content-Type': 'application/x-www-form-urlencoded',
   'X-Token': token,
-  'X-ApisVer': '4.98.0'         ← version récente requise
+  'X-ApisVer': '4.101.3'         ← version récente requise
 };
 if (twoFaToken) headers['2fa-token'] = twoFaToken;
 ```

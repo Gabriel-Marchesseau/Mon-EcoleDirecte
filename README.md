@@ -7,7 +7,7 @@
 ## Features
 
 - 🏠 **Home** — School announcements (post-its) color-coded by type: info, alert, urgent
-- 📅 **Timetable** — Weekly view with day-by-day layout, color-coded courses, week picker via calendar, course details on click
+- 📅 **Timetable** — Weekly view with day-by-day layout, color-coded courses, current-time indicator on today's column, week picker via calendar, course details on click
 - 📊 **Grades** — Per-trimester breakdown with sortable table, grade curves and color-coded zones
 - 📚 **Homework** — Upcoming assignments fetched from the *cahier de textes*, with "done/undone" toggle, filter by interros, and count badge
 - 📖 **Courses** — Three sub-tabs: **Lesson contents** (date range, subject filter) · **Workspaces** (file tree explorer with lazy-loaded sub-folders, open files in Collabora Online viewer) · **Textbooks** (digital manuals via CAS authentication)

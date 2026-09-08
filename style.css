@@ -195,7 +195,13 @@
   .edt-event-name { font-weight: 500; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .edt-event-detail { font-size: 9px; opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .edt-event.annule { text-decoration: line-through; filter: grayscale(60%) opacity(0.4); }
-  .edt-has-modifie { padding-right: 27px; }
+  /* Triangle « cours modifié » en bas à droite : ne réserver la gouttière que sur la ligne
+     qu'il recouvre réellement — la ligne de détail, ou le nom si la case est trop courte
+     pour en afficher une (le nom est alors le dernier enfant après le SVG). */
+  .edt-has-modifie .edt-event-detail,
+  .edt-has-modifie .edt-event-name:last-child { padding-right: 27px; }
+  .edt-now-line { position: absolute; left: 0; right: 0; height: 0; border-top: 2px solid #dc2626; z-index: 4; pointer-events: none; }
+  .edt-now-line::before { content: ''; position: absolute; left: 0; top: -4px; width: 6px; height: 6px; border-radius: 50%; background: #dc2626; }
   .edt-week-nav { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
   .edt-week-nav .btn { height: 34px; }
   #edt-week-label { font-size: 13px; color: var(--text2); font-weight: 500; }

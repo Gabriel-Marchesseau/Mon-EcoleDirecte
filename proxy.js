@@ -34,7 +34,7 @@ const MIME = {
 
 const PORT        = 3131;
 const API_HOST    = 'api.ecoledirecte.com';
-const API_VERSION = '4.98.0';
+const API_VERSION = '4.101.3';
 
 let sslOptions;
 if (!HTTP_MODE) {

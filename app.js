@@ -84,7 +84,7 @@ let sessionExpired = false;
 function getProxy() { return window.location.origin; }
 
 // ── Version API EcoleDirecte ────────────────────────────────
-const API_VERSION = '4.98.0';
+const API_VERSION = '4.101.3';
 
 // ── Routeur ────────────────────────────────────────────────
 const ROUTE_TO_TAB = { '/accueil': 'accueil', '/edt': 'edt', '/notes': 'notes', '/devoirs': 'devoirs', '/seances': 'seances', '/messages': 'messages', '/vie-scolaire': 'absences', '/memos': 'memos', '/documents-parent': 'documents-parent', '/finances-parent': 'finances-parent', '/vie-scolaire-parent': 'viescolaire-parent' };
@@ -1874,8 +1874,11 @@ async function loadAbsences() {
       body: 'data={}'
     });
     const d = await resp.json();
-    if (d.code !== 200) throw new Error(`Code ${d.code}`);
-    return d.data;
+    // 210 « Aucune donnée à afficher » = module vide (aucune absence ni sanction),
+    // pas une erreur : EcoleDirecte le renvoie notamment en début d'année scolaire.
+    if (d.code === 210) return { absencesRetards: [], sanctionsEncouragements: [] };
+    if (d.code !== 200) throw new Error(d.message ? `Code ${d.code} — ${d.message}` : `Code ${d.code}`);
+    return d.data || { absencesRetards: [], sanctionsEncouragements: [] };
   }, {
     onSpinner: () => { document.getElementById('spin-absences').style.display = 'inline'; document.getElementById('absences-result').innerHTML = centeredSpinner(); },
     onCached:  (data, ts) => { render(data, false, null); updateFreshnessLabel('absences', ts || Date.now()); },
@@ -3826,11 +3829,36 @@ async function runEdt() {
   });
 }
 
+// Bornes de la grille EDT — partagées avec la ligne « heure actuelle »
+const EDT_START_H = 8, EDT_END_H = 18, EDT_SLOT_H = 40;
+
+// Position (px) de l'instant présent dans la grille, ou null si hors plage horaire
+function _edtNowTop(now = new Date()) {
+  const nowMin = (now.getHours() - EDT_START_H) * 60 + now.getMinutes();
+  if (nowMin < 0 || nowMin > (EDT_END_H - EDT_START_H) * 60) return null;
+  return (nowMin / 60) * EDT_SLOT_H;
+}
+
+let _edtNowTimer = null;
+function _updateEdtNowLine() {
+  const el = document.getElementById('edt-now-line');
+  if (!el) return;
+  const now = new Date();
+  const top = _edtNowTop(now);
+  if (top === null) { el.remove(); return; }
+  el.style.top = `${top}px`;
+  el.title = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+}
+function _startEdtNowTimer() {
+  if (_edtNowTimer) return;
+  _edtNowTimer = setInterval(_updateEdtNowLine, 60000);
+}
+
 function renderEdtGrid(cours, monday) {
   const today = new Date(); today.setHours(0,0,0,0);
-  const START_H = 8, END_H = 18;
+  const START_H = EDT_START_H, END_H = EDT_END_H;
   const TOTAL_MIN = (END_H - START_H) * 60;
-  const SLOT_H = 40; // px par heure
+  const SLOT_H = EDT_SLOT_H; // px par heure
   const GRID_H = SLOT_H * (END_H - START_H);
   const jours = ['Lun','Mar','Mer','Jeu','Ven'];
   const moisFr = ['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
@@ -3938,14 +3966,25 @@ function renderEdtGrid(cours, monday) {
       })).replace(/'/g, '%27');
       const detail2 = c.salle ? c.salle : (c.classe && c.classe.trim() && !c.text.trim() ? c.classe.split('\n')[0] : '');
       dayCols += `<div class="edt-event${c.isAnnule?' annule':''}${c.isModifie?' edt-has-modifie':''}" onclick="openEdtDialog('${cData}')" style="top:${topPx}px;height:${hPx}px;background:${bg};border-left:3px solid ${c.isAnnule?'var(--border)':c.color};cursor:pointer">
-        ${c.isModifie ? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 18" width="23" height="20" style="position:absolute;top:2px;right:2px;" title="Cours modifié"><polygon points="10,1 19,17 1,17" fill="#f59e0b" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/><text x="10" y="15.5" text-anchor="middle" font-size="11" font-weight="900" fill="#000">!</text></svg>` : ''}
+        ${c.isModifie ? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 18" width="23" height="20" style="position:absolute;bottom:2px;right:2px;" title="Cours modifié"><polygon points="10,1 19,17 1,17" fill="#f59e0b" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/><text x="10" y="15.5" text-anchor="middle" font-size="11" font-weight="900" fill="#000">!</text></svg>` : ''}
         <div class="edt-event-name" style="color:${fg}">${displayText}</div>
         ${hPx > 28 ? `<div class="edt-event-detail" style="color:${fg}">${detail2}</div>` : ''}
       </div>`;
     });
+
+    // Ligne « heure actuelle » — uniquement sur la colonne du jour en cours
+    if (isToday && !isCongeDay[i]) {
+      const nowTop = _edtNowTop();
+      if (nowTop !== null) {
+        const _n = new Date();
+        const _hm = `${String(_n.getHours()).padStart(2,'0')}:${String(_n.getMinutes()).padStart(2,'0')}`;
+        dayCols += `<div class="edt-now-line" id="edt-now-line" title="${_hm}" style="top:${nowTop}px"></div>`;
+      }
+    }
     dayCols += '</div></div>';
   }
 
+  _startEdtNowTimer();
   return `<div class="edt-grid">${timeCol}${dayCols}</div>`;
 }
 

@@ -162,6 +162,16 @@ body.dark .postit-content [style*="background"] { background: transparent !impor
 - `#user-class` est `display:none` par défaut ; affiché via `body.is-eleve #user-class { display:block !important }` à ≤667px
 - `#user-name` tronqué (`text-overflow:ellipsis`) en font-size 13px sur mobile élève
 
+## EDT — badge « cours modifié »
+- Triangle orange SVG (`#f59e0b`, `!` noir) positionné en **bas à droite** de la case (`bottom:2px;right:2px`) — il était auparavant en haut à droite et amputait le nom de la matière
+- La classe `.edt-has-modifie` ne pad plus toute la case : la gouttière de 27px n'est réservée que sur la ligne réellement recouverte — `.edt-event-detail`, ou `.edt-event-name:last-child` quand la case est trop courte (`hPx <= 28`) pour afficher une ligne de détail
+
+## EDT — ligne « heure actuelle »
+- `.edt-now-line` : trait rouge `#dc2626` (2px) + pastille à gauche via `::before`, `z-index:4` (au-dessus des cours `z-index:2`), `pointer-events:none`
+- Rendue uniquement dans la colonne du jour en cours (`isToday`, donc jamais un jour férié) et hors jours de congés, et seulement si l'heure courante est dans la plage `EDT_START_H`–`EDT_END_H` (8h–18h)
+- Constantes `EDT_START_H` / `EDT_END_H` / `EDT_SLOT_H` sorties au niveau module — `renderEdtGrid()` les réutilise via ses locales `START_H` / `END_H` / `SLOT_H`
+- `_edtNowTop()` calcule la position en px ; `_startEdtNowTimer()` (appelé en fin de `renderEdtGrid`, idempotent) lance un `setInterval` d'1 min qui repositionne `#edt-now-line` via `_updateEdtNowLine()` et la supprime une fois 18h passées
+
 ## EDT — swipe horizontal
 - `_initEdtSwipe()` attache un listener `touchstart`/`touchend` sur `#panel-edt` (idempotent via `el._edtSwipeInit`)
 - Swipe gauche → semaine suivante (`edtNav(1)`) ; swipe droit → semaine précédente (`edtNav(-1)`)
