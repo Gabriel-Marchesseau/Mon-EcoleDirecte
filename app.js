@@ -829,7 +829,7 @@ async function openProfile() {
         <span class="pma-icon">⏏</span>Déconnexion
       </button>
       <button onclick="shutdownApp()" title="Fermer l'application">
-        <span class="pma-icon">⏻</span>Fermer
+        <span class="pma-icon">${powerIcon(20)}</span>Fermer
       </button>
     </div>
     ${getProjectVersion() ? `<div class="profile-version">Mon EcoleDirecte — version ${getProjectVersion()}</div>` : ''}
@@ -1264,6 +1264,14 @@ async function saveProfile(loginId, section) {
   }
 }
 
+// Icône « power » (Feather, même famille que l'engrenage du header) — le glyphe ⏻
+// (U+23FB) est absent des polices Android et s'y affichait en tofu ▯. Toutes les icônes
+// d'arrêt de l'appli passent par ici ; celle du header est le même SVG, en dur dans
+// ecoledirecte.html (HTML statique, pas d'appel JS possible).
+function powerIcon(size = 16) {
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>`;
+}
+
 function shutdownApp() {
   const overlay = document.createElement('div');
   overlay.classList.add('dlg-overlay');
@@ -1273,7 +1281,7 @@ function shutdownApp() {
   const dialog = document.createElement('div');
   dialog.style.cssText = 'background:var(--bg);color:var(--text);border-radius:12px;padding:1.5rem;max-width:340px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.35);text-align:center';
   dialog.innerHTML = `
-    <div style="font-size:32px;margin-bottom:8px">⏻</div>
+    <div style="margin-bottom:8px;display:flex;justify-content:center">${powerIcon(32)}</div>
     <div style="font-size:16px;font-weight:600;margin-bottom:6px">Fermer Mon EcoleDirecte ?</div>
     <div style="font-size:13px;color:var(--text3);margin-bottom:18px">Le serveur proxy local sera arrêté.</div>
     <div style="display:flex;gap:10px;justify-content:center">
@@ -1298,7 +1306,7 @@ function shutdownApp() {
     doneOverlay.classList.add('dlg-overlay');
     doneOverlay.style.cssText = 'position:fixed;inset:0;background:var(--bg);color:var(--text);z-index:3000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:1.5rem';
     doneOverlay.innerHTML = `
-      <div style="font-size:40px">⏻</div>
+      <div style="display:flex;justify-content:center">${powerIcon(40)}</div>
       <div style="font-size:17px;font-weight:600">Mon EcoleDirecte est arrêté</div>
       <div style="font-size:14px;color:var(--text3)">Vous pouvez fermer cet onglet manuellement.</div>`;
     document.body.appendChild(doneOverlay);

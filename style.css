@@ -546,4 +546,7 @@ body.dark input[type="date"] {
     font-size: 20px;
     line-height: 1;
   }
+  /* Icônes SVG (bouton Fermer) : `display:block` supprime l'espace de baseline qui
+     décalerait le libellé par rapport aux boutons voisins, dont l'icône est un emoji. */
+  .profile-mobile-actions .pma-icon svg { display: block; }
 }

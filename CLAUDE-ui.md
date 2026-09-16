@@ -49,7 +49,8 @@ Dark mode : `color-scheme: dark` + `filter: invert(1)` sur l'icône calendrier
 - Boutons Annuler/Valider communs en bas (hors des sections), `#pf-save-btn` détecte l'onglet actif
 
 ## Arrêt de l'application — `shutdownApp()`
-- Bouton ⏻ "Fermer" présent en deux endroits (dialog profil mobile, barre d'actions desktop `#profile-bar-actions`) — les deux appellent `shutdownApp()`
+- Bouton "Fermer" présent en deux endroits (dialog profil mobile, barre d'actions desktop `#profile-bar-actions`) — les deux appellent `shutdownApp()`
+- Icône : SVG « power » (Feather, même famille que l'engrenage du header), via `powerIcon(size)` en JS et le même SVG en dur dans `ecoledirecte.html`. **Ne pas revenir au glyphe ⏻ (U+23FB)** : absent des polices Android, il s'affichait en tofu ▯ sur téléphone. `.pma-icon svg { display:block }` évite l'espace de baseline qui décalerait le libellé par rapport aux boutons voisins (emoji)
 - Confirmation via un dialog `.dlg-overlay` in-app (pas de `window.confirm()` natif — visible dans la barre du navigateur/OS, pas dans le style de l'appli) : boutons `#shutdown-cancel-btn` (Annuler, style neutre habituel) / `#shutdown-confirm-btn` (Fermer, rouge `#dc2626`, seul bouton destructif de l'appli). Backdrop cliquable pour annuler, comme les autres dialogs.
 - À la confirmation : `POST /shutdown` vers le proxy, puis un second overlay plein écran bloquant (`z-index:3000`, au-dessus de tous les autres dialogs), sans bouton de fermeture ni backdrop cliquable cette fois (la confirmation est déjà faite) : message "Mon EcoleDirecte est arrêté" + invitation à fermer l'onglet manuellement
 - `window.close()` n'est plus utilisé : il échoue silencieusement sur un onglet non ouvert via `window.open()` depuis du script (cas normal ici, onglet ouvert par l'OS/le navigateur)

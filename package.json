@@ -1,6 +1,6 @@
 {
   "name": "mon-ecoledirecte",
-  "version": "2026.09.16.2",
+  "version": "2026.09.16.3",
   "description": "Client local EcoleDirecte",
   "main": "proxy.js",
   "scripts": {
