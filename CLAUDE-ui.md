@@ -66,6 +66,12 @@ Dark mode : `color-scheme: dark` + `filter: invert(1)` sur l'icône calendrier
 - Le texte (`vAAAA.MM.JJ`) est écrit par un listener `DOMContentLoaded` dans app.js, pas en dur dans le HTML : évite d'afficher le placeholder brut avant substitution
 - `#profile-bar-actions` étant masqué ≤667px, le dialog profil porte la même information (`.profile-version`, « Mon EcoleDirecte — version … ») — seul accès sur mobile. Placé **juste avant** `#profile-form-area`, donc au-dessus des onglets Compte/Sécurité : en pied de dialog, les boutons Annuler/Valider le poussaient hors de l'écran sur mobile (dialog en page pleine). Le placer **dans** `#profile-form-area` ne marcherait pas non plus — cette div est remplacée par `innerHTML` une fois le profil chargé
 
+## Label de fraîcheur des données
+- `#freshness-label` (à côté du bouton ↻) rendu par `renderFreshnessLabel()`, rafraîchi chaque minute
+- `formatFreshness(ms)` : unité adaptative `à jour` → `N min` → `N h` → `N j` → `N mois`. Heures/jours arrondis **à l'inférieur** (3 h 59 → « 3 h ») pour ne jamais surestimer l'âge ; libellé volontairement court (place limitée sur mobile)
+- `title` = date exacte (« Données du mardi 14 septembre à 18:42 ») — lève l'ambiguïté de l'arrondi
+- Classe `.stale` au-delà de 48 h : orange `#b45309` (même orange que « En attente » / « À faire »), `#f59e0b` en dark mode pour la lisibilité
+
 ## Paramètres — dialog page par défaut
 - Bouton engrenage (SVG) dans le header, déclenche `openSettingsDialog()`
 - Sélection mémorisée dans `localStorage` clé `ed_default_tab_{_currentAccountId}`

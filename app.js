@@ -5319,11 +5319,26 @@ function renderFreshnessLabel(tabId) {
   const el = document.getElementById('freshness-label');
   if (!el) return;
   const ts = tabFreshness[tabId];
-  if (!ts) { el.textContent = ''; return; }
-  const diffMin = Math.round((Date.now() - ts) / 60000);
-  if (diffMin < 1) el.textContent = 'à jour';
-  else if (diffMin === 1) el.textContent = '1 min';
-  else el.textContent = `${diffMin} min`;
+  if (!ts) { el.textContent = ''; el.removeAttribute('title'); el.classList.remove('stale'); return; }
+  el.textContent = formatFreshness(Date.now() - ts);
+  // Orange au-delà de 48 h : signale des données anciennes d'un coup d'œil
+  el.classList.toggle('stale', Date.now() - ts > 48 * 3600000);
+  // Date exacte au survol : lève toute ambiguïté sur une valeur arrondie
+  el.title = 'Données du ' + new Date(ts).toLocaleString('fr-FR', {
+    weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'
+  });
+}
+
+// Âge des données en unité lisible : min → h → j → mois
+function formatFreshness(ms) {
+  const min = Math.round(ms / 60000);
+  if (min < 1) return 'à jour';
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h} h`;
+  const j = Math.floor(h / 24);
+  if (j < 30) return `${j} j`;
+  return `${Math.floor(j / 30)} mois`;
 }
 
 // Mettre à jour le label toutes les minutes
