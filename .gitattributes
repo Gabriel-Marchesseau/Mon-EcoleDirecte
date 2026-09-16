@@ -1,0 +1,5 @@
+# Scripts shell : toujours en LF dans le working tree, meme avec core.autocrlf=true
+# (actif sur le PC de Martial). Un \r dans un shebang casse l'execution sous WSL/Termux.
+*.sh text eol=lf
+# .githooks/pre-push n'a pas d'extension .sh : il lui faut sa propre regle.
+.githooks/* text eol=lf

@@ -86,6 +86,21 @@ function getProxy() { return window.location.origin; }
 // ── Version API EcoleDirecte ────────────────────────────────
 const API_VERSION = '4.101.3';
 
+// ── Version du projet (package.json) ───────────────────────
+// Injectée par le proxy à la place du placeholder __APP_VERSION__ (attribut data-version
+// de #version-tag, cf. ecoledirecte.html). Sans rapport avec API_VERSION ci-dessus.
+// Si le placeholder n'a pas été substitué (fichier ouvert hors proxy), on dégrade en
+// version absente plutôt que d'afficher le placeholder brut.
+function getProjectVersion() {
+  const raw = (document.getElementById('version-tag')?.dataset.version || '').trim();
+  return /^\d/.test(raw) ? raw : '';
+}
+window.addEventListener('DOMContentLoaded', () => {
+  const v = getProjectVersion();
+  const el = document.getElementById('version-tag');
+  if (el && v) { el.textContent = `v${v}`; el.title = `Mon EcoleDirecte — version ${v}`; }
+});
+
 // ── Routeur ────────────────────────────────────────────────
 const ROUTE_TO_TAB = { '/accueil': 'accueil', '/edt': 'edt', '/notes': 'notes', '/devoirs': 'devoirs', '/seances': 'seances', '/messages': 'messages', '/vie-scolaire': 'absences', '/memos': 'memos', '/documents-parent': 'documents-parent', '/finances-parent': 'finances-parent', '/vie-scolaire-parent': 'viescolaire-parent' };
 const TAB_TO_ROUTE = { 'accueil': '/accueil', 'edt': '/edt', 'notes': '/notes', 'devoirs': '/devoirs', 'seances': '/seances', 'messages': '/messages', 'absences': '/vie-scolaire', 'memos': '/memos', 'documents-parent': '/documents-parent', 'finances-parent': '/finances-parent', 'viescolaire-parent': '/vie-scolaire-parent' };
@@ -817,6 +832,7 @@ async function openProfile() {
         <span class="pma-icon">⏻</span>Fermer
       </button>
     </div>
+    ${getProjectVersion() ? `<div class="profile-version">Mon EcoleDirecte — version ${getProjectVersion()}</div>` : ''}
     <div id="profile-form-area" style="font-size:14px;text-align:center;padding:16px 0"><span class="spinner"></span> Chargement…</div>`;
 
   overlay.appendChild(dialog);
@@ -3854,6 +3870,39 @@ function _startEdtNowTimer() {
   _edtNowTimer = setInterval(_updateEdtNowLine, 60000);
 }
 
+// Répartit en colonnes les cours d'une même journée qui se chevauchent
+// (ex. une séance photo pendant un cours). Retourne une liste d'entrées
+// { c, s, e, col, nCols } — col = index de colonne, nCols = nb de colonnes
+// du groupe de chevauchement auquel le cours appartient.
+function _layoutEdtDay(list) {
+  const evts = (list || []).map(c => ({
+    c,
+    s: new Date(c.start_date.replace(' ','T')).getTime(),
+    e: new Date(c.end_date.replace(' ','T')).getTime()
+  })).sort((a, b) => a.s - b.s || b.e - a.e);
+
+  let group = [];          // cours du groupe de chevauchement courant
+  let colEnds = [];        // fin du dernier cours placé dans chaque colonne
+  let groupEnd = -Infinity;
+
+  const flush = () => {
+    group.forEach(g => g.nCols = colEnds.length);
+    group = []; colEnds = []; groupEnd = -Infinity;
+  };
+
+  evts.forEach(ev => {
+    if (ev.s >= groupEnd) flush();   // plus aucun recouvrement → nouveau groupe
+    let col = colEnds.findIndex(end => end <= ev.s);
+    if (col === -1) { colEnds.push(ev.e); col = colEnds.length - 1; }
+    else colEnds[col] = ev.e;
+    ev.col = col;
+    group.push(ev);
+    groupEnd = Math.max(groupEnd, ev.e);
+  });
+  flush();
+  return evts;
+}
+
 function renderEdtGrid(cours, monday) {
   const today = new Date(); today.setHours(0,0,0,0);
   const START_H = EDT_START_H, END_H = EDT_END_H;
@@ -3936,7 +3985,8 @@ function renderEdtGrid(cours, monday) {
     }
 
     // Couche 2 : cours (z-index 1, devant les lignes)
-    byDay[i].forEach(c => {
+    _layoutEdtDay(byDay[i]).forEach(ev => {
+      const c = ev.c;
       const start = new Date(c.start_date.replace(' ','T'));
       const end   = new Date(c.end_date.replace(' ','T'));
       const topMin = (start.getHours() - START_H) * 60 + start.getMinutes();
@@ -3965,7 +4015,10 @@ function renderEdtGrid(cours, monday) {
         }))
       })).replace(/'/g, '%27');
       const detail2 = c.salle ? c.salle : (c.classe && c.classe.trim() && !c.text.trim() ? c.classe.split('\n')[0] : '');
-      dayCols += `<div class="edt-event${c.isAnnule?' annule':''}${c.isModifie?' edt-has-modifie':''}" onclick="openEdtDialog('${cData}')" style="top:${topPx}px;height:${hPx}px;background:${bg};border-left:3px solid ${c.isAnnule?'var(--border)':c.color};cursor:pointer">
+      // Cours simultanés : partage de la largeur de la colonne du jour
+      const colW   = 100 / (ev.nCols || 1);
+      const posCss = `left:calc(${(ev.col || 0) * colW}% + 2px);width:calc(${colW}% - 4px);right:auto;`;
+      dayCols += `<div class="edt-event${c.isAnnule?' annule':''}${c.isModifie?' edt-has-modifie':''}" onclick="openEdtDialog('${cData}')" style="top:${topPx}px;height:${hPx}px;${posCss}background:${bg};border-left:3px solid ${c.isAnnule?'var(--border)':c.color};cursor:pointer">
         ${c.isModifie ? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 18" width="23" height="20" style="position:absolute;bottom:2px;right:2px;" title="Cours modifié"><polygon points="10,1 19,17 1,17" fill="#f59e0b" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/><text x="10" y="15.5" text-anchor="middle" font-size="11" font-weight="900" fill="#000">!</text></svg>` : ''}
         <div class="edt-event-name" style="color:${fg}">${displayText}</div>
         ${hPx > 28 ? `<div class="edt-event-detail" style="color:${fg}">${detail2}</div>` : ''}

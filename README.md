@@ -7,7 +7,7 @@
 ## Features
 
 - 🏠 **Home** — School announcements (post-its) color-coded by type: info, alert, urgent
-- 📅 **Timetable** — Weekly view with day-by-day layout, color-coded courses, current-time indicator on today's column, week picker via calendar, course details on click
+- 📅 **Timetable** — Weekly view with day-by-day layout, color-coded courses, overlapping courses shown side by side, current-time indicator on today's column, week picker via calendar, course details on click
 - 📊 **Grades** — Per-trimester breakdown with sortable table, grade curves and color-coded zones
 - 📚 **Homework** — Upcoming assignments fetched from the *cahier de textes*, with "done/undone" toggle, filter by interros, and count badge
 - 📖 **Courses** — Three sub-tabs: **Lesson contents** (date range, subject filter) · **Workspaces** (file tree explorer with lazy-loaded sub-folders, open files in Collabora Online viewer) · **Textbooks** (digital manuals via CAS authentication)
@@ -19,6 +19,7 @@
 - 📶 **Offline mode** — Displays cached data with a banner when the proxy is unreachable
 - 🌙 **Dark mode** — Toggleable, preference saved locally
 - ⚙️ **Settings** — Choose the default landing tab per account (gear icon in header)
+- 🏷️ **Version badge** — App version shown in the header and in the profile dialog, to tell at a glance which build runs on which device
 - 👨‍👩‍👧 **Parent account support** — Dedicated tabs: **Documents** (family docs by category), **Financial overview** (Invoices, Wallet, Payment method, Online payments), **School life** (Enrollment dossier, Surveys); child-account selector to view a pupil's timetable, grades, homework, attendance (with justify button), messages, and exit authorizations
 - 📱 **Mobile-friendly** — Hamburger navigation menu on small screens, swipe to navigate timetable weeks, full-screen profile page, master/detail panels for documents and messages
 - 🔒 **Secure** — All requests go through a local HTTPS proxy; credentials never leave your machine

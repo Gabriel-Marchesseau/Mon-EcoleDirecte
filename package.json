@@ -1,11 +1,12 @@
 {
   "name": "mon-ecoledirecte",
-  "version": "1.0.0",
+  "version": "2026.09.16.2",
   "description": "Client local EcoleDirecte",
   "main": "proxy.js",
   "scripts": {
     "start": "nodemon --watch proxy.js --watch app.js --watch style.css --watch ecoledirecte.html proxy.js",
-    "dev": "nodemon proxy.js"
+    "dev": "nodemon proxy.js",
+    "version:bump": "bash bump-version.sh"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"

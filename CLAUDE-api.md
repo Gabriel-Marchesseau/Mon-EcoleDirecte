@@ -45,7 +45,7 @@
 
 - Détecte les réponses binaires via `content-type` ou path (`telechargement`, `/pj/`, `/wopi/`)
 - Renvoie le GTK au client via header `X-Gtk-Value` après `initSession()`
-- Fichiers statiques servis directement, `__VERSION__` remplacé par timestamp
+- Fichiers statiques servis directement, `__VERSION__` remplacé par timestamp (cache-busting) et `__APP_VERSION__` par `PROJECT_VERSION` (numéro de version du projet lu dans `package.json` — cf. CLAUDE.md section « Numéro de version »)
 - Endpoint `POST /shutdown` pour arrêter le serveur depuis l'UI
 - Endpoint `GET /cas-redirect?url=...` — suit la redirection CAS authentifiée (headers X-Token, 2fa-token, X-Gtk transmis), gère les redirections HTML (`<meta refresh>`, `window.location`)
 - Endpoint `GET /collabora-url` — fetche `libreoffice.ecoledirecte.com/hosting/discovery`, extrait l'URL `cool.html` et la renvoie en JSON (`{ viewUrl }`)

@@ -59,6 +59,12 @@ Dark mode : `color-scheme: dark` + `filter: invert(1)` sur l'icône calendrier
 - Couleurs de bordure gauche : info → `#1d4ed8`, alerte → `#ca8a04`, urgence → `#dc2626`
 - Contenu décodé en base64 (`b64d()`) — peut contenir du HTML riche
 
+## Badge de version
+- `#version-tag` — `<span class="version-tag" data-version="__APP_VERSION__">` dans `#profile-bar-actions` (header), juste après le libellé « Mon EcoleDirecte ». Le proxy substitue le placeholder ; `getProjectVersion()` (app.js) ne retourne la valeur que si elle commence par un chiffre — sinon (fichier ouvert hors proxy) le badge reste vide et `.version-tag:empty { display:none }` l'escamote
+- Texte discret (`11px`, `var(--text3)`) et non un badge coloré : un numéro de version est une information calme, pas une alerte — même choix que dans Mon MELCloud
+- Le texte (`vAAAA.MM.JJ`) est écrit par un listener `DOMContentLoaded` dans app.js, pas en dur dans le HTML : évite d'afficher le placeholder brut avant substitution
+- `#profile-bar-actions` étant masqué ≤667px, le dialog profil porte la même information (`.profile-version`, « Mon EcoleDirecte — version … ») — seul accès sur mobile. Placé **juste avant** `#profile-form-area`, donc au-dessus des onglets Compte/Sécurité : en pied de dialog, les boutons Annuler/Valider le poussaient hors de l'écran sur mobile (dialog en page pleine). Le placer **dans** `#profile-form-area` ne marcherait pas non plus — cette div est remplacée par `innerHTML` une fois le profil chargé
+
 ## Paramètres — dialog page par défaut
 - Bouton engrenage (SVG) dans le header, déclenche `openSettingsDialog()`
 - Sélection mémorisée dans `localStorage` clé `ed_default_tab_{_currentAccountId}`
@@ -176,6 +182,12 @@ body.dark .postit-content [style*="background"] { background: transparent !impor
 - `_initEdtSwipe()` attache un listener `touchstart`/`touchend` sur `#panel-edt` (idempotent via `el._edtSwipeInit`)
 - Swipe gauche → semaine suivante (`edtNav(1)`) ; swipe droit → semaine précédente (`edtNav(-1)`)
 - Seuil : 60 px ; annulé si geste plus vertical qu'horizontal
+
+## EDT — cours simultanés (côte à côte)
+- `_layoutEdtDay(list)` répartit en colonnes les cours d'une même journée qui se chevauchent (ex. séance photo pendant un cours de Physique-Chimie) — algorithme type Google Calendar : tri par début (durée décroissante à égalité), regroupement transitif des chevauchements, placement glouton dans la première colonne libre
+- Retourne `[{ c, s, e, col, nCols }]` — `renderEdtGrid()` itère dessus au lieu de `byDay[i]` directement
+- Positionnement : `left:calc(col*100/nCols% + 2px);width:calc(100/nCols% - 4px);right:auto` en style inline (surcharge le `left:2px;right:2px` de `.edt-event`) — un cours sans chevauchement garde donc exactement la largeur d'avant
+- Les cours annulés chevauchant un cours actif restent masqués (traitement `_annulePar` fait **avant** le calcul des colonnes)
 
 ## Notes — graphique responsive (≤ 768px)
 - `#notes-chart-wrap` passe en `flex-direction:column` sur mobile

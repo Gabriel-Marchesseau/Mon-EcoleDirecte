@@ -22,7 +22,10 @@ ecoledirecte.html           # HTML + cache IndexedDB inline (objet edCache) + da
 app.js                      # Toute la logique UI (~3300 lignes) — fichier principal
 style.css                   # Thème light/dark via CSS variables
 generate-cert.js            # Génère CA locale (ca.pem/ca-key.pem) + cert serveur signé (cert.pem/key.pem)
-package.json                # node-forge, nodemon
+package.json                # node-forge, nodemon + "version" (numéro de version affiché dans l'UI)
+bump-version.sh             # Incrémente le numéro de version — à lancer une fois par push
+.githooks/pre-push          # Bloque le push sur main si la version n'a pas été bumpée
+.gitattributes              # *.sh et .githooks/* en LF (core.autocrlf=true côté Windows)
 install.ps1                 # Script d'installation PowerShell (configure hosts + portproxy)
 run.ps1                     # Script de lancement PowerShell
 Installer_Mon_EcoleDirecte.bat
@@ -39,7 +42,7 @@ CLAUDE-ui.md                # Composants UI notables
 | Onglet | État |
 |--------|------|
 | Accueil | Post-its de l'établissement (`timelineAccueilCommun.awp`), colorés par type (info/alerte/urgence), date et auteur |
-| Emploi du temps | Grille hebdomadaire, nav semaines, sélecteur de semaine via calendrier natif (`edtOpenCalendar`), jours fériés (algo Pâques), jours Congés grisés (body uniquement), dialog au clic, color-coded |
+| Emploi du temps | Grille hebdomadaire, nav semaines, sélecteur de semaine via calendrier natif (`edtOpenCalendar`), jours fériés (algo Pâques), jours Congés grisés (body uniquement), dialog au clic, color-coded, cours simultanés affichés côte à côte (`_layoutEdtDay`) |
 | Notes | Tableau trié par trimestre + graphique Chart.js (zones colorées, hachures, légende cliquable, courbe moyenne classe par note) |
 | Devoirs | Liste groupée par date, toggle fait/non-fait (API PUT), badge PJ, détail + PJ téléchargeables, sélection visuelle persistante, filtre "Faits" + filtre "Interros", badge count dans l'onglet |
 | Cours | Trois sous-onglets : **Contenus de séances** (plage de dates, J-14 → aujourd'hui, groupé par jour, filtre par matière) + **Espaces de travail** (liste + explorateur arborescence, lazy-load sous-dossiers, ouverture fichiers dans Collabora Online via WOPI) + **Manuels** (liste manuels numériques, ouverture CAS) |
@@ -113,6 +116,10 @@ La clé cache EDT est `edt:{eleveId}:{YYYY-MM-DD}` (pas `edt:{YYYY-MM-DD}` sans 
 Les cours CONGE ont des horaires 00:00 → 23:59 → `top` très négatif → débordaient hors du body.  
 Fix : `isCongeDay` map dans `renderEdtGrid()`, cours CONGE exclus de `byDay`, remplacés par une overlay grise sur le body uniquement.
 
+### Cours simultanés superposés (EDT)
+`.edt-event` est en `position:absolute;left:2px;right:2px` → deux cours au même créneau (ex. séance photo pendant le cours de Physique-Chimie) se recouvraient totalement, seul le dernier rendu était visible/cliquable.
+Fix : `_layoutEdtDay()` répartit les cours chevauchants en colonnes (cf. CLAUDE-ui.md) et `renderEdtGrid()` pose `left`/`width` en % inline. Ne jamais revenir à un rendu pleine largeur systématique.
+
 ### Cours annulé chevauchant un cours remplaçant (EDT)
 Quand un cours `isAnnule: true` se chevauche avec un cours non-annulé le même jour, le cours annulé est masqué de la grille (`byDay` filtré) et ses infos sont attachées au cours remplaçant via `_annulePar[]`. Le dialog du cours remplaçant affiche une section "Cours annulé" en rouge avec les détails du cours supprimé.
 
@@ -152,6 +159,22 @@ Fix : `loadAbsences()` intercepte `d.code === 210` et retourne `{ absencesRetard
 ### Sélecteur d'année des messages — codé en dur, cassait à chaque rentrée
 Le `<select id="msg-annee">` listait des années scolaires codées en dur (`2025-2026`, `2024-2025`, `2023-2024`). Une fois l'établissement basculé sur `2026-2027`, cette année n'apparaissait dans aucune option → messages de l'année en cours inaccessibles.  
 Fix : l'option par défaut envoie désormais `anneeMessages: ""` (chaîne vide) au lieu d'une année codée en dur — comme le fait déjà `anneeScolaire: ""` pour les notes, le serveur résout lui-même l'année active. Libellé affiché : **"Année en cours"** (comme l'appli officielle), généré par `populateMsgAnneeSelect()` (appelée dans `onLoggedIn()`), qui ajoute aussi les 3 années précédentes calculées dynamiquement depuis la date du jour (bascule estimée début juillet) — plus jamais codées en dur, donc plus de régression à chaque rentrée.
+
+---
+
+## Numéro de version (`package.json`, hook `pre-push`)
+
+But : savoir en un coup d'œil quelle version tourne sur quel appareil (PC de dev, téléphones), l'appli étant installée en plusieurs exemplaires. Même dispositif que dans **Mon MELCloud**.
+
+- **Format** : date du jour (`AAAA.MM.JJ`, ex. `2026.09.16`), suffixe `.2`/`.3`… si plusieurs push le même jour (`bump-version.sh`, logique `case` par **préfixe** — pas égalité stricte, qui casserait la transition `.2 → .3` en retombant sur la date nue). Une date dit immédiatement l'ancienneté d'une install, sans croiser avec l'historique git.
+- **`PROJECT_VERSION`** (`proxy.js`) : lu une fois au démarrage depuis `package.json`, en try/catch — un `package.json` illisible dégrade en badge absent, jamais en proxy qui refuse de démarrer. Nom délibérément distinct d'`API_VERSION` (version de l'API EcoleDirecte, aucun rapport).
+- **Transport vers l'UI** : placeholder `__APP_VERSION__` substitué par le proxy dans le HTML/JS servi, à côté du `__VERSION__` déjà utilisé pour le cache-busting — pas de nouvel endpoint ni de fetch supplémentaire. Substitué **avant** `__VERSION__` (les deux motifs ne se recouvrent pas, mais l'ordre reste le plus sûr).
+- **Affichage** : cf. CLAUDE-ui.md, section « Badge de version ».
+- **`bump-version.sh`** : à lancer **une seule fois par push, juste avant `git add`/`git commit`** (pas à chaque modification, sinon le suffixe `.N` grimpe plus vite que le nombre réel de push). Étape systématique de tout push sur ce repo — la règle vit ici, le fichier de commande global `/push` (partagé entre projets) n'est pas modifié.
+- **Hook `pre-push` bloquant** : refuse le push si la version n'a pas changé depuis le dernier push sur `main`. Compare les DEUX blobs committés (`git show <sha>:package.json`), jamais le working tree — un bump non committé ne compte pas. Vérifie `remote_ref` (branche de **destination**, pas `local_ref` — sinon `push origin ma-branche:main` échapperait au contrôle), `continue` si `remote_sha`/`local_sha` est tout-zéro (nouvelle branche / suppression). Asymétrique volontairement : fail-closed si la **nouvelle** version est illisible, fail-open si c'est l'**ancienne**. Le stdin est capturé en haut (`REFS=$(cat)`) puis relu via heredoc, pas via un pipe : un pipe placerait la boucle dans un sous-shell où `exit 1` ne terminerait que ce sous-shell.
+- **Activation** (une fois par clone) : `git config core.hooksPath .githooks` — déjà fait sur le PC de Martial.
+- **`.gitattributes`** : `*.sh` et `.githooks/*` en `text eol=lf`. Avec `core.autocrlf=true` (actif ici), un `\r` finirait dans le shebang et casserait l'exécution sous WSL/Termux — `install.sh` était déjà dans ce cas, corrigé au passage. Le hook est committé en mode `100755` (`git update-index --chmod=+x`), sinon un clone frais récupérerait un hook inerte.
+- **Vérifié** : transitions de `bump-version.sh` (date → date, `.2 → .3 → .4`) et 4 scénarios du hook testés dans un dépôt git jetable (sans bump → bloque, avec bump → passe, nouvelle branche → ignorée, branche ≠ main → ignorée). Badge non encore vu sur un écran réel : demande un redémarrage du proxy.
 
 ---
 

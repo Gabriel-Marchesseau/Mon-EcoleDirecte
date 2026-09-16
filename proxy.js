@@ -24,6 +24,19 @@ function logAlways(...args) { console.log(...args); }
 
 const BUILD_VERSION = Date.now();
 
+// Numéro de version de Mon EcoleDirecte (package.json, format date "AAAA.MM.JJ[.N]" —
+// cf. CLAUDE.md section « Numéro de version ») — affiché dans l'UI (badge discret) pour
+// savoir en un coup d'œil quelle version tourne sur quel appareil (PC, téléphones).
+// SANS RAPPORT avec API_VERSION ci-dessous, qui est la version de l'API EcoleDirecte.
+// Lu une fois au démarrage, en try/catch : un package.json absent ou illisible dégrade
+// juste en badge de version absent, sans jamais empêcher le proxy de démarrer.
+let PROJECT_VERSION = '';
+try {
+  PROJECT_VERSION = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8')).version || '';
+} catch (e) {
+  log('package.json illisible — numéro de version indisponible côté UI.');
+}
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js':   'application/javascript; charset=utf-8',
@@ -267,9 +280,11 @@ server.on('request', async (req, res) => {
     try {
       let fileContent = fs.readFileSync(filePath);
       const ext = path.extname(filePath) || '.html';
-      // Remplacer __VERSION__ dans HTML et JS
+      // Remplacer __VERSION__ (cache-busting) et __APP_VERSION__ (badge de version) dans HTML et JS
       if (ext === '.html' || ext === '.js') {
-        fileContent = fileContent.toString().replace(/__VERSION__/g, BUILD_VERSION);
+        fileContent = fileContent.toString()
+          .replace(/__APP_VERSION__/g, PROJECT_VERSION)
+          .replace(/__VERSION__/g, BUILD_VERSION);
       }
       res.writeHead(200, { 'Content-Type': MIME[ext] || 'text/plain', 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' });
       res.end(fileContent);
