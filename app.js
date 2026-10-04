@@ -52,6 +52,8 @@ darkStyle.textContent = `
   body.dark .postit-content [style*="background"], body.dark #msg-dialog-content [style*="background"] { background-color: transparent !important; }
   .postit-content ul, .postit-content ol { padding-left:1.5em;margin:6px 0; }
   .postit-content p { margin:4px 0; }
+  .postit-content { overflow-wrap:anywhere; }
+  .postit-content img, .postit-content video, .postit-content iframe, .postit-content table { max-width:100% !important; height:auto !important; box-sizing:border-box; }
   .postit-author { font-size:12px;color:var(--text3);margin-top:10px;padding-top:8px;border-top:1px solid var(--border2); }
   input[type=number]::-webkit-inner-spin-button,
   input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }

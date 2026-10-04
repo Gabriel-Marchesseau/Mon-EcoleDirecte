@@ -59,6 +59,7 @@ Dark mode : `color-scheme: dark` + `filter: invert(1)` sur l'icône calendrier
 - Classes CSS : `.postits-list`, `.postit-card`, `.postit-card.type-{info|alerte|urgence}`, `.postit-meta`, `.postit-type`, `.postit-content`, `.postit-author`
 - Couleurs de bordure gauche : info → `#1d4ed8`, alerte → `#ca8a04`, urgence → `#dc2626`
 - Contenu décodé en base64 (`b64d()`) — peut contenir du HTML riche
+- Images/vidéos/iframes/tableaux bornés à `max-width:100% !important; height:auto !important` : le HTML d'EcoleDirecte porte des `width`/`height` fixes (attributs ou style inline) qui faisaient déborder les photos sur mobile (scroll horizontal + vertical)
 
 ## Badge de version
 - `#version-tag` — `<span class="version-tag" data-version="__APP_VERSION__">` dans `#profile-bar-actions` (header), juste après le libellé « Mon EcoleDirecte ». Le proxy substitue le placeholder ; `getProjectVersion()` (app.js) ne retourne la valeur que si elle commence par un chiffre — sinon (fichier ouvert hors proxy) le badge reste vide et `.version-tag:empty { display:none }` l'escamote
