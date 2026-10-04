@@ -120,11 +120,8 @@
   [contenteditable] li, #memo-detail-panel li, #message-detail-panel li { margin-bottom: 2px; }
 
   /* Neutraliser les styles inline d'EcoleDirecte dans le contenu des messages */
-  #message-detail-panel #msg-dialog-content div,
-  #message-detail-panel #msg-dialog-content p,
-  #message-detail-panel #msg-dialog-content span:not(.devoir-badge),
-  #message-detail-panel #msg-dialog-content td,
-  #message-detail-panel #msg-dialog-content li { background: transparent !important; color: var(--text) !important; }
+  #message-detail-panel #msg-dialog-content,
+  #message-detail-panel #msg-dialog-content * { background: transparent !important; color: var(--text) !important; }
   #message-detail-panel #msg-dialog-content a { color: #1d4ed8 !important; }
   /* Badges — spécificité maximale pour écraser le reset ci-dessus */
   #devoir-detail-panel span.devoir-badge { font-size: 11px !important; padding: 2px 8px !important; line-height: 24px !important; border-radius: 10px !important; margin-left: 8px !important; font-weight: 500 !important; }

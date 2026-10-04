@@ -160,6 +160,13 @@ Fix : `loadAbsences()` intercepte `d.code === 210` et retourne `{ absencesRetard
 Le `<select id="msg-annee">` listait des années scolaires codées en dur (`2025-2026`, `2024-2025`, `2023-2024`). Une fois l'établissement basculé sur `2026-2027`, cette année n'apparaissait dans aucune option → messages de l'année en cours inaccessibles.  
 Fix : l'option par défaut envoie désormais `anneeMessages: ""` (chaîne vide) au lieu d'une année codée en dur — comme le fait déjà `anneeScolaire: ""` pour les notes, le serveur résout lui-même l'année active. Libellé affiché : **"Année en cours"** (comme l'appli officielle), généré par `populateMsgAnneeSelect()` (appelée dans `onLoggedIn()`), qui ajoute aussi les 3 années précédentes calculées dynamiquement depuis la date du jour (bascule estimée début juillet) — plus jamais codées en dur, donc plus de régression à chaque rentrée.
 
+### Jeton invalide (HTTP 520/525) — "Token invalide !" affiché dans les onglets
+Le jeton EcoleDirecte peut être invalidé à tout moment ; la vérification de démarrage (1,5 s, sautée si le cache a < 30 min) ne suffisait pas et ne relançait rien après la reconnexion.  
+Fix : un wrapper de `window.fetch` (`app.js`, près de `silentReauth`) intercepte les statuts 520/525 des requêtes `/v3/` authentifiées (hors `login`/`connexion`), appelle `refreshSession()` (reconnexion silencieuse, **promesse partagée** → une seule reconnexion pour N requêtes concurrentes) puis rejoue la requête avec le nouveau `X-Token`. Nécessite `u`/`p` dans `ed_session` (sinon `enterExpiredMode()`). Ne pas contourner en gérant 520 onglet par onglet.
+
+### Messages — texte noir en mode sombre
+Certains messages portent `color:#000 !important` inline, que la feuille de style ne peut pas surcharger. `renderMessageContent()` retire `color`/`background` des styles inline après `innerHTML` ; la règle CSS de `#msg-dialog-content` vise `*` (pas seulement div/p/span).
+
 ---
 
 ## Numéro de version (`package.json`, hook `pre-push`)

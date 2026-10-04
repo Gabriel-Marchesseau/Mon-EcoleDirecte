@@ -391,6 +391,43 @@ async function silentReauth(savedSession) {
   }
 }
 
+// ── Jeton invalide (520/525) : reconnexion silencieuse puis rejeu de la requête ──
+// Le proxy renvoie data.code comme statut HTTP. Un jeton peut être invalidé côté serveur à tout moment
+// (expiration, connexion depuis un autre appareil) : plutôt que d'afficher "Token invalide !" dans chaque
+// onglet, on se reconnecte une seule fois (promesse partagée) et on rejoue la requête avec le nouveau jeton.
+let _reauthPromise = null;
+function refreshSession() {
+  if (!_reauthPromise) {
+    _reauthPromise = (async () => {
+      if (sessionExpired) return false;
+      let s = null;
+      try { s = JSON.parse(localStorage.getItem('ed_session') || 'null'); } catch { s = null; }
+      if (!s) return false;
+      await silentReauth(s);
+      return !sessionExpired && !!token;
+    })().finally(() => { _reauthPromise = null; });
+  }
+  return _reauthPromise;
+}
+
+const _nativeFetch = window.fetch.bind(window);
+window.fetch = async function(input, init) {
+  const resp = await _nativeFetch(input, init);
+  if (resp.status !== 520 && resp.status !== 525) return resp;
+  const url = typeof input === 'string' ? input : (input?.url || '');
+  if (!url.startsWith(getProxy() + '/v3/') || /\/(login|connexion\/)/.test(url)) return resp;
+  const headers = new Headers(init?.headers || {});
+  const sentToken = headers.get('X-Token');
+  if (!sentToken || !token) return resp;   // requête non authentifiée, ou plus de session
+  // Jeton déjà renouvelé par une requête concurrente (sentToken ≠ token, rien en cours) → simple rejeu
+  if (sentToken === token || _reauthPromise) {
+    if (!(await refreshSession())) return resp;
+  }
+  if (sessionExpired || !token) return resp;
+  headers.set('X-Token', token);
+  return _nativeFetch(input, { ...init, headers });
+};
+
 async function silentDoubleAuth(twoFaTokenValue, savedSession) {
   try {
     const resp = await fetch(`${getProxy()}/v3/connexion/doubleauth.awp?verbe=get&v=${API_VERSION}`, {
@@ -6069,6 +6106,8 @@ function renderMessageContent(el, rawContent) {
     .trim();
   // Décoder les entités HTML résiduelles (&nbsp; &oelig; &#339; &#x153; etc.)
   el.innerHTML = decodeHtmlEntities(clean) || '<em style="color:var(--text4)">Contenu vide</em>';
+  // Un `color: … !important` inline ne peut pas être surchargé par la feuille de style → on le retire
+  el.querySelectorAll('[style]').forEach(n => { n.style.removeProperty('color'); n.style.removeProperty('background'); n.style.removeProperty('background-color'); });
 }
 
 function closeMessageDialog() {}
