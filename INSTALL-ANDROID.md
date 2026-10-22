@@ -91,6 +91,18 @@ L'installeur a déjà créé le raccourci. Pour obtenir une icône individuelle 
 
 ---
 
+## Étape 5 bis — Installer l'application dans Chrome *(optionnel, évite les onglets en double)*
+
+Chaque appui sur le raccourci Termux ouvre sinon un nouvel onglet. En installant l'application comme PWA, elle s'ouvre dans sa propre fenêtre, réutilisée à chaque fois.
+
+1. Démarrez l'application (étape 6) et ouvrez `http://localhost:3131` dans **Chrome**
+2. Menu **⋮** → **Installer l'application** (ou **Ajouter à l'écran d'accueil**)
+3. Une icône **Mon EcoleDirecte** apparaît dans le tiroir d'applications
+
+Ensuite : le raccourci Termux démarre le proxy (et ouvre la PWA si Chrome capture le lien), puis vous pouvez rouvrir l'application depuis l'icône installée.
+
+---
+
 ## Étape 6 — Démarrer l'application
 
 **Avec l'icône** *(après l'étape 5)* : appuyez simplement sur l'icône **Mon EcoleDirecte**.  

@@ -151,6 +151,8 @@ echo \$\$ > "\$LOCK_FILE"
 trap 'rm -f "\$LOCK_FILE"' EXIT
 
 bash run.sh
+# Si l'appli est installée comme PWA dans Chrome (cf. INSTALL-ANDROID.md), Chrome
+# peut ouvrir ce lien dans sa fenêtre dédiée au lieu d'un nouvel onglet.
 termux-open-url "http://localhost:3131" 2>/dev/null || am start -a android.intent.action.VIEW -d "http://localhost:3131" 2>/dev/null
 
 # Une fois "bash run.sh" terminé (le proxy tourne en arrière-plan via nohup),

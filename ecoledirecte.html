@@ -4,6 +4,8 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#1d4ed8">
 <title>Mon EcoleDirecte</title>
 <link rel="stylesheet" href="/style.css?v=__VERSION__">
   <script>
@@ -497,5 +499,9 @@ const edCache = {
 
 </script>
 <script src="/app.js?v=__VERSION__"></script>
+<script>
+  // PWA : le service worker est requis par Chrome pour proposer l'installation
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+</script>
 </body>
 </html>

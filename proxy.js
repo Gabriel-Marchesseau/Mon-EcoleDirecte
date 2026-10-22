@@ -43,6 +43,7 @@ const MIME = {
   '.css':  'text/css; charset=utf-8',
   '.png':  'image/png',
   '.ico':  'image/x-icon',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
 };
 
 const PORT        = 3131;
@@ -270,7 +271,7 @@ server.on('request', async (req, res) => {
 
   // Pour les fichiers statiques GET, pas besoin d'attendre le body
   const parsedPathOnly = new URL(req.url, 'https://localhost').pathname;
-  const staticFiles2 = { '/': 'ecoledirecte.html', '/app.js': 'app.js', '/style.css': 'style.css', '/cache.js': 'cache.js', '/ecoledirecte.html': 'ecoledirecte.html', '/favicon.ico': 'favicon.ico' };
+  const staticFiles2 = { '/': 'ecoledirecte.html', '/app.js': 'app.js', '/style.css': 'style.css', '/cache.js': 'cache.js', '/ecoledirecte.html': 'ecoledirecte.html', '/favicon.ico': 'favicon.ico', '/manifest.webmanifest': 'manifest.webmanifest', '/sw.js': 'sw.js', '/icon-192.png': 'icon-192.png', '/icon-512.png': 'icon-512.png' };
   // Routes SPA — toute URL non-API non-statique sert l'app HTML (routeur côté client)
   const SPA_ROUTES = ['/accueil', '/edt', '/notes', '/devoirs', '/seances', '/messages', '/vie-scolaire', '/perso', '/memos', '/documents-parent', '/finances-parent', '/vie-scolaire-parent'];
   const isSpaRoute = SPA_ROUTES.includes(parsedPathOnly);
