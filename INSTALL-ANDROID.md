@@ -103,6 +103,18 @@ Ensuite : le raccourci Termux démarre le proxy (et ouvre la PWA si Chrome captu
 
 ---
 
+## Étape 5 ter — Démarrer le proxy automatiquement avec le téléphone *(optionnel)*
+
+Avec **Termux:Boot**, le proxy démarre tout seul au démarrage du téléphone : l'icône installée à l'étape 5 bis fonctionne alors à tout moment, sans passer par le raccourci Termux.
+
+1. Installez **Termux:Boot** depuis F-Droid (comme Termux et Termux:Widget), puis **ouvrez-le une fois** pour qu'Android l'autorise à se lancer au démarrage
+2. Relancez l'installeur (`bash install.sh`) : il crée le script `~/.termux/boot/mon-ecoledirecte.sh`
+3. Réglages Android → Apps → **Termux** (et **Termux:Boot**) → Batterie → **Sans restriction** — sinon Android peut arrêter le proxy en arrière-plan
+
+Le script s'exécute après le premier déverrouillage du téléphone et laisse une notification Termux permanente (c'est ce qui garde le proxy en vie). Pour arrêter le proxy : `bash run.sh stop`.
+
+---
+
 ## Étape 6 — Démarrer l'application
 
 **Avec l'icône** *(après l'étape 5)* : appuyez simplement sur l'icône **Mon EcoleDirecte**.  
