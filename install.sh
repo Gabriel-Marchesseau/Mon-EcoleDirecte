@@ -198,30 +198,51 @@ echo "  3. Appui long sur l'icône de l'app Termux:Widget (tiroir d'applications
 echo "  4. Faites glisser le raccourci \"Mon-EcoleDirecte\" sur l'écran d'accueil"
 echo ""
 
-# ── 6. Démarrage automatique au boot (Termux:Boot) ───────
-step "Création du script de démarrage automatique (Termux:Boot)..."
-# Termux:Boot exécute les scripts de ~/.termux/boot/ au démarrage du téléphone
-# (après le premier déverrouillage). Le script est créé même si l'app
-# Termux:Boot n'est pas encore installée : il est alors simplement inactif.
-# termux-wake-lock maintient Termux en service au premier plan (notification
-# permanente) pour qu'Android ne tue pas le proxy en arrière-plan.
-BOOT_DIR="$HOME/.termux/boot"
-BOOT_FILE="$BOOT_DIR/mon-ecoledirecte.sh"
-mkdir -p "$BOOT_DIR"
+# ── 6. Démarrage automatique au boot (app d'automatisation) ─
+step "Préparation du démarrage automatique au boot..."
+# Termux:Boot n'est pas installable sur tous les téléphones : on passe par une
+# app d'automatisation (ex. MacroDroid) qui envoie l'intent RUN_COMMAND à Termux
+# au démarrage du téléphone. Cela demande :
+#  - allow-external-apps=true dans ~/.termux/termux.properties
+#  - un script exécutable avec un shebang absolu ("env" échoue dans ce contexte,
+#    cf. raccourci Termux:Widget plus haut)
+# NON TESTÉ EN CONDITIONS RÉELLES (à valider sur téléphone).
+PROPS_FILE="$HOME/.termux/termux.properties"
+mkdir -p "$HOME/.termux"
+if grep -qE '^[[:space:]]*allow-external-apps[[:space:]]*=[[:space:]]*true' "$PROPS_FILE" 2>/dev/null; then
+  ok "allow-external-apps déjà activé"
+else
+  echo "allow-external-apps = true" >> "$PROPS_FILE"
+  command -v termux-reload-settings &>/dev/null && termux-reload-settings
+  ok "allow-external-apps activé dans termux.properties"
+fi
+
+BOOT_FILE="$HOME/.termux/mon-ecoledirecte-boot.sh"
 cat > "$BOOT_FILE" << EOF
 #!/data/data/com.termux/files/usr/bin/bash
-# Démarrage automatique du proxy Mon EcoleDirecte au boot du téléphone.
+# Démarrage automatique du proxy Mon EcoleDirecte (lancé par l'app d'automatisation).
+# termux-wake-lock garde Termux en service (notification permanente) pour
+# qu'Android ne tue pas le proxy en arrière-plan.
 termux-wake-lock
 cd "$DIR"
 bash run.sh > /dev/null 2>&1
 EOF
 chmod +x "$BOOT_FILE"
-ok "Script créé dans ~/.termux/boot/"
+ok "Script créé : $BOOT_FILE"
 echo ""
-echo -e "  ${CYAN}Pour que le proxy démarre avec le téléphone :${RESET}"
-echo "  1. Installez l'app \"Termux:Boot\" depuis F-Droid, puis ouvrez-la une fois"
-echo "  2. Réglages Android -> Apps -> Termux (et Termux:Boot) -> Batterie :"
-echo "     choisissez \"Sans restriction\" (sinon Android peut tuer le proxy)"
+echo -e "  ${CYAN}Pour que le proxy démarre avec le téléphone (MacroDroid) :${RESET}"
+echo "  1. Réglages Android -> Apps -> MacroDroid -> Autorisations :"
+echo "     accordez \"Exécuter des commandes dans Termux\""
+echo "  2. Batterie : \"Sans restriction\" pour Termux et MacroDroid"
+echo "  3. Dans MacroDroid, créez une macro :"
+echo "     - Déclencheur : Démarrage du téléphone (Device Boot)"
+echo "     - Action : Envoyer un intent"
+echo "         Cible    : Service"
+echo "         Action   : com.termux.RUN_COMMAND"
+echo "         Package  : com.termux"
+echo "         Classe   : com.termux.app.RunCommandService"
+echo "         Extras   : com.termux.RUN_COMMAND_PATH=$BOOT_FILE"
+echo "                    com.termux.RUN_COMMAND_BACKGROUND=true (booléen)"
 echo ""
 
 # ── Bilan ─────────────────────────────────────────────────

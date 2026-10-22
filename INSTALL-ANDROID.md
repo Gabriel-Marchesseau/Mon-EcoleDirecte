@@ -105,11 +105,20 @@ Ensuite : le raccourci Termux démarre le proxy (et ouvre la PWA si Chrome captu
 
 ## Étape 5 ter — Démarrer le proxy automatiquement avec le téléphone *(optionnel)*
 
-Avec **Termux:Boot**, le proxy démarre tout seul au démarrage du téléphone : l'icône installée à l'étape 5 bis fonctionne alors à tout moment, sans passer par le raccourci Termux.
+Le proxy peut démarrer tout seul avec le téléphone : l'icône installée à l'étape 5 bis fonctionne alors à tout moment, sans passer par le raccourci Termux. *(Termux:Boot n'étant pas installable sur tous les téléphones, on passe par une app d'automatisation, ici **MacroDroid** du Play Store.)*
 
-1. Installez **Termux:Boot** depuis F-Droid (comme Termux et Termux:Widget), puis **ouvrez-le une fois** pour qu'Android l'autorise à se lancer au démarrage
-2. Relancez l'installeur (`bash install.sh`) : il crée le script `~/.termux/boot/mon-ecoledirecte.sh`
-3. Réglages Android → Apps → **Termux** (et **Termux:Boot**) → Batterie → **Sans restriction** — sinon Android peut arrêter le proxy en arrière-plan
+1. Relancez l'installeur (`bash install.sh`) : il active `allow-external-apps = true` dans `~/.termux/termux.properties` et crée le script `~/.termux/mon-ecoledirecte-boot.sh`
+2. Réglages Android → Apps → **MacroDroid** → Autorisations : accordez **Exécuter des commandes dans Termux**
+3. Réglages Android → Apps → **Termux** et **MacroDroid** → Batterie → **Sans restriction** — sinon Android peut arrêter le proxy en arrière-plan
+4. Dans MacroDroid, créez une macro :
+   - **Déclencheur** : Démarrage du téléphone (*Device Boot*)
+   - **Action** : Envoyer un intent
+     - Cible : **Service**
+     - Action : `com.termux.RUN_COMMAND`
+     - Package : `com.termux`
+     - Classe : `com.termux.app.RunCommandService`
+     - Extra (chaîne) : `com.termux.RUN_COMMAND_PATH` = `/data/data/com.termux/files/home/.termux/mon-ecoledirecte-boot.sh`
+     - Extra (booléen) : `com.termux.RUN_COMMAND_BACKGROUND` = `true`
 
 Le script s'exécute après le premier déverrouillage du téléphone et laisse une notification Termux permanente (c'est ce qui garde le proxy en vie). Pour arrêter le proxy : `bash run.sh stop`.
 
