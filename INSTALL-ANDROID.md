@@ -103,24 +103,17 @@ Ensuite : le raccourci Termux démarre le proxy (et ouvre la PWA si Chrome captu
 
 ---
 
-## Étape 5 ter — Démarrer le proxy automatiquement avec le téléphone *(optionnel)*
+## Étape 5 ter — Démarrer le proxy à l'ouverture de Termux *(optionnel)*
 
-Le proxy peut démarrer tout seul avec le téléphone : l'icône installée à l'étape 5 bis fonctionne alors à tout moment, sans passer par le raccourci Termux. *(Termux:Boot n'étant pas installable sur tous les téléphones, on passe par une app d'automatisation, ici **MacroDroid** du Play Store.)*
+Quand vous ouvrez Termux, le proxy se lance tout seul (s'il ne tourne pas déjà) : l'icône installée à l'étape 5 bis fonctionne alors sans passer par le raccourci Termux. *(Termux:Boot n'est pas installable sur tous les téléphones et une app d'automatisation comme MacroDroid n'est pas une solution durable, d'où ce mécanisme simple basé sur `~/.bashrc`.)*
 
-1. Relancez l'installeur (`bash install.sh`) : il active `allow-external-apps = true` dans `~/.termux/termux.properties` et crée le script `~/.termux/mon-ecoledirecte-boot.sh`
-2. Réglages Android → Apps → **MacroDroid** → Autorisations : accordez **Exécuter des commandes dans Termux**
-3. Réglages Android → Apps → **Termux** et **MacroDroid** → Batterie → **Sans restriction** — sinon Android peut arrêter le proxy en arrière-plan
-4. Dans MacroDroid, créez une macro :
-   - **Déclencheur** : Démarrage du téléphone (*Device Boot*)
-   - **Action** : Envoyer un intent
-     - Cible : **Service**
-     - Action : `com.termux.RUN_COMMAND`
-     - Package : `com.termux`
-     - Classe : `com.termux.app.RunCommandService`
-     - Extra (chaîne) : `com.termux.RUN_COMMAND_PATH` = `/data/data/com.termux/files/home/.termux/mon-ecoledirecte-boot.sh`
-     - Extra (booléen) : `com.termux.RUN_COMMAND_BACKGROUND` = `true`
+1. Relancez l'installeur (`bash install.sh`) : il crée le script `~/.termux/mon-ecoledirecte-boot.sh` et ajoute un bloc `# >>> mon-ecoledirecte >>>` dans `~/.bashrc`
+2. Réglages Android → Apps → **Termux** → Batterie → **Sans restriction** — sinon Android peut arrêter le proxy en arrière-plan
+3. Après chaque **redémarrage du téléphone**, ouvrez Termux une fois (ou appuyez sur le raccourci Mon EcoleDirecte), puis utilisez l'icône de l'appli installée
 
-Le script s'exécute après le premier déverrouillage du téléphone et laisse une notification Termux permanente (c'est ce qui garde le proxy en vie). Pour arrêter le proxy : `bash run.sh stop`.
+Le script laisse une notification Termux permanente (c'est ce qui garde le proxy en vie). Pour arrêter le proxy : `bash run.sh stop`.
+
+> Le démarrage **sans aucune action** au boot nécessite une app tierce (Termux:Boot, ou une app d'automatisation) qui ouvre Termux ; ce mécanisme fonctionne avec n'importe laquelle.
 
 ---
 
