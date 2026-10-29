@@ -99,21 +99,24 @@ Chaque appui sur le raccourci Termux ouvre sinon un nouvel onglet. En installant
 2. Menu **⋮** → **Installer l'application** (ou **Ajouter à l'écran d'accueil**)
 3. Une icône **Mon EcoleDirecte** apparaît dans le tiroir d'applications
 
-Ensuite : le raccourci Termux démarre le proxy (et ouvre la PWA si Chrome capture le lien), puis vous pouvez rouvrir l'application depuis l'icône installée.
+Ensuite, rouvrez l'application depuis l'icône installée ; si le proxy est arrêté, voir l'étape 5 ter.
 
 ---
 
-## Étape 5 ter — Démarrer le proxy à l'ouverture de Termux *(optionnel)*
+## Étape 5 ter — Démarrer le proxy à l'ouverture de Termux *(recommandé)*
 
-Quand vous ouvrez Termux, le proxy se lance tout seul (s'il ne tourne pas déjà) : l'icône installée à l'étape 5 bis fonctionne alors sans passer par le raccourci Termux. *(Termux:Boot n'est pas installable sur tous les téléphones et une app d'automatisation comme MacroDroid n'est pas une solution durable, d'où ce mécanisme simple basé sur `~/.bashrc`.)*
+Quand vous ouvrez Termux, le proxy se lance tout seul (s'il ne tourne pas déjà). Combiné à l'icône installée à l'étape 5 bis, cela donne un usage très simple, sans application supplémentaire. *(Termux:Boot n'est pas installable sur tous les téléphones et les applications d'automatisation sont fragiles ; ce mécanisme simple repose sur `~/.bashrc`.)*
 
-1. Relancez l'installeur (`bash install.sh`) : il crée le script `~/.termux/mon-ecoledirecte-boot.sh` et ajoute un bloc `# >>> mon-ecoledirecte >>>` dans `~/.bashrc`
+1. Lancez (ou relancez) l'installeur : `bash install.sh`. Il crée le script `~/.termux/mon-ecoledirecte-boot.sh` et ajoute lui-même un bloc `# >>> mon-ecoledirecte >>>` dans `~/.bashrc` — rien à modifier à la main
 2. Réglages Android → Apps → **Termux** → Batterie → **Sans restriction** — sinon Android peut arrêter le proxy en arrière-plan
-3. Après chaque **redémarrage du téléphone**, ouvrez Termux une fois (ou appuyez sur le raccourci Mon EcoleDirecte), puis utilisez l'icône de l'appli installée
+
+**Au quotidien**, ouvrez simplement l'icône **Mon EcoleDirecte** (la PWA de l'étape 5 bis) :
+- si le proxy tourne, l'application s'ouvre normalement ;
+- sinon (par exemple après un redémarrage du téléphone), une page **« Démarrage de Mon EcoleDirecte… »** s'affiche. Au bout de quelques secondes, un bouton **« Démarrer le serveur (ouvre Termux) »** apparaît : appuyez dessus (si le Play Store s'affiche, appuyez sur **« Ouvrir »**), puis revenez dans la PWA. Termux démarre le proxy et la page se recharge toute seule.
 
 Le script laisse une notification Termux permanente (c'est ce qui garde le proxy en vie). Pour arrêter le proxy : `bash run.sh stop`.
 
-> Le démarrage **sans aucune action** au boot nécessite une app tierce (Termux:Boot, ou une app d'automatisation) qui ouvre Termux ; ce mécanisme fonctionne avec n'importe laquelle.
+> Une page web ne peut pas ouvrir Termux automatiquement (Chrome bloque ce genre de lien sans geste de votre part) : l'appui sur le bouton est donc nécessaire. Pour un démarrage sans aucune action au démarrage du téléphone, il faut une application tierce qui ouvre Termux (Termux:Boot ou une application d'automatisation) — le bloc `~/.bashrc` fonctionne avec n'importe laquelle.
 
 ---
 
@@ -138,7 +141,7 @@ http://localhost:3131
 ## Utilisation quotidienne
 
 Appuyez sur l'icône **Mon EcoleDirecte** sur votre écran d'accueil.  
-Le navigateur s'ouvre directement sur l'application.
+Si le proxy ne tourne pas, la page d'attente propose d'ouvrir Termux (étape 5 ter) ; sinon l'application s'ouvre directement.
 
 Pour arrêter le proxy (depuis Termux) :
 ```bash
