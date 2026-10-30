@@ -86,6 +86,17 @@ L'installeur va :
 
 L'installeur a déjà créé le raccourci. Pour obtenir une icône individuelle (et non le widget "liste" qui affiche un titre + une liste de scripts) :
 
+**Sur un lanceur Xiaomi (HyperOS)**, où le raccourci ne peut pas être glissé depuis le menu d'appui long :
+
+1. Dans Termux, tapez :
+   ```bash
+   am start -n com.termux.widget/.TermuxCreateShortcutActivity
+   ```
+2. Choisissez le script **Mon-EcoleDirecte**, puis acceptez **« Ajouter à l'écran d'accueil »**
+3. L'icône **Mon EcoleDirecte** apparaît — appuyez dessus pour lancer l'application
+
+**Sur les autres lanceurs :**
+
 1. Ouvrez l'app **Termux:Widget** elle-même → bouton **CREATE SHORTCUTS**
 2. Appuyez **longuement** sur l'icône de l'app Termux:Widget (tiroir d'applications)
 3. Faites glisser le raccourci **Mon-EcoleDirecte** sur l'écran d'accueil
