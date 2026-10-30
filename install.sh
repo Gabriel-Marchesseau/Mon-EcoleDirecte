@@ -89,20 +89,15 @@ fi
 
 # ── 3. Dépendances npm ────────────────────────────────────
 step "Installation des dépendances npm..."
-# --omit=dev : nodemon (outil de dev, inutile sur téléphone) n'est pas installé,
-# ce qui évite l'essentiel des alertes "npm audit" (braces, chokidar...).
-if npm install --omit=dev --no-audit --no-fund 2>/dev/null; then
+# npm ci installe exactement les versions de package-lock.json (versionné, déjà
+# corrigé des vulnérabilités connues) sans jamais le réécrire : contrairement à
+# "npm install" + "npm audit fix", le dépôt git du téléphone reste propre et les
+# "git pull" suivants ne sont pas bloqués par un package-lock.json modifié.
+# --omit=dev : nodemon (outil de dev, inutile sur téléphone) n'est pas installé.
+if npm ci --omit=dev --no-audit --no-fund 2>/dev/null; then
   ok "Dépendances installées (node-forge)"
 else
-  err "Échec de npm install"
-fi
-
-# ── 3b. Correction des vulnérabilités npm ─────────────────
-step "Correction des vulnérabilités npm (audit fix)..."
-if npm audit fix --omit=dev >/dev/null 2>&1; then
-  ok "Audit npm — corrections appliquées"
-else
-  warn "Certaines vulnérabilités n'ont pas pu être corrigées automatiquement (sans impact pour un usage local)"
+  err "Échec de npm ci"
 fi
 
 # ── 4. Certificats SSL ────────────────────────────────────
