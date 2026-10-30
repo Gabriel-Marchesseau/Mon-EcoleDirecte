@@ -117,103 +117,15 @@ else
   fi
 fi
 
-# ── 5. Raccourci écran d'accueil (Termux:Widget) ─────────
-step "Création du raccourci écran d'accueil..."
-SHORTCUTS_DIR="$HOME/.shortcuts"
-mkdir -p "$SHORTCUTS_DIR"
-# Pas d'espace dans le nom : le mécanisme des raccourcis dynamiques de
-# Termux:Widget (~/.termux/widget/dynamic_shortcuts) invoque le script via
-# `env "chemin"`, qui scinde un chemin contenant un espace en deux arguments
-# ("Mon" / "EcoleDirecte.sh") et échoue avec "No such file or directory"
-# (confirmé en test réel sur Mon-MELCloud). Le widget-liste classique n'a pas
-# ce problème, mais on évite l'espace pour que les deux mécanismes fonctionnent.
-#
-# NON TESTÉ EN CONDITIONS RÉELLES sur ce projet (porté depuis Mon-MELCloud,
-# à confirmer sur téléphone) : un script placé dans ~/.shortcuts/tasks/ (au
-# lieu de ~/.shortcuts/ directement) est exécuté en arrière-plan par
-# Termux:Widget via RunCommandService, sans jamais ouvrir de terminal/Activity
-# Android - il n'apparaît donc pas dans l'écran multitâche, tout en gardant la
-# notification Termux (avec bouton d'arrêt) comme avant.
-SHORTCUTS_TASKS_DIR="$SHORTCUTS_DIR/tasks"
-mkdir -p "$SHORTCUTS_TASKS_DIR"
-SHORTCUT_FILE="$SHORTCUTS_TASKS_DIR/Mon-EcoleDirecte.sh"
-OLD_SHORTCUT_FILE="$SHORTCUTS_DIR/Mon EcoleDirecte.sh"
-OLD_ICON_FILE="$SHORTCUTS_DIR/icons/Mon EcoleDirecte.sh.png"
-OLD_DYNAMIC_LINK="$HOME/.termux/widget/dynamic_shortcuts/Mon EcoleDirecte.sh"
-if [ -f "$OLD_SHORTCUT_FILE" ]; then
-  rm -f "$OLD_SHORTCUT_FILE" "$OLD_ICON_FILE" "$OLD_DYNAMIC_LINK"
-  warn "Ancien raccourci \"Mon EcoleDirecte.sh\" (avec espace) supprimé"
-fi
-# Migration : ancien raccourci créé directement dans ~/.shortcuts/ (visible
-# dans le multitâche Android) avant le passage à ~/.shortcuts/tasks/.
-OLD_DIRECT_SHORTCUT_FILE="$SHORTCUTS_DIR/Mon-EcoleDirecte.sh"
-OLD_DIRECT_ICON_FILE="$SHORTCUTS_DIR/icons/Mon-EcoleDirecte.sh.png"
-OLD_DIRECT_DYNAMIC_LINK="$HOME/.termux/widget/dynamic_shortcuts/Mon-EcoleDirecte.sh"
-if [ -f "$OLD_DIRECT_SHORTCUT_FILE" ]; then
-  rm -f "$OLD_DIRECT_SHORTCUT_FILE" "$OLD_DIRECT_ICON_FILE" "$OLD_DIRECT_DYNAMIC_LINK"
-  warn "Ancien raccourci ~/.shortcuts/Mon-EcoleDirecte.sh (visible dans le multitâche) supprimé"
-fi
-cat > "$SHORTCUT_FILE" << EOF
-#!/data/data/com.termux/files/usr/bin/bash
-# "#!/usr/bin/env bash" échoue quand ce script est lancé via Termux:Widget
-# (raccourci dynamique / RUN_COMMAND) : le PATH complet de Termux n'est chargé
-# que dans une session interactive, pas dans ce contexte, donc "env" ne trouve
-# pas "bash" (erreur "No such file or directory", confirmé en test réel sur
-# Mon-MELCloud) - d'où le chemin absolu ci-dessus.
-cd "$DIR"
-
-# Termux:Widget ouvre systématiquement une nouvelle session à chaque appui sur
-# le raccourci, sans moyen de réutiliser une session déjà ouverte (pas d'API
-# Termux pour ça). Si une session précédente est déjà en train d'attendre
-# ci-dessous (proxy actif), on évite d'en empiler une deuxième en double : on
-# se contente de rouvrir le navigateur sur l'appli déjà démarrée, puis on
-# quitte tout de suite au lieu de rebloquer sur la boucle d'attente.
-LOCK_FILE="\${TMPDIR:-/tmp}/med-shortcut-session.pid"
-if [ -f "\$LOCK_FILE" ] && kill -0 "\$(cat "\$LOCK_FILE" 2>/dev/null)" 2>/dev/null; then
-  command -v termux-open-url &>/dev/null && termux-open-url "http://localhost:3131" 2>/dev/null
-  echo "Mon EcoleDirecte tourne déjà (session précédente) - navigateur rouvert."
-  sleep 2
-  exit 0
-fi
-echo \$\$ > "\$LOCK_FILE"
-trap 'rm -f "\$LOCK_FILE"' EXIT
-
-bash run.sh
-# Si l'appli est installée comme PWA dans Chrome (cf. INSTALL-ANDROID.md), Chrome
-# peut ouvrir ce lien dans sa fenêtre dédiée au lieu d'un nouvel onglet.
-termux-open-url "http://localhost:3131" 2>/dev/null || am start -a android.intent.action.VIEW -d "http://localhost:3131" 2>/dev/null
-
-# Une fois "bash run.sh" terminé (le proxy tourne en arrière-plan via nohup),
-# ce script se terminerait aussi et la session Termux ouverte par le widget
-# avec lui - Android tue alors le proxy peu après, faute de session/fenêtre
-# au premier plan pour le retenir (confirmé en test réel). On bloque donc ici
-# tant que le proxy tourne, pour garder la session vivante.
-PID_FILE="\${TMPDIR:-/tmp}/med-proxy.pid"
-while kill -0 "\$(cat "\$PID_FILE" 2>/dev/null)" 2>/dev/null; do
-  sleep 5
+# ── 5. Retrait de l'ancien raccourci Termux:Widget ───────
+# L'application se lance désormais depuis son icône PWA : on retire les raccourcis
+# créés par les versions précédentes de cet installeur (noms actuel et anciens).
+for f in "$HOME/.shortcuts/tasks/Mon-EcoleDirecte.sh"          "$HOME/.shortcuts/Mon-EcoleDirecte.sh"          "$HOME/.shortcuts/Mon EcoleDirecte.sh"          "$HOME/.shortcuts/icons/Mon-EcoleDirecte.sh.png"          "$HOME/.shortcuts/icons/Mon EcoleDirecte.sh.png"          "$HOME/.termux/widget/dynamic_shortcuts/Mon-EcoleDirecte.sh"          "$HOME/.termux/widget/dynamic_shortcuts/Mon EcoleDirecte.sh"; do
+  if [ -e "$f" ] || [ -L "$f" ]; then
+    rm -f "$f"
+    ok "Ancien raccourci retiré : ${f#$HOME/}"
+  fi
 done
-EOF
-chmod +x "$SHORTCUT_FILE"
-ok "Raccourci créé dans ~/.shortcuts/tasks/"
-
-step "Création de l'icône du widget..."
-ICONS_DIR="$SHORTCUTS_DIR/icons"
-mkdir -p "$ICONS_DIR"
-# Termux:Widget attend un fichier nommé "<nom-du-script>.png" (extension .sh
-# conservée, ex. "Mon-EcoleDirecte.sh.png"), pas juste le nom du script sans extension.
-ICON_FILE="$ICONS_DIR/$(basename "$SHORTCUT_FILE").png"
-if [ -f "$DIR/logo.png" ]; then
-  cp "$DIR/logo.png" "$ICON_FILE"
-  ok "Icône copiée dans ~/.shortcuts/icons/"
-else
-  warn "logo.png introuvable, Termux:Widget utilisera son icône par défaut"
-fi
-
-step "Préparation du raccourci individuel (icône seule)..."
-DYNAMIC_DIR="$HOME/.termux/widget/dynamic_shortcuts"
-mkdir -p "$DYNAMIC_DIR"
-ln -sf "$SHORTCUT_FILE" "$DYNAMIC_DIR/$(basename "$SHORTCUT_FILE")"
-ok "Lien créé dans ~/.termux/widget/dynamic_shortcuts/"
 
 # ── 6. Démarrage automatique du proxy à l'ouverture de Termux ─
 step "Configuration du démarrage automatique du proxy..."
@@ -221,7 +133,7 @@ step "Configuration du démarrage automatique du proxy..."
 # Pro limité dans le temps) n'est pas une solution durable : le proxy est donc
 # lancé par ~/.bashrc à chaque ouverture de Termux (session interactive). run.sh
 # ne fait rien si le proxy tourne déjà. Le script de démarrage a un shebang
-# absolu ("env" échoue hors session interactive, cf. raccourci Termux:Widget).
+# absolu ("env" échoue hors session interactive).
 # NON TESTÉ EN CONDITIONS RÉELLES (à valider sur téléphone).
 BOOT_FILE="$HOME/.termux/mon-ecoledirecte-boot.sh"
 mkdir -p "$HOME/.termux"
