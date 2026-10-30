@@ -70,7 +70,10 @@
         </ul>
       </div>
     </div>
-    <p id="install-done" class="ok hidden">✓ Icône installée</p>
+    <div id="install-done" class="hidden">
+      <p class="ok">✓ Application déjà installée</p>
+      <p>Si l'icône n'est plus sur l'écran d'accueil (la supprimer ne désinstalle pas toujours l'application) : Paramètres Android → <b>Applis</b> → <b>Mon EcoleDirecte</b> → <b>Désinstaller</b>, puis rechargez cette page pour la réinstaller. Vos données (mémos, session) sont conservées par Chrome.</p>
+    </div>
   </div>
 
   <div class="step">
@@ -103,6 +106,14 @@
 
   // Page ouverte depuis l'icône déjà installée
   if (window.matchMedia && matchMedia('(display-mode: standalone)').matches) markInstalled();
+
+  // Page ouverte dans Chrome alors que l'application est déjà installée
+  // (nécessite related_applications dans le manifest)
+  if (navigator.getInstalledRelatedApps) {
+    navigator.getInstalledRelatedApps().then(function (apps) {
+      if (apps.length) markInstalled();
+    }).catch(function () {});
+  }
 
   // Chrome propose l'installation : bouton direct à la place de la consigne « menu ⋮ »
   window.addEventListener('beforeinstallprompt', function (e) {
