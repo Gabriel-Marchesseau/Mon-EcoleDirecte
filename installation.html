@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#1d4ed8">
+<title>Mon EcoleDirecte — Fin de l'installation</title>
+<style>
+  /* Mêmes variables de thème que style.css (page autonome, ouverte par install.sh) */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f5f5f0; --bg2: #fff; --text: #1a1a1a; --text2: #555; --text3: #888;
+    --border: #e0e0d8;
+  }
+  body.dark {
+    --bg: #1a1a1a; --bg2: #242424; --text: #f0f0ee; --text2: #ccc; --text3: #888;
+    --border: #333;
+  }
+  body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); padding: 24px 16px; line-height: 1.45; }
+  .wrap { max-width: 520px; margin: 0 auto; }
+  .head { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+  .head img { width: 44px; height: 44px; border-radius: 10px; }
+  h1 { font-size: 20px; }
+  .sub { color: var(--text2); font-size: 14px; margin-bottom: 20px; }
+  .step { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
+  .step h2 { font-size: 15px; display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .num { flex: none; width: 24px; height: 24px; border-radius: 50%; background: #1d4ed8; color: #fff; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; }
+  .step.done .num { background: #16a34a; }
+  .step p, .step li { font-size: 14px; color: var(--text2); }
+  .step ul { padding-left: 18px; margin-top: 4px; }
+  .step b { color: var(--text); }
+  .btn { display: block; width: 100%; margin-top: 10px; padding: 12px 16px; border: none; border-radius: 8px; background: #1d4ed8; color: #fff; font-size: 15px; font-weight: 600; text-align: center; text-decoration: none; cursor: pointer; }
+  .btn.secondary { background: transparent; color: #1d4ed8; border: 1px solid #1d4ed8; }
+  body.dark .btn.secondary { color: #93c5fd; border-color: #93c5fd; }
+  .hidden { display: none; }
+  .ok { color: #16a34a; font-weight: 600; }
+</style>
+<script>
+  // Même préférence de thème que l'application (clé ed_dark), sinon thème du système
+  (function () {
+    var dark = null;
+    try { dark = localStorage.getItem('ed_dark'); } catch (e) {}
+    if (dark === '1' || (dark === null && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.className = 'dark-pending';
+    }
+  })();
+</script>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <img src="/icon-192.png" alt="">
+    <h1>Installation terminée</h1>
+  </div>
+  <p class="sub">Encore deux réglages et Mon EcoleDirecte est prêt.</p>
+
+  <div class="step" id="step-install">
+    <h2><span class="num">1</span> Ajouter l'icône sur l'écran d'accueil</h2>
+    <div id="install-todo">
+      <p>L'application s'ouvrira dans sa propre fenêtre, sans onglet en double.</p>
+      <button class="btn hidden" id="install-btn" type="button">Installer l'application PWA et ajouter un raccourci</button>
+      <div id="install-manual">
+        <ul>
+          <li>Dans Chrome, menu <b>⋮</b> (en haut à droite) → <b>Installer et créer un raccourci</b>.</li>
+          <li>Dans la fenêtre qui s'ouvre, choisissez la <b>première option</b> (« Installer »).</li>
+          <li>Si elle indique <b>« Cette appli est déjà installée »</b> mais que l'icône n'est plus sur l'écran d'accueil (supprimer l'icône ne désinstalle pas toujours l'application) : Réglages Android → <b>Applications</b> → <b>Mon EcoleDirecte</b> → <b>Désinstaller</b>, puis rechargez cette page et recommencez. Vos données (mémos, session) sont conservées par Chrome.</li>
+          <li>N'utilisez pas <b>« Créer un raccourci »</b> : ce raccourci s'ouvre dans un onglet de Chrome, pas dans la fenêtre de l'application.</li>
+        </ul>
+      </div>
+    </div>
+    <p id="install-done" class="ok hidden">✓ Icône installée</p>
+  </div>
+
+  <div class="step">
+    <h2><span class="num">2</span> Autoriser Termux en arrière-plan</h2>
+    <p>Réglages Android → <b>Applications</b> → <b>Termux</b> → <b>Batterie</b> → <b>Sans restriction</b>. Sinon Android peut arrêter le serveur local.</p>
+  </div>
+
+  <div class="step">
+    <h2><span class="num">✓</span> Au quotidien</h2>
+    <ul>
+      <li>Ouvrez simplement l'icône <b>Mon EcoleDirecte</b>.</li>
+      <li>Si le serveur est arrêté (après un redémarrage du téléphone par exemple), la page d'attente propose <b>Démarrer le serveur</b> : appuyez dessus (puis sur <b>Ouvrir</b> si le Play Store s'affiche) et revenez dans l'application.</li>
+    </ul>
+  </div>
+
+  <a class="btn secondary" href="/" target="_blank" rel="noopener">Ouvrir Mon EcoleDirecte dans un nouvel onglet du navigateur</a>
+</div>
+
+<script>
+  if (document.documentElement.className === 'dark-pending') document.body.classList.add('dark');
+
+  var deferredPrompt = null;
+  var installBtn = document.getElementById('install-btn');
+
+  function markInstalled() {
+    document.getElementById('install-todo').classList.add('hidden');
+    document.getElementById('install-done').classList.remove('hidden');
+    document.getElementById('step-install').classList.add('done');
+  }
+
+  // Page ouverte depuis l'icône déjà installée
+  if (window.matchMedia && matchMedia('(display-mode: standalone)').matches) markInstalled();
+
+  // Chrome propose l'installation : bouton direct à la place de la consigne « menu ⋮ »
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault();
+    deferredPrompt = e;
+    installBtn.classList.remove('hidden');
+    document.getElementById('install-manual').classList.add('hidden');
+  });
+
+  installBtn.addEventListener('click', function () {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    deferredPrompt.userChoice.then(function (choice) {
+      if (choice.outcome === 'accepted') markInstalled();
+      deferredPrompt = null;
+    });
+  });
+
+  window.addEventListener('appinstalled', markInstalled);
+
+  // Le service worker est requis par Chrome pour proposer l'installation
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () {});
+</script>
+</body>
+</html>

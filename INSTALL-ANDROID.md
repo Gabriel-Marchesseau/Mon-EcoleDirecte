@@ -75,6 +75,8 @@ L'installeur va :
 - Vérifier les fichiers nécessaires
 - Installer les dépendances Node.js
 - Générer les certificats (utilisés uniquement par le proxy côté serveur)
+- Configurer le démarrage du proxy à l'ouverture de Termux (étape 5 ter)
+- Démarrer le proxy puis ouvrir **Chrome** sur la page de fin d'installation (`http://localhost:3131/installation`), qui liste les réglages restants
 
 ---
 
@@ -91,15 +93,15 @@ L'installeur a déjà créé le raccourci. Pour obtenir une icône individuelle 
 
 ---
 
-## Étape 5 bis — Installer l'application dans Chrome *(optionnel, évite les onglets en double)*
+## Étape 5 bis — Installer l'application dans Chrome *(recommandé, évite les onglets en double)*
 
-Chaque appui sur le raccourci Termux ouvre sinon un nouvel onglet. En installant l'application comme PWA, elle s'ouvre dans sa propre fenêtre, réutilisée à chaque fois.
+Installée comme PWA, l'application s'ouvre dans sa propre fenêtre, réutilisée à chaque fois, depuis une icône sur l'écran d'accueil.
 
-1. Démarrez l'application (étape 6) et ouvrez `http://localhost:3131` dans **Chrome**
-2. Menu **⋮** → **Installer l'application** (ou **Ajouter à l'écran d'accueil**)
-3. Une icône **Mon EcoleDirecte** apparaît dans le tiroir d'applications
-
-Ensuite, rouvrez l'application depuis l'icône installée ; si le proxy est arrêté, voir l'étape 5 ter.
+À la fin de l'étape 4, Chrome affiche la page de fin d'installation (sinon ouvrez `http://localhost:3131/installation` dans **Chrome**) :
+- **Bouton « Installer l'application PWA et ajouter un raccourci »** (affiché quand Chrome le permet) : confirmez dans la fenêtre de Chrome, où vous pouvez aussi modifier le nom du raccourci
+- **Sinon**, menu **⋮** → **Installer et créer un raccourci** → choisissez la **première option** (« Installer »)
+- N'utilisez **pas** l'option **« Créer un raccourci »** : ce raccourci s'ouvre dans un onglet de Chrome, pas dans la fenêtre de l'application
+- Si Chrome indique **« Cette appli est déjà installée »** alors que l'icône a disparu de l'écran d'accueil (supprimer l'icône ne désinstalle pas toujours l'application) : Paramètres Android → **Applis** → **Mon EcoleDirecte** → **Désinstaller**, puis recommencez. Les données (mémos, session) sont conservées par Chrome
 
 ---
 

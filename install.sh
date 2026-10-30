@@ -220,17 +220,6 @@ mkdir -p "$DYNAMIC_DIR"
 ln -sf "$SHORTCUT_FILE" "$DYNAMIC_DIR/$(basename "$SHORTCUT_FILE")"
 ok "Lien créé dans ~/.termux/widget/dynamic_shortcuts/"
 
-echo ""
-echo -e "  ${CYAN}Pour afficher l'icône sur l'écran d'accueil :${RESET}"
-echo "  Le widget \"liste\" de Termux:Widget (celui qui affiche un titre + une"
-echo "  liste de scripts) n'affiche jamais d'icône individuelle. Pour une icône"
-echo "  seule sur l'écran d'accueil :"
-echo "  1. Installez l'app \"Termux:Widget\" depuis F-Droid"
-echo "  2. Ouvrez l'app Termux:Widget elle-même -> bouton \"CREATE SHORTCUTS\""
-echo "  3. Appui long sur l'icône de l'app Termux:Widget (tiroir d'applications)"
-echo "  4. Faites glisser le raccourci \"Mon-EcoleDirecte\" sur l'écran d'accueil"
-echo ""
-
 # ── 6. Démarrage automatique du proxy à l'ouverture de Termux ─
 step "Configuration du démarrage automatique du proxy..."
 # Termux:Boot n'est pas installable sur tous les téléphones et MacroDroid (essai
@@ -267,21 +256,32 @@ $BASHRC_BEGIN
 $BASHRC_END
 EOF
 ok "Démarrage automatique ajouté à ~/.bashrc"
-echo ""
-echo -e "  ${CYAN}Le proxy démarre désormais à chaque ouverture de Termux.${RESET}"
-echo "  Après un redémarrage du téléphone, ouvrez Termux une fois (ou appuyez sur"
-echo "  le raccourci Mon EcoleDirecte), puis utilisez l'icône de l'appli installée."
-echo "  Batterie : réglez Termux sur \"Sans restriction\" (Réglages Android -> Apps)."
-echo ""
 
 # ── Bilan ─────────────────────────────────────────────────
+# Les étapes restantes (icône PWA, batterie, usage quotidien) sont affichées
+# dans Chrome par la page /installation plutôt que dans le terminal.
+INSTALL_URL="http://localhost:3131/installation"
 echo ""
 echo "  ====================================="
 if [ ${#ERRORS[@]} -eq 0 ]; then
-  echo -e "  ${GREEN}Installation terminée avec succès !${RESET}"
+  # (Re)démarre le proxy pour qu'il serve la version tout juste installée
+  step "Démarrage de Mon EcoleDirecte..."
+  bash run.sh stop > /dev/null 2>&1
+  ( "$BOOT_FILE" > /dev/null 2>&1 & )
+  READY=false
+  for i in $(seq 1 15); do
+    sleep 1
+    if curl -s -o /dev/null "$INSTALL_URL" 2>/dev/null; then READY=true; break; fi
+  done
   echo ""
-  echo "  Pour démarrer l'application :"
-  echo -e "  ${CYAN}bash run.sh${RESET}"
+  if $READY; then
+    echo -e "  ${GREEN}Installation terminée — la suite s'affiche dans Chrome.${RESET}"
+    am start -a android.intent.action.VIEW -d "$INSTALL_URL" -p com.android.chrome > /dev/null 2>&1 \
+      || termux-open-url "$INSTALL_URL" 2>/dev/null
+  else
+    echo -e "  ${YELLOW}Installation terminée, mais le serveur tarde à démarrer.${RESET}"
+  fi
+  echo "  Si Chrome ne s'ouvre pas : $INSTALL_URL"
 else
   echo -e "  ${RED}Installation terminée avec ${#ERRORS[@]} erreur(s) :${RESET}"
   for e in "${ERRORS[@]}"; do
