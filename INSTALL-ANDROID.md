@@ -7,30 +7,29 @@
 ## Ce dont vous avez besoin
 
 - Une tablette ou un téléphone Android (Android 8 minimum)
-- N'importe quel navigateur (Chrome, Firefox, Samsung Internet…)
+- Google Chrome (pour installer l'application avec son icône)
 - Une connexion Wi-Fi (pour le téléchargement initial)
 
 ---
 
-## Étape 1 — Installer Termux (et Termux:Widget)
+## Étape 1 — Installer Termux
 
 Termux est un terminal Linux pour Android qui permet de faire tourner Node.js.  
-Termux:Widget permet d'ajouter un icône de lancement sur l'écran d'accueil.  
 Termux:API permet à Android de garder le proxy en vie quand Termux est en arrière-plan.
 
-**Via F-Droid** *(recommandé — les trois apps sont disponibles)*
+**Via F-Droid** *(recommandé — les deux apps sont disponibles)*
 
 F-Droid est un store alternatif qui propose les versions à jour de Termux.
 
 1. Ouvrez [f-droid.org](https://f-droid.org) dans votre navigateur et téléchargez l'APK F-Droid
 2. Android va vous demander d'autoriser l'installation → acceptez
-3. Installez F-Droid, ouvrez-le, puis installez **Termux**, **Termux:Widget** et **Termux:API**
+3. Installez F-Droid, ouvrez-le, puis installez **Termux** et **Termux:API**
 
 **Via le Play Store** *(alternative si F-Droid pose problème)*
 
 Recherchez **Termux** sur le Play Store et installez-le.
 
-> Note : Termux:Widget et Termux:API ne sont pas disponibles sur le Play Store — l'icône sur l'écran d'accueil ne fonctionnera pas, mais l'application reste utilisable normalement.
+> Note : Termux:API n'est pas disponible sur le Play Store, mais l'application reste utilisable normalement.
 
 ---
 
@@ -75,36 +74,12 @@ L'installeur va :
 - Vérifier les fichiers nécessaires
 - Installer les dépendances Node.js
 - Générer les certificats (utilisés uniquement par le proxy côté serveur)
-- Configurer le démarrage du proxy à l'ouverture de Termux (étape 5 ter)
+- Configurer le démarrage du proxy à l'ouverture de Termux (étape 6)
 - Démarrer le proxy puis ouvrir **Chrome** sur la page de fin d'installation (`http://localhost:3131/installation`), qui liste les réglages restants
 
 ---
 
 ## Étape 5 — Ajouter l'icône sur l'écran d'accueil
-
-> Cette étape nécessite Termux:Widget installé via F-Droid (étape 1).
-
-L'installeur a déjà créé le raccourci. Pour obtenir une icône individuelle (et non le widget "liste" qui affiche un titre + une liste de scripts) :
-
-**Sur un lanceur Xiaomi (HyperOS)**, où le raccourci ne peut pas être glissé depuis le menu d'appui long :
-
-1. Dans Termux, tapez :
-   ```bash
-   am start -n com.termux.widget/.TermuxCreateShortcutActivity
-   ```
-2. Choisissez le script **Mon-EcoleDirecte**, puis acceptez **« Ajouter à l'écran d'accueil »**
-3. L'icône **Mon EcoleDirecte** apparaît — appuyez dessus pour lancer l'application
-
-**Sur les autres lanceurs :**
-
-1. Ouvrez l'app **Termux:Widget** elle-même → bouton **CREATE SHORTCUTS**
-2. Appuyez **longuement** sur l'icône de l'app Termux:Widget (tiroir d'applications)
-3. Faites glisser le raccourci **Mon-EcoleDirecte** sur l'écran d'accueil
-4. L'icône **Mon EcoleDirecte** apparaît — appuyez dessus pour lancer l'application
-
----
-
-## Étape 5 bis — Installer l'application dans Chrome *(recommandé, évite les onglets en double)*
 
 Installée comme PWA, l'application s'ouvre dans sa propre fenêtre, réutilisée à chaque fois, depuis une icône sur l'écran d'accueil.
 
@@ -116,14 +91,14 @@ Installée comme PWA, l'application s'ouvre dans sa propre fenêtre, réutilisé
 
 ---
 
-## Étape 5 ter — Démarrer le proxy à l'ouverture de Termux *(recommandé)*
+## Étape 6 — Démarrer le proxy à l'ouverture de Termux
 
-Quand vous ouvrez Termux, le proxy se lance tout seul (s'il ne tourne pas déjà). Combiné à l'icône installée à l'étape 5 bis, cela donne un usage très simple, sans application supplémentaire. *(Termux:Boot n'est pas installable sur tous les téléphones et les applications d'automatisation sont fragiles ; ce mécanisme simple repose sur `~/.bashrc`.)*
+Quand vous ouvrez Termux, le proxy se lance tout seul (s'il ne tourne pas déjà). Combiné à l'icône installée à l'étape 5, cela donne un usage très simple, sans application supplémentaire. *(Termux:Boot n'est pas installable sur tous les téléphones et les applications d'automatisation sont fragiles ; ce mécanisme simple repose sur `~/.bashrc`.)*
 
 1. Lancez (ou relancez) l'installeur : `bash install.sh`. Il crée le script `~/.termux/mon-ecoledirecte-boot.sh` et ajoute lui-même un bloc `# >>> mon-ecoledirecte >>>` dans `~/.bashrc` — rien à modifier à la main
 2. Réglages Android → Apps → **Termux** → Batterie → **Sans restriction** — sinon Android peut arrêter le proxy en arrière-plan
 
-**Au quotidien**, ouvrez simplement l'icône **Mon EcoleDirecte** (la PWA de l'étape 5 bis) :
+**Au quotidien**, ouvrez simplement l'icône **Mon EcoleDirecte** (la PWA de l'étape 5) :
 - si le proxy tourne, l'application s'ouvre normalement ;
 - sinon (par exemple après un redémarrage du téléphone), une page **« Démarrage de Mon EcoleDirecte… »** s'affiche. Au bout de quelques secondes, un bouton **« Démarrer le serveur (ouvre Termux) »** apparaît : appuyez dessus (si le Play Store s'affiche, appuyez sur **« Ouvrir »**), puis revenez dans la PWA. Termux démarre le proxy et la page se recharge toute seule.
 
@@ -133,33 +108,17 @@ Le script laisse une notification Termux permanente (c'est ce qui garde le proxy
 
 ---
 
-## Étape 6 — Démarrer l'application
-
-**Avec l'icône** *(après l'étape 5)* : appuyez simplement sur l'icône **Mon EcoleDirecte**.  
-Le proxy démarre et le navigateur s'ouvre automatiquement sur l'application. Le raccourci s'exécute en arrière-plan (une notification Termux avec bouton d'arrêt reste affichée) sans ouvrir de terminal visible ni apparaître dans l'écran multitâche.
-
-**Sans l'icône** : ouvrez Termux et tapez :
-```bash
-cd Mon-EcoleDirecte && bash run.sh
-```
-Puis ouvrez votre navigateur sur :
-```
-http://localhost:3131
-```
-
-> L'application utilise HTTP en local — c'est normal et sécurisé : toutes les communications avec EcoleDirecte restent chiffrées en HTTPS côté serveur.
-
----
-
 ## Utilisation quotidienne
 
 Appuyez sur l'icône **Mon EcoleDirecte** sur votre écran d'accueil.  
-Si le proxy ne tourne pas, la page d'attente propose d'ouvrir Termux (étape 5 ter) ; sinon l'application s'ouvre directement.
+Si le proxy ne tourne pas, la page d'attente propose d'ouvrir Termux (étape 6) ; sinon l'application s'ouvre directement.
 
 Pour arrêter le proxy (depuis Termux) :
 ```bash
 cd Mon-EcoleDirecte && bash run.sh stop
 ```
+
+> L'application utilise HTTP en local — c'est normal et sécurisé : toutes les communications avec EcoleDirecte restent chiffrées en HTTPS côté serveur.
 
 ---
 
