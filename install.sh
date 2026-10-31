@@ -134,6 +134,8 @@ step "Configuration du démarrage automatique du proxy..."
 # lancé par ~/.bashrc à chaque ouverture de Termux (session interactive). run.sh
 # ne fait rien si le proxy tourne déjà. Le script de démarrage a un shebang
 # absolu ("env" échoue hors session interactive).
+# --no-open : ne pas copier l'URL dans le presse-papier à chaque ouverture de Termux
+# (écrasait le presse-papier et pouvait rester bloqué sur termux-clipboard-set).
 # NON TESTÉ EN CONDITIONS RÉELLES (à valider sur téléphone).
 BOOT_FILE="$HOME/.termux/mon-ecoledirecte-boot.sh"
 mkdir -p "$HOME/.termux"
@@ -144,7 +146,7 @@ cat > "$BOOT_FILE" << EOF
 # qu'Android ne tue pas le proxy en arrière-plan.
 termux-wake-lock
 cd "$DIR"
-bash run.sh > /dev/null 2>&1
+bash run.sh --no-open > /dev/null 2>&1
 EOF
 chmod +x "$BOOT_FILE"
 ok "Script créé : $BOOT_FILE"
@@ -156,10 +158,23 @@ touch "$BASHRC"
 # Bloc géré par l'installeur : supprimé puis réécrit à chaque exécution
 # (idempotent, et reflète un éventuel changement de chemin).
 sed -i "/$BASHRC_BEGIN/,/$BASHRC_END/d" "$BASHRC"
+# Le bloc est idempotent PAR SHELL : le profil de Termux ($PREFIX/etc/profile) source
+# déjà ~/.bashrc pour un shell de connexion, et un ~/.bash_profile qui le source aussi
+# (créé par l'installeur d'un autre projet, ex. Mon MELCloud) le fait lire DEUX fois par
+# connexion -> deux démarrages simultanés. La variable exportée MED_BOOT_DONE fait que
+# seule la première lecture lance le script de démarrage. Limité aux shells interactifs
+# (un `source ~/.bashrc` depuis un script ou une commande SSH ne lance rien).
 cat >> "$BASHRC" << EOF
 $BASHRC_BEGIN
 # Démarre le proxy Mon EcoleDirecte en arrière-plan à l'ouverture de Termux
-( "$BOOT_FILE" > /dev/null 2>&1 & )
+case \$- in
+  *i*)
+    if [ -z "\${MED_BOOT_DONE:-}" ]; then
+      export MED_BOOT_DONE=1
+      ( "$BOOT_FILE" > /dev/null 2>&1 & )
+    fi
+    ;;
+esac
 $BASHRC_END
 EOF
 ok "Démarrage automatique ajouté à ~/.bashrc"

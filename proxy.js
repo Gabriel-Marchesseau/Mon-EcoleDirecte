@@ -451,7 +451,80 @@ server.on('request', async (req, res) => {
   });
 });
 
+// Fichier PID écrit par le proxy LUI-MÊME (variable MED_PID_FILE, définie par run.sh
+// sous Termux), et non par run.sh avec le `$!` du process lancé : quand deux run.sh
+// démarrent en même temps (~/.bashrc lu deux fois), le perdant échoue sur « port déjà
+// utilisé » mais écrivait quand même son PID (mort) dans le fichier, rendant
+// `bash run.sh stop` impuissant. Appelée dans le callback de listen() : seul le process
+// qui a réellement obtenu le port peut écrire son PID. Écriture atomique (tmp + rename)
+// pour qu'un lecteur ne voie jamais un fichier vide. Toute erreur est ignorée : sans
+// fichier PID le proxy fonctionne normalement.
+// Un minuteur (30 s, MED_PID_CHECK_MS pour les tests) recrée le fichier s'il disparaît :
+// mesuré le 2026-10-31 sur le téléphone de Martial, `$TMPDIR` (où il vit) est vidé à la
+// réouverture de la session Termux alors que le proxy tourne toujours. Voir ci-dessous.
+function registerPidFile() {
+  const pidFile = process.env.MED_PID_FILE;
+  if (!pidFile) return;
+  const tmp = `${pidFile}.${process.pid}.tmp`;
+  // Écrit NOTRE PID de façon atomique (tmp + rename). Renvoie false en cas d'échec
+  // (dossier absent, disque plein…), en nettoyant le fichier tmp orphelin éventuel.
+  const writePid = () => {
+    try {
+      fs.writeFileSync(tmp, String(process.pid));
+      fs.renameSync(tmp, pidFile);
+      return true;
+    } catch (e) {
+      try { fs.unlinkSync(tmp); } catch {}
+      return false;
+    }
+  };
+  if (!writePid()) return;
+  // Vérification périodique. On réécrit notre PID seulement si le fichier est absent,
+  // vide/non numérique, ou contient le PID d'un process MORT (ESRCH). On n'y touche
+  // JAMAIS s'il contient notre PID ou celui d'un autre process vivant (un autre proxy
+  // légitime, ou un process dont on ne peut pas signaler l'existence : EPERM). Toute
+  // erreur est ignorée. `unref()` : le minuteur ne retient jamais le process en vie.
+  const rawMs = String(process.env.MED_PID_CHECK_MS || '').trim();
+  const checkMs = /^\d+$/.test(rawMs) && Number(rawMs) > 0 && Number(rawMs) <= 2147483647
+    ? Number(rawMs) : 30000;
+  setInterval(() => {
+    try {
+      let content;
+      try {
+        content = fs.readFileSync(pidFile, 'utf8').trim();
+      } catch (e) {
+        if (e.code !== 'ENOENT') return; // illisible pour une autre raison : on n'insiste pas
+        writePid(); // fichier absent
+        return;
+      }
+      const pid = /^\d+$/.test(content) ? Number(content) : 0;
+      if (pid === process.pid) return;
+      if (pid > 0 && pid <= 2147483647) {
+        try {
+          process.kill(pid, 0);
+          return; // process vivant (autre proxy) : on n'y touche pas
+        } catch (e) {
+          if (e.code !== 'ESRCH') return; // EPERM : existe mais pas à nous
+        }
+      }
+      writePid(); // vide, non numérique, ou PID d'un process mort
+    } catch {}
+  }, checkMs).unref();
+  // À la sortie, ne supprime le fichier que s'il contient encore NOTRE PID (un autre
+  // proxy a pu le réécrire entre-temps).
+  process.on('exit', () => {
+    try {
+      if (fs.readFileSync(pidFile, 'utf8').trim() === String(process.pid)) fs.unlinkSync(pidFile);
+    } catch {}
+  });
+  // `kill <pid>` (run.sh stop) : sans gestionnaire, SIGTERM tue le process sans
+  // déclencher l'événement 'exit' ci-dessus. SIGHUP volontairement NON géré : nohup
+  // l'ignore, et un gestionnaire annulerait cette protection.
+  process.on('SIGTERM', () => process.exit(0));
+}
+
 server.listen(PORT, '127.0.0.1', async () => {
+  registerPidFile();
   const localUrl = HTTP_MODE ? `http://localhost:${PORT}` : `https://monecoledirecte.local (port ${PORT})`;
   logAlways(`\n✅  Proxy Mon EcoleDirecte démarré sur ${localUrl}${DEBUG ? ' [MODE DEBUG]' : ''}\n`);
   if (DEBUG) {

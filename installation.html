@@ -35,7 +35,8 @@
   .btn.secondary { background: transparent; color: #1d4ed8; border: 1px solid #1d4ed8; }
   body.dark .btn.secondary { color: #93c5fd; border-color: #93c5fd; }
   .hidden { display: none; }
-  .ok { color: #16a34a; font-weight: 600; }
+  /* .step .ok (et non .ok seul) : `.step p` (couleur --text2) a une spécificité plus forte */
+  .step .ok { color: #16a34a; font-weight: 600; }
 </style>
 <script>
   // Même préférence de thème que l'application (clé ed_dark), sinon thème du système

@@ -104,6 +104,12 @@ Quand vous ouvrez Termux, le proxy se lance tout seul (s'il ne tourne pas déjà
 
 Le script laisse une notification Termux permanente (c'est ce qui garde le proxy en vie). Pour arrêter le proxy : `bash run.sh stop`.
 
+Détails utiles :
+- le bloc `~/.bashrc` ne lance le script qu'**une seule fois par session**, même si `~/.bashrc` est lu plusieurs fois à la connexion (Termux le lit déjà pour un shell de connexion, et un `~/.bash_profile` qui le lit aussi le ferait lire deux fois) ;
+- si plusieurs `run.sh` se lancent en même temps, un verrou n'en laisse démarrer qu'un ; le fichier PID est écrit par le proxy lui-même, une fois le port obtenu, et **il le recrée tout seul (vérification toutes les 30 s) s'il disparaît** — constaté : le dossier temporaire de Termux est vidé à la réouverture d'une session alors que le proxy tourne encore (cause non établie) ;
+- `bash run.sh stop` arrête aussi un proxy dont le fichier PID est perdu ou périmé (il lui demande de s'arrêter lui-même) — ce repli reste utile dans les ~30 s qui suivent la disparition du fichier, avant que le proxy ne le recrée ;
+- `bash run.sh --no-open` démarre le proxy **sans copier l'adresse dans le presse-papier** : c'est ce qu'utilise le démarrage automatique (le lancement manuel `bash run.sh` copie l'adresse).
+
 > Une page web ne peut pas ouvrir Termux automatiquement (Chrome bloque ce genre de lien sans geste de votre part) : l'appui sur le bouton est donc nécessaire. Pour un démarrage sans aucune action au démarrage du téléphone, il faut une application tierce qui ouvre Termux (Termux:Boot ou une application d'automatisation) — le bloc `~/.bashrc` fonctionne avec n'importe laquelle.
 
 ---
