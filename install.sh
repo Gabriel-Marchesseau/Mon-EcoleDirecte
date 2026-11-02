@@ -1,11 +1,19 @@
 #!/usr/bin/env bash
 # ============================================================
 #  Mon EcoleDirecte — Installation (Android / Termux)
-#  Usage : bash install.sh
+#  Usage : bash install.sh [--sans-chrome]
+#  --sans-chrome : n'ouvre pas Chrome a la fin, et detache le serveur
+#  de la session (installation a distance par SSH, depuis le
+#  Gestionnaire d'applications).
 # ============================================================
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$DIR"
+
+SANS_CHROME=false
+for arg in "$@"; do
+  if [ "$arg" = "--sans-chrome" ]; then SANS_CHROME=true; fi
+done
 
 # ── Couleurs ──────────────────────────────────────────────
 GREEN='\033[0;32m'; CYAN='\033[0;36m'; RED='\033[0;31m'; YELLOW='\033[1;33m'; RESET='\033[0m'
@@ -189,21 +197,30 @@ if [ ${#ERRORS[@]} -eq 0 ]; then
   # (Re)démarre le proxy pour qu'il serve la version tout juste installée
   step "Démarrage de Mon EcoleDirecte..."
   bash run.sh stop > /dev/null 2>&1
-  ( "$BOOT_FILE" > /dev/null 2>&1 & )
+  # Par SSH, Android tue les process d'une session qui se ferme : le serveur est détaché (setsid).
+  if $SANS_CHROME && command -v setsid &>/dev/null; then
+    setsid nohup "$BOOT_FILE" > /dev/null 2>&1 < /dev/null &
+  else
+    ( "$BOOT_FILE" > /dev/null 2>&1 & )
+  fi
   READY=false
   for i in $(seq 1 15); do
     sleep 1
     if curl -s -o /dev/null "$INSTALL_URL" 2>/dev/null; then READY=true; break; fi
   done
   echo ""
-  if $READY; then
+  if $READY && $SANS_CHROME; then
+    echo -e "  ${GREEN}Installation terminée.${RESET}"
+    echo "  Étapes restantes (PWA, batterie) : $INSTALL_URL"
+  elif $READY; then
     echo -e "  ${GREEN}Installation terminée — la suite s'affiche dans Chrome.${RESET}"
     am start -a android.intent.action.VIEW -d "$INSTALL_URL" -p com.android.chrome > /dev/null 2>&1 \
       || termux-open-url "$INSTALL_URL" 2>/dev/null
+    echo "  Si Chrome ne s'ouvre pas : $INSTALL_URL"
   else
     echo -e "  ${YELLOW}Installation terminée, mais le serveur tarde à démarrer.${RESET}"
+    echo "  Page d'installation : $INSTALL_URL"
   fi
-  echo "  Si Chrome ne s'ouvre pas : $INSTALL_URL"
 else
   echo -e "  ${RED}Installation terminée avec ${#ERRORS[@]} erreur(s) :${RESET}"
   for e in "${ERRORS[@]}"; do
@@ -212,3 +229,5 @@ else
 fi
 echo "  ====================================="
 echo ""
+# Code de sortie : 0 sans erreur, 1 sinon (l'installation à distance du Gestionnaire s'en sert).
+[ ${#ERRORS[@]} -eq 0 ]
