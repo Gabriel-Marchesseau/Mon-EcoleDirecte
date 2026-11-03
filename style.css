@@ -353,29 +353,30 @@ body.dark input[type="date"] {
     transform: translateX(100%);
   }
   .split-pane.show-detail > :first-child { transform: translateX(-100%); }
-  .split-pane.show-detail > :last-child  { transform: translateX(-100%); padding-bottom: 72px; }
+  .split-pane.show-detail > :last-child  { transform: translateX(-100%); }
 
-  /* Bouton retour — pill fixe en bas, visible dès que son split est en mode détail */
+  /* Bouton retour — pill discrète à droite, sous le titre, en face de l'expéditeur / la date */
+  *:has(> .split-pane.show-detail + .split-back-btn) { position: relative; }
   .split-pane.show-detail + .split-back-btn {
     display: flex;
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
+    position: absolute;
+    top: 30px;
+    right: 0;
     z-index: 100;
     align-items: center;
-    gap: 8px;
-    padding: 10px 20px;
-    background: var(--text);
-    color: var(--bg);
-    border: none;
+    gap: 4px;
+    padding: 5px 12px 5px 8px;
+    background: var(--bg3);
+    color: var(--text);
+    border: 1px solid var(--border);
     border-radius: 999px;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 500;
     font-family: inherit;
     cursor: pointer;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.18);
     white-space: nowrap;
   }
+  .split-pane.show-detail + .split-back-btn svg { width: 14px; height: 14px; }
   .split-pane.show-detail + .split-back-btn:active { opacity: 0.75; }
 
   /* Toolbars masquées quand le détail est affiché */
