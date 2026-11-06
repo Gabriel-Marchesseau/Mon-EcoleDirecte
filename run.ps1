@@ -3,9 +3,14 @@
 #  Usage : .\run.ps1           (mode normal, fenetre cachee)
 #          .\run.ps1 -debug    (mode debug : nodemon, fenetre visible avec les logs)
 #          .\run.ps1 -stop     (arrete le proxy en cours)
+#          .\run.ps1 -SansNavigateur  (demarre le proxy sans ouvrir le navigateur ni poser de question :
+#                                      lancement a distance, p. ex. par le Gestionnaire d'applications ;
+#                                      code de sortie 0 si le proxy repond, 1 sinon)
+#          .\run.ps1 -http     (mode HTTP, comme sur Android : http://localhost:3131, sans certificat ni
+#                               entree hosts ; implicite si un fichier "mode-http" est dans le dossier)
 # ============================================================
 
-param([switch]$debug, [switch]$stop)
+param([switch]$debug, [switch]$stop, [switch]$sansNavigateur, [switch]$http)
 
 $DIR = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $DIR
@@ -22,10 +27,36 @@ $SERVER_SCRIPT = Join-Path $DIR "proxy.js"
 $PROBE_INPUT = "mon-ecoledirecte"
 $PROBE_HASH = "1252ce60fd155343ee60b997807bea24"
 
+# Mode HTTP : le proxy est lance avec HTTP_MODE=1 (cf. proxy.js), comme sur Android. Il n'a alors besoin ni de
+# certificat, ni d'entree hosts, ni d'autorite de certification, ni de portproxy : aucun reglage de la machine.
+# Demande par -http, ou implicite quand un fichier "mode-http" est present dans le dossier (cree par le Gestionnaire
+# d'applications a l'installation : un double-clic sur Start_Mon_EcoleDirecte.bat marche alors aussi sur ce PC).
+# Sans mode HTTP, HTTP_MODE est retire de l'environnement : un HTTP_MODE herite ferait tourner le proxy en HTTP
+# pendant que ce script le sonde en HTTPS.
+$httpMode = $http.IsPresent -or (Test-Path (Join-Path $DIR "mode-http"))
+if ($httpMode) {
+    $APP_URL = "http://localhost:$PORT"
+    $env:HTTP_MODE = "1"
+} else {
+    Remove-Item Env:\HTTP_MODE -ErrorAction SilentlyContinue
+}
+
 function Write-Step($msg) { Write-Host "[..] $msg" -ForegroundColor Cyan }
 function Write-OK($msg)   { Write-Host "[OK] $msg"  -ForegroundColor Green }
 function Write-Err($msg)  { Write-Host "[ERREUR] $msg" -ForegroundColor Red }
 function Write-Warn($msg) { Write-Host "[AVERT] $msg" -ForegroundColor Yellow }
+
+# Une erreur attend normalement un appui sur Entree, pour que la fenetre ne se ferme pas avant d'etre lue.
+# Avec -SansNavigateur (lancement a distance, personne devant l'ecran), jamais de question : seul le code de
+# sortie dit le resultat.
+function Wait-ForKey {
+    if (-not $sansNavigateur) { Read-Host "Appuyez sur Entree pour fermer" }
+}
+
+if ($sansNavigateur -and $debug) {
+    Write-Err "-SansNavigateur et -debug s'excluent : le mode debug ouvre une fenetre de logs."
+    exit 1
+}
 
 # Le port n'est pas lu dans la liste des connexions (Get-NetTCPConnection -State Listen) : sur ce
 # PC, cette liste, netstat et l'API .NET oublient un port en ecoute un appel sur deux, port systeme
@@ -56,14 +87,21 @@ function Invoke-ProxyRequest($method, $path) {
         $client.ReceiveTimeout = 3000
         $client.SendTimeout = 3000
         if (-not $client.ConnectAsync("127.0.0.1", $PORT).Wait(1000)) { return $null }
-        $callback = [System.Net.Security.RemoteCertificateValidationCallback]{ $true }
-        $tls = New-Object System.Net.Security.SslStream($client.GetStream(), $false, $callback)
-        $tls.AuthenticateAsClient("monecoledirecte.local")
-        $request = "$method $path HTTP/1.1`r`nHost: monecoledirecte.local`r`nContent-Length: 0`r`nConnection: close`r`n`r`n"
+        if ($httpMode) {
+            # Mode HTTP : pas de TLS, et le nom d'hote de la requete est celui de l'adresse d'ouverture.
+            $stream = $client.GetStream()
+            $hostName = "localhost:$PORT"
+        } else {
+            $callback = [System.Net.Security.RemoteCertificateValidationCallback]{ $true }
+            $stream = New-Object System.Net.Security.SslStream($client.GetStream(), $false, $callback)
+            $stream.AuthenticateAsClient("monecoledirecte.local")
+            $hostName = "monecoledirecte.local"
+        }
+        $request = "$method $path HTTP/1.1`r`nHost: $hostName`r`nContent-Length: 0`r`nConnection: close`r`n`r`n"
         $bytes = [System.Text.Encoding]::ASCII.GetBytes($request)
-        $tls.Write($bytes, 0, $bytes.Length)
-        $tls.Flush()
-        $reader = New-Object System.IO.StreamReader($tls, [System.Text.Encoding]::UTF8)
+        $stream.Write($bytes, 0, $bytes.Length)
+        $stream.Flush()
+        $reader = New-Object System.IO.StreamReader($stream, [System.Text.Encoding]::UTF8)
         return $reader.ReadToEnd()
     } catch {
         return $null
@@ -152,7 +190,7 @@ Write-Host ""
 
 # ── 1. Verifier que l'installation a ete faite ───────────────
 $ready = $true
-if (-not (Test-Path "$DIR\cert.pem"))          { Write-Err "cert.pem manquant - lancez install.ps1"; $ready = $false }
+if (-not $httpMode -and -not (Test-Path "$DIR\cert.pem")) { Write-Err "cert.pem manquant - lancez install.ps1"; $ready = $false }
 if (-not (Test-Path "$DIR\node_modules"))      { Write-Err "node_modules manquant - lancez install.ps1"; $ready = $false }
 if (-not (Test-Path "$DIR\proxy.js"))          { Write-Err "proxy.js manquant"; $ready = $false }
 if (-not (Test-Path "$DIR\ecoledirecte.html")) { Write-Err "ecoledirecte.html manquant"; $ready = $false }
@@ -164,7 +202,7 @@ if (-not $ready) {
     Write-Host ""
     Write-Warn "Lancez d'abord 'Install_Mon_EcoleDirecte.bat'"
     Write-Host ""
-    Read-Host "Appuyez sur Entree pour fermer"
+    Wait-ForKey
     exit 1
 }
 Write-OK "Environnement pret"
@@ -175,7 +213,7 @@ $running = Test-ServerUp
 if ($running) {
     if (-not (Test-OurServer)) {
         Write-Err "Le port $PORT est occupe par un autre programme : le proxy ne peut pas demarrer."
-        Read-Host "Appuyez sur Entree pour fermer"
+        Wait-ForKey
         exit 1
     }
     if ($debug) {
@@ -238,7 +276,7 @@ if (-not $running) {
     # est alors dans sa fenetre).
     if ($server.HasExited -and -not $debug) {
         Write-Err "Le proxy s'est arrete au demarrage (code $($server.ExitCode)). Relancez avec -debug pour lire le message."
-        Read-Host "Appuyez sur Entree pour fermer"
+        Wait-ForKey
         exit 1
     }
     if (Test-ServerUp) {
@@ -247,6 +285,9 @@ if (-not $running) {
             Write-Host "  Logs URL, body, reponse, GTK et duree actives" -ForegroundColor Yellow
             Write-Host "  Fichiers surveilles : proxy.js, app.js, style.css, ecoledirecte.html" -ForegroundColor Yellow
         }
+    } elseif ($sansNavigateur) {
+        Write-Err "Le proxy ne repond pas apres $maxWait s."
+        exit 1
     } elseif ($debug) {
         Write-Warn "Le proxy ne repond pas : lisez la fenetre de logs. Ouverture quand meme..."
     } else {
@@ -255,6 +296,10 @@ if (-not $running) {
 }
 
 # ── 5. Ouvrir dans le navigateur ─────────────────────────────
+if ($sansNavigateur) {
+    Write-OK "Proxy pret sur $APP_URL (navigateur non ouvert)"
+    exit 0
+}
 Write-Step "Ouverture de Mon EcoleDirecte..."
 Start-Process $APP_URL
 Write-OK "Mon EcoleDirecte est ouvert !"
