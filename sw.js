@@ -5,7 +5,8 @@
 //
 // Seule fonction : si le proxy ne répond pas (ex. juste après le redémarrage du
 // téléphone, le temps que Termux le lance), afficher une page d'attente qui
-// réessaie toute seule au lieu de la page d'erreur de Chrome.
+// réessaie toute seule au lieu de la page d'erreur de Chrome. L'aide affichée
+// dépend de la plateforme (Termux sous Android, Start_Mon_EcoleDirecte.bat sur PC).
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
 
@@ -28,10 +29,17 @@ const WAITING_PAGE = `<!DOCTYPE html>
 <p>Le serveur local se lance, cela prend quelques secondes.</p>
 <p>La page s'ouvrira automatiquement.</p>
 <div id="help">
-  <p>Le serveur ne répond pas. Appuyez sur le bouton pour ouvrir Termux (si le Play Store s'affiche, appuyez sur « Ouvrir »), puis revenez ici : la page se rechargera toute seule.</p>
-  <a class="btn" href="intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.termux;end">Démarrer le serveur (ouvre Termux)</a>
+  <div id="help-android" hidden>
+    <p>Le serveur ne répond pas. Appuyez sur le bouton pour ouvrir Termux (si le Play Store s'affiche, appuyez sur « Ouvrir »), puis revenez ici : la page se rechargera toute seule.</p>
+    <a class="btn" href="intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.termux;end">Démarrer le serveur (ouvre Termux)</a>
+  </div>
+  <div id="help-pc" hidden>
+    <p>Le serveur ne répond pas. Lancez <b>Start_Mon_EcoleDirecte.bat</b> (double-clic, dans le dossier de Mon EcoleDirecte), puis revenez ici : la page se rechargera toute seule.</p>
+  </div>
 </div>
 <script>
+  // Termux n'existe que sous Android : sur PC, le serveur se lance par le .bat.
+  document.getElementById(/Android/i.test(navigator.userAgent) ? 'help-android' : 'help-pc').hidden = false;
   function check() {
     fetch('/favicon.ico', { cache: 'no-store' })
       .then(function (r) { if (r.ok) location.reload(); })
@@ -40,7 +48,8 @@ const WAITING_PAGE = `<!DOCTYPE html>
   setInterval(check, 2000);
   // Retour depuis Termux : vérifier tout de suite sans attendre le prochain cycle
   document.addEventListener('visibilitychange', function () { if (!document.hidden) check(); });
-  // Après 6 s sans réponse, proposer d'ouvrir Termux (le proxy y démarre via ~/.bashrc).
+  // Après 6 s sans réponse, afficher l'aide. Android : proposer d'ouvrir Termux (le proxy
+  // y démarre via ~/.bashrc).
   // Un lien intent: ne peut pas être suivi automatiquement (Chrome le bloque sans geste
   // de l'utilisateur) et Termux n'accepte pas les liens de navigateur : Chrome passe par
   // la fiche Play Store de Termux, d'où la consigne « Ouvrir ».

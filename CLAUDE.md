@@ -183,6 +183,9 @@ Fix : un wrapper de `window.fetch` (`app.js`, près de `silentReauth`) intercept
 ### Messages — texte noir en mode sombre
 Certains messages portent `color:#000 !important` inline, que la feuille de style ne peut pas surcharger. `renderMessageContent()` retire `color`/`background` des styles inline après `innerHTML` ; la règle CSS de `#msg-dialog-content` vise `*` (pas seulement div/p/span).
 
+### PWA — page d'attente du service worker : bouton Termux affiché sous Windows
+Quand le proxy ne répond pas, `sw.js` sert une page d'attente (`WAITING_PAGE`) dont l'aide, au bout de 6 s, proposait toujours « Démarrer le serveur (ouvre Termux) », PWA du PC comprise. Fix : la page choisit son aide d'après `/Android/i.test(navigator.userAgent)` — Android : bouton Termux inchangé ; sinon : consigne de lancer `Start_Mon_EcoleDirecte.bat` (une page web ne peut pas lancer le `.bat`). Une PWA déjà installée ne reçoit le nouveau `sw.js` qu'une fois le proxy relancé (le `__VERSION__` substitué dans `sw.js` change à chaque démarrage).
+
 ---
 
 ## Démarrage automatique sous Termux (`install.sh`, `run.sh`, `proxy.js`)
